@@ -8,12 +8,11 @@ NAMESPACE ?= nv-config-manager
 RELEASE_NAME ?= nv-config-manager
 HOSTNAME ?= config-manager.local
 KIND_CLUSTER_NAME ?= nv-config-manager
-# Kind cluster config. CI may override with a copy patched to route in-cluster
-# docker.io pulls through a Docker Hub mirror (see scripts/configure-kind-dockerhub-mirror);
-# when that mirror is active KIND_DOCKERHUB_MIRROR is set and the secure preload
-# is skipped as redundant.
+# Kind cluster config. CI overrides this with a copy patched to route in-cluster
+# docker.io pulls through a Docker Hub mirror (see
+# scripts/configure-kind-dockerhub-mirror), which keeps the security stack's
+# ~2x-heavier docker.io pulls off the shared runner's anonymous rate limit.
 KIND_CONFIG ?= deploy/kind-config.yaml
-KIND_DOCKERHUB_MIRROR ?=
 DEPLOY_SIZE ?= small  # Resource sizing: small (24GB Mac) or medium (64GB VM)
 INSTALL_CONFIG ?= deploy/configs/local-superpod.yaml
 KIND_SEC_INSTALL_CONFIG ?= deploy/configs/local-sec.yaml
@@ -865,52 +864,6 @@ kind-up-secure:
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG) --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	@# Keep the secure stack's in-cluster docker.io pulls off the anonymous Docker
-	@# Hub path. The PREFERRED fix is a containerd registry mirror on the Kind
-	@# cluster (KIND_CONFIG patched by scripts/configure-kind-dockerhub-mirror);
-	@# when that mirror is active KIND_DOCKERHUB_MIRROR is set and this whole
-	@# preload is skipped as redundant.
-	@#
-	@# FALLBACK (no mirror discoverable, e.g. local dev): the secure bring-up pulls
-	@# ~2x more docker.io images than a plain deploy, which exhausts the shared
-	@# runner's anonymous Docker Hub budget, so the cluster's own pulls then 429
-	@# (busybox stalls SPIRE, curl stalls the keycloak-config job, redis/nats stall
-	@# the app --wait). We pull them on the runner (routes through its
-	@# cached/authenticated daemon, no 429), ``docker save --platform`` to a
-	@# SINGLE-platform archive, and ``kind load image-archive`` -- ``kind load
-	@# docker-image`` can't import the multi-arch manifests these ship ("content
-	@# digest not found"). The list is DERIVED, not hardcoded: the app's
-	@# third-party images from deploy/helm/values.yaml (Docker Hub only) + the
-	@# keycloak-config image from install-security-dependencies + SPIRE's busybox
-	@# init image (the one tag that lives only in the upstream spiffe/spire chart).
-	@if [ -n "$(KIND_DOCKERHUB_MIRROR)" ]; then \
-		echo "🪞 Docker Hub mirror active ($(KIND_DOCKERHUB_MIRROR)) -- containerd serves docker.io from cache; skipping image preload"; \
-	else \
-		echo "🐳 No Docker Hub mirror; preloading images via the runner's cached daemon (single-platform kind load)..."; \
-		arch=amd64; if [ "$$(uname -m)" != "x86_64" ] && [ "$$(uname -m)" != "amd64" ]; then arch=arm64; fi; \
-		{ \
-			yq -r '.. | select(has("repository") and has("tag")) | .repository + ":" + .tag' deploy/helm/values.yaml 2>/dev/null; \
-			sed -n 's/^KEYCLOAK_CONFIG_IMAGE="\(.*\)"$$/\1/p' scripts/install-security-dependencies; \
-			echo "docker.io/library/busybox:1.37.0-uclibc"; \
-		} | sort -u | while read -r img; do \
-			[ -z "$$img" ] && continue; \
-			case "$$img" in \
-				docker.io/*) ;; \
-				*.*/*|*:*/*) continue ;; \
-				*/*) ;; \
-				*) continue ;; \
-			esac; \
-			tar="/tmp/kind-preload-$$(echo "$$img" | tr '/:' '__').tar"; \
-			if docker pull --platform "linux/$$arch" "$$img" \
-				&& docker save --platform "linux/$$arch" "$$img" -o "$$tar"; then \
-				kind load image-archive "$$tar" --name $(KIND_CLUSTER_NAME) \
-					|| echo "⚠️  kind load $$img failed; will fall back to an in-cluster pull"; \
-			else \
-				echo "⚠️  preload of $$img failed; will fall back to an in-cluster pull"; \
-			fi; \
-			rm -f "$$tar"; \
-		done; \
-	fi
 	@# ``@``-prefixed so make does not echo the expanded recipe: these commands
 	@# carry --keycloak-admin-password / --oidc-client-secret, and make's default
 	@# command echo would print them verbatim into the (public) CI log. They are

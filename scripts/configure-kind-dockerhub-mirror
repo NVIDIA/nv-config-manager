@@ -20,14 +20,16 @@
 #   2. /etc/buildkit/buildkitd.toml on the runner (the nv-gha-runners fleet
 #      configures it there).
 #
-# Best-effort: if no mirror can be discovered this prints nothing and exits 0, so
-# callers fall back to the Makefile's image preload.
+# If no mirror can be discovered this prints nothing and exits 0; the caller
+# decides what to do (the CI security run treats an empty result as fatal, since
+# there is no image-preload fallback anymore).
 #
 # Usage:
 #   configure-kind-dockerhub-mirror --input deploy/kind-config.yaml \
 #       --output "${RUNNER_TEMP}/kind-config-mirror.yaml"
 # On success the discovered mirror URL is printed to stdout and OUTPUT contains a
-# patched copy of INPUT; on fallback nothing is printed and OUTPUT is untouched.
+# patched copy of INPUT; when no mirror is found nothing is printed and OUTPUT is
+# left untouched.
 
 set -euo pipefail
 
@@ -67,10 +69,10 @@ discover_mirror() {
         # Extract the mirror endpoint ONLY from the [registry."docker.io"]
         # section. buildkitd.toml can define mirrors for several registries, so
         # grabbing the first `mirrors =` anywhere would misassign another
-        # registry's endpoint to docker.io -- and because a non-empty result
-        # disables the Makefile's preload fallback, an unreachable endpoint would
-        # then break the secure-stack pulls with no backstop. Tolerates single-
-        # or double-quoted values.
+        # registry's endpoint to docker.io -- and since the secure run relies on
+        # this mirror as its sole backstop, a wrong or unreachable endpoint would
+        # break every in-cluster docker.io pull. Tolerates single- or
+        # double-quoted values.
         awk '
             /^\[registry\."docker\.io"\][[:space:]]*$/ { in_docker_hub = 1; next }
             /^\[/ { in_docker_hub = 0 }
@@ -84,7 +86,8 @@ mirror="$(discover_mirror)"
 mirror="${mirror%/}"
 
 if [ -z "${mirror}" ]; then
-    # No mirror available -- caller falls back to the image preload.
+    # No mirror available -- print nothing and let the caller decide (the CI
+    # security run treats this as fatal).
     exit 0
 fi
 
