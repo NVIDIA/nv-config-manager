@@ -859,26 +859,40 @@ kind-up-secure:
 		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	@# Preload every Docker Hub image the secure stack pulls in-cluster. The
-	@# secure bring-up pulls ~2x more docker.io images than a plain deploy, which
-	@# exhausts the shared runner's anonymous Docker Hub budget, so the cluster's
-	@# own pulls of these then 429 (busybox stalls SPIRE, curl stalls the
-	@# keycloak-config job, redis/nats stall the app --wait). Pulling them on the
-	@# runner routes through its cached/authenticated daemon (no 429); we then
-	@# ``docker save --platform`` to a SINGLE-platform archive and
-	@# ``kind load image-archive`` -- ``kind load docker-image`` can't import the
-	@# multi-arch manifests these ship ("content digest not found"). Best-effort
-	@# and scoped to kind-up-secure only; the durable fix is a containerd registry
-	@# mirror (see the Docker Hub rate-limit tracking issue). Keep tags in sync
-	@# with the SPIRE/keycloak/redis/nats chart versions.
+	@# Preload the Docker Hub images the secure stack pulls in-cluster. The secure
+	@# bring-up pulls ~2x more docker.io images than a plain deploy, which exhausts
+	@# the shared runner's anonymous Docker Hub budget, so the cluster's own pulls
+	@# then 429 (busybox stalls SPIRE, curl stalls the keycloak-config job,
+	@# redis/nats stall the app --wait). Pulling them on the runner routes through
+	@# its cached/authenticated daemon (no 429); we then ``docker save --platform``
+	@# to a SINGLE-platform archive and ``kind load image-archive`` -- ``kind load
+	@# docker-image`` can't import the multi-arch manifests these ship ("content
+	@# digest not found").
+	@#
+	@# The image list is DERIVED, not hardcoded, so it can't drift out of sync:
+	@#   - the app's third-party images from deploy/helm/values.yaml (every
+	@#     repository/tag pair), filtered to Docker Hub only;
+	@#   - the keycloak-config job image from install-security-dependencies;
+	@#   - SPIRE's busybox init image, the one tag that lives only in the upstream
+	@#     ``spiffe/spire`` chart (not in this repo), so it stays an explicit const.
+	@# Non-Docker-Hub registries (ghcr.io, quay.io, registry.example.com first-party
+	@# placeholders) are skipped -- they don't 429 and/or are built locally.
+	@# Best-effort and scoped to kind-up-secure only; the durable fix is a
+	@# containerd registry mirror (see the Docker Hub rate-limit tracking issue).
 	@echo "🐳 Preloading Docker Hub images via the runner's cached daemon (single-platform kind load)..."
 	@arch=amd64; if [ "$$(uname -m)" != "x86_64" ] && [ "$$(uname -m)" != "amd64" ]; then arch=arm64; fi; \
-	for img in \
-		docker.io/library/busybox:1.37.0-uclibc \
-		docker.io/curlimages/curl:8.15.0 \
-		docker.io/library/redis:7-alpine \
-		docker.io/library/nats:2.10-alpine \
-		docker.io/natsio/nats-box:0.14.3; do \
+	{ \
+		yq -r '.. | select(has("repository") and has("tag")) | .repository + ":" + .tag' deploy/helm/values.yaml 2>/dev/null; \
+		sed -n 's/^KEYCLOAK_CONFIG_IMAGE="\(.*\)"$$/\1/p' scripts/install-security-dependencies; \
+		echo "docker.io/library/busybox:1.37.0-uclibc"; \
+	} | sort -u | while read -r img; do \
+		[ -z "$$img" ] && continue; \
+		case "$$img" in \
+			docker.io/*) ;; \
+			*.*/*|*:*/*) continue ;; \
+			*/*) ;; \
+			*) continue ;; \
+		esac; \
 		tar="/tmp/kind-preload-$$(echo "$$img" | tr '/:' '__').tar"; \
 		if docker pull --platform "linux/$$arch" "$$img" \
 			&& docker save --platform "linux/$$arch" "$$img" -o "$$tar"; then \
