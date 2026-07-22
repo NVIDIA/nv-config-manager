@@ -40,7 +40,9 @@ from nv_config_manager.common.config import (
     get_logger,
     load_config,
     nats_connection,
+    nats_nautobot_api_prefix,
     nats_nautobot_change_config,
+    nats_render_change_api_prefix,
     nats_render_change_config,
 )
 from nv_config_manager.render.dispatch import EventDispatcher
@@ -56,7 +58,13 @@ class PullConsumer:
 
     logger = get_logger(__name__, category=LogCategory.RENDER_EVENT)
 
-    def __init__(self, stream: str, subject: str, queue_suffix: str) -> None:
+    def __init__(
+        self,
+        stream: str,
+        subject: str,
+        queue_suffix: str,
+        api_prefix: str = "$JS.API",
+    ) -> None:
         """Initialize the consumer."""
         config = load_config()
         self.loop: AbstractEventLoop | None = None
@@ -66,6 +74,7 @@ class PullConsumer:
         self.queue = f"{queue_prefix}-{queue_suffix}"
         self.stream = stream
         self.subject = subject
+        self.api_prefix = api_prefix
         self.dispatcher = EventDispatcher()
         self.running = False
 
@@ -172,7 +181,7 @@ class PullConsumer:
         connection_manager = NATSConnectionManager()
         connection_manager.set_connection(self.nats_conn)
 
-        self.jetstream = self.nats_conn.jetstream()
+        self.jetstream = self.nats_conn.jetstream(prefix=self.api_prefix)
 
         # Run the pull consumer loop
         await self._run_pull_consumer()
@@ -342,10 +351,12 @@ class PullNautobotConsumer(PullConsumer):
     def __init__(self) -> None:
         """Initialize a Nautobot changelog consumer."""
         stream, subject = nats_nautobot_change_config()
+        api_prefix = nats_nautobot_api_prefix()
         super().__init__(
             stream=stream,
             subject=subject,
             queue_suffix="nautobot",
+            api_prefix=api_prefix,
         )
 
     async def message_handler(self, msg: Msg) -> None:
@@ -369,10 +380,12 @@ class PullDeviceChangeConsumer(PullConsumer):
     def __init__(self) -> None:
         """Initialize a render-triggering change consumer."""
         stream, subject = nats_render_change_config()
+        api_prefix = nats_render_change_api_prefix()
         super().__init__(
             stream=stream,
             subject=subject,
             queue_suffix="device",
+            api_prefix=api_prefix,
         )
 
     async def message_handler(self, msg: Msg) -> None:

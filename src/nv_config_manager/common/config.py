@@ -133,6 +133,7 @@ DEFAULT_CONFIG_MANAGER_DEVICE_CHANGE_SUBJECT = "nv-config-manager.devicechange"
 DEFAULT_CONFIG_MANAGER_ARCHIVE_SUBJECT = "nv-config-manager.workflow.result"
 DEFAULT_NAUTOBOT_NATS_STREAM = "nautobot"
 DEFAULT_NAUTOBOT_NATS_SUBJECT = "nautobot"
+DEFAULT_NATS_API_PREFIX = "$JS.API"
 
 
 def _nats_section(config: ConfigParser | None = None) -> SectionProxy:
@@ -155,6 +156,15 @@ def nats_render_change_config(config: ConfigParser | None = None) -> tuple[str, 
     return stream, subject
 
 
+def nats_render_change_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for render-triggering changes."""
+    nats_config = _nats_section(config)
+    return nats_config.get(
+        "render_change_api_prefix",
+        nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
+    )
+
+
 def nats_device_change_config(config: ConfigParser | None = None) -> tuple[str, str]:
     """Return the configured stream and subject for device-change notifications."""
     nats_config = _nats_section(config)
@@ -167,6 +177,15 @@ def nats_device_change_config(config: ConfigParser | None = None) -> tuple[str, 
         DEFAULT_CONFIG_MANAGER_DEVICE_CHANGE_SUBJECT,
     )
     return stream, subject
+
+
+def nats_device_change_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for device-change notifications."""
+    nats_config = _nats_section(config)
+    return nats_config.get(
+        "device_change_api_prefix",
+        nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
+    )
 
 
 def nats_archive_config(config: ConfigParser | None = None) -> tuple[str, str]:
@@ -183,12 +202,27 @@ def nats_archive_config(config: ConfigParser | None = None) -> tuple[str, str]:
     return stream, subject
 
 
+def nats_archive_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for workflow archive events."""
+    nats_config = _nats_section(config)
+    return nats_config.get(
+        "archive_api_prefix",
+        nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
+    )
+
+
 def nats_nautobot_change_config(config: ConfigParser | None = None) -> tuple[str, str]:
     """Return the configured stream and subject for Nautobot changelog events."""
     nats_config = _nats_section(config)
     stream = nats_config.get("nautobot_stream", DEFAULT_NAUTOBOT_NATS_STREAM)
     subject = nats_config.get("nautobot_subject", DEFAULT_NAUTOBOT_NATS_SUBJECT)
     return stream, subject
+
+
+def nats_nautobot_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for Nautobot changelog events."""
+    nats_config = _nats_section(config)
+    return nats_config.get("nautobot_api_prefix", DEFAULT_NATS_API_PREFIX)
 
 
 def parse_verify_param(

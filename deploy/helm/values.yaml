@@ -513,6 +513,8 @@ externalServices:
     streams:
       configManager:
         name: nv-config-manager
+        # JetStream API prefix for NVIDIA Config Manager-owned streams.
+        apiPrefix: "$JS.API"
         subjects:
           - nv-config-manager.nautobotchange
           - nv-config-manager.devicechange
@@ -522,6 +524,9 @@ externalServices:
         archiveSubject: nv-config-manager.workflow.result
       nautobot:
         name: nautobot
+        # Set to "$JS.CEREBRO.API" when the Nautobot stream is imported from
+        # the Cerebro account instead of owned by this NATS account.
+        apiPrefix: "$JS.API"
         subjects:
           - nautobot
         subject: nautobot
