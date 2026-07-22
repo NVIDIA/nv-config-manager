@@ -127,10 +127,15 @@ class ConfigManagerDeviceStatusAddView(ObjectPermissionRequiredMixin, View):
                 deploy_enabled=form.cleaned_data.get("deploy_enabled"),
                 backup_enabled=form.cleaned_data.get("backup_enabled"),
                 is_aggregate_managed=form.cleaned_data.get("is_aggregate_managed"),
+                user=request.user,
+                request_id=getattr(request, "id", None),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception("Bulk managed-device enrollment failed")
-            messages.error(request, f"Failed to add managed devices: {exc}")
+            messages.error(
+                request,
+                "Failed to add managed devices.",
+            )
             return render(request, self.template_name, self._context(form))
 
         if created_count:

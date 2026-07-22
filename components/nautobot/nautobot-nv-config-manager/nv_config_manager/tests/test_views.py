@@ -26,6 +26,7 @@ from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from nautobot.apps.testing import (
+    TestCase,
     ViewTestCases,
     extract_page_body,
 )
@@ -38,7 +39,8 @@ from nautobot.dcim.models import (
     Platform,
     Rack,
 )
-from nautobot.extras.models import Role, Status
+from nautobot.extras.choices import ObjectChangeActionChoices
+from nautobot.extras.models import ObjectChange, Role, Status
 from nautobot.tenancy.models import Tenant
 from nautobot.users.models import ObjectPermission
 
@@ -1105,3 +1107,163 @@ class ManagedDeviceTabViewTestCases:  # pylint: disable=too-few-public-methods
             pattern = r"&mdash;\s*(.*?)\s*&mdash;"
             message = re.search(pattern, tbody_content).group(1)
             self.assertIn(message, "No Managed Devices found")
+
+
+class ConfigManagerDeviceStatusBulkAddViewTestCase(ConfigManagerViewTestMixin, TestCase):
+    """Tests for the bulk-add managed devices view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        manufacturer = Manufacturer.objects.create(name="Bulk View Manufacturer")
+        site_type = LocationType.objects.create(name="Bulk View Site Type")
+        module_type = LocationType.objects.create(name="Bulk View Module Type", parent=site_type)
+        location_status = Status.objects.get_for_model(Location).first()
+        device_status = Status.objects.get_for_model(Device).first()
+
+        cls.parent_location = Location.objects.create(
+            name="Bulk View Parent",
+            location_type=site_type,
+            status=location_status,
+        )
+        cls.child_location = Location.objects.create(
+            name="Bulk View Child",
+            location_type=module_type,
+            parent=cls.parent_location,
+            status=location_status,
+        )
+        cls.network_role = Role.objects.create(name="Bulk View Network", color="444444")
+        cls.compute_role = Role.objects.create(name="Bulk View Compute", color="555555")
+        device_ct = ContentType.objects.get_for_model(Device)
+        cls.network_role.content_types.add(device_ct)
+        cls.compute_role.content_types.add(device_ct)
+        cls.device_type = DeviceType.objects.create(
+            manufacturer=manufacturer,
+            model="Bulk View Model",
+        )
+        cls.network_device = Device.objects.create(
+            name="bulk-view-network",
+            location=cls.child_location,
+            device_type=cls.device_type,
+            role=cls.network_role,
+            status=device_status,
+        )
+        cls.compute_device = Device.objects.create(
+            name="bulk-view-compute",
+            location=cls.child_location,
+            device_type=cls.device_type,
+            role=cls.compute_role,
+            status=device_status,
+        )
+        cls.already_managed = Device.objects.create(
+            name="bulk-view-managed",
+            location=cls.child_location,
+            device_type=cls.device_type,
+            role=cls.network_role,
+            status=device_status,
+        )
+        ConfigManagerDeviceStatus.objects.create(device=cls.already_managed)
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("plugins:nv_config_manager:configmanagerdevicestatus_add")
+
+    def _grant_add_permission(self):
+        obj_perm = ObjectPermission(name="Bulk add permission", actions=["add", "view"])
+        obj_perm.save()
+        obj_perm.users.add(self.user)
+        obj_perm.object_types.add(ContentType.objects.get_for_model(ConfigManagerDeviceStatus))
+
+    def _add_data(self, **overrides):
+        data = {
+            "location": str(self.parent_location.pk),
+            "roles": [str(self.network_role.pk)],
+            "devices": [str(self.network_device.pk)],
+            "render_enabled": "true",
+            "is_aggregate_managed": "true",
+        }
+        data.update(overrides)
+        return data
+
+    def test_get_renders_bulk_add_form(self):
+        """GET renders the bulk-add form."""
+        self._grant_add_permission()
+        response = self.client.get(self.url)
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "Device Filters")
+        self.assertContains(response, 'name="devices"')
+        self.assertNotContains(response, "Select a Location and one or more Device Roles")
+
+    def test_adds_selected_devices_with_shared_flags(self):
+        """Submitting creates managed devices with the selected service flags."""
+        self._grant_add_permission()
+        response = self.client.post(self.url, self._add_data())
+        self.assertHttpStatus(response, 302)
+        managed = ConfigManagerDeviceStatus.objects.get(device=self.network_device)
+        self.assertTrue(managed.render_enabled)
+        self.assertTrue(managed.is_aggregate_managed)
+        self.assertFalse(ConfigManagerDeviceStatus.objects.filter(device=self.compute_device).exists())
+
+    def test_records_change_log_for_added_devices(self):
+        """Each enrolled device gets a create change-log entry attributed to the user."""
+        self._grant_add_permission()
+        response = self.client.post(self.url, self._add_data())
+        self.assertHttpStatus(response, 302)
+        managed = ConfigManagerDeviceStatus.objects.get(device=self.network_device)
+        change = ObjectChange.objects.get(
+            changed_object_id=managed.pk,
+            action=ObjectChangeActionChoices.ACTION_CREATE,
+        )
+        self.assertEqual(change.user_name, self.user.username)
+
+    def test_adds_only_selected_devices(self):
+        """Only the devices chosen in the Devices box are enrolled."""
+        self._grant_add_permission()
+        second_network = Device.objects.create(
+            name="bulk-view-network-2",
+            location=self.child_location,
+            device_type=self.device_type,
+            role=self.network_role,
+            status=Status.objects.get_for_model(Device).first(),
+        )
+        response = self.client.post(self.url, self._add_data(devices=[str(second_network.pk)]))
+        self.assertHttpStatus(response, 302)
+        self.assertTrue(ConfigManagerDeviceStatus.objects.filter(device=second_network).exists())
+        self.assertFalse(ConfigManagerDeviceStatus.objects.filter(device=self.network_device).exists())
+
+    def test_requires_permission(self):
+        """Users without add permission cannot access the bulk-add view."""
+        response = self.client.get(self.url)
+        self.assertHttpStatus(response, 403)
+
+    def test_rejects_ineligible_device(self):
+        """A device outside the selected location/role scope is rejected."""
+        self._grant_add_permission()
+        response = self.client.post(self.url, self._add_data(devices=[str(self.compute_device.pk)]))
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "One or more selected devices are not eligible for enrollment.")
+        self.assertFalse(ConfigManagerDeviceStatus.objects.filter(device=self.compute_device).exists())
+
+    def test_rolls_back_on_creation_failure(self):
+        """A creation failure rolls back the entire bulk-add transaction."""
+        from unittest.mock import patch
+
+        self._grant_add_permission()
+        second_network = Device.objects.create(
+            name="bulk-view-network-rollback",
+            location=self.child_location,
+            device_type=self.device_type,
+            role=self.network_role,
+            status=Status.objects.get_for_model(Device).first(),
+        )
+        with patch(
+            "nv_config_manager.utils.models.ConfigManagerDeviceStatus.objects.bulk_create",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self.client.post(
+                self.url,
+                self._add_data(devices=[str(self.network_device.pk), str(second_network.pk)]),
+            )
+        self.assertHttpStatus(response, 200)
+        self.assertContains(response, "Failed to add managed devices")
+        self.assertFalse(ConfigManagerDeviceStatus.objects.filter(device=self.network_device).exists())
+        self.assertFalse(ConfigManagerDeviceStatus.objects.filter(device=second_network).exists())

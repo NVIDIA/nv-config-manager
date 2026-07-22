@@ -14,11 +14,17 @@
 #  limitations under the License.
 """Util Functions."""
 
+import logging
+import uuid
+
 from django.db import transaction
 from nautobot.dcim.models import Device, Location
+from nautobot.extras.choices import ObjectChangeActionChoices, ObjectChangeEventContextChoices
 from nautobot.extras.models import Role
 
 from nv_config_manager import models
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_descendants(node: Location):
@@ -68,6 +74,8 @@ def bulk_create_managed_devices(
     deploy_enabled: bool | None = None,
     backup_enabled: bool | None = None,
     is_aggregate_managed: bool | None = None,
+    user=None,
+    request_id=None,
 ) -> tuple[int, int]:
     """Create managed-device rows for devices, skipping existing enrollments."""
     defaults = {
@@ -77,21 +85,54 @@ def bulk_create_managed_devices(
         "backup_enabled": nullbool_to_bool(backup_enabled),
         "is_aggregate_managed": nullbool_to_bool(is_aggregate_managed),
     }
-    created_count = 0
-    skipped_count = 0
+    device_list = list(devices)
+    already_managed_ids = set(
+        models.ConfigManagerDeviceStatus.objects.filter(device__in=device_list).values_list("device_id", flat=True)
+    )
+
+    to_create = []
+    seen_ids: set = set()
+    for device in device_list:
+        if device.pk in already_managed_ids or device.pk in seen_ids:
+            continue
+        seen_ids.add(device.pk)
+        # ConfigManagerDeviceStatus.save() pins its pk to the device pk; replicate that
+        # here since bulk_create bypasses save().
+        to_create.append(models.ConfigManagerDeviceStatus(id=device.pk, device=device, **defaults))
 
     with transaction.atomic():
-        for device in devices:
-            _, created = models.ConfigManagerDeviceStatus.objects.get_or_create(
-                device=device,
-                defaults=defaults,
-            )
-            if created:
-                created_count += 1
-            else:
-                skipped_count += 1
+        models.ConfigManagerDeviceStatus.objects.bulk_create(to_create)
+        _log_created_object_changes(to_create, user=user, request_id=request_id)
 
+    created_count = len(to_create)
+    skipped_count = len(device_list) - created_count
+    if to_create:
+        logger.info(
+            "Enrolled %d device(s) into Config Manager: %s",
+            created_count,
+            ", ".join(sorted(status.device.name for status in to_create)),
+        )
     return created_count, skipped_count
+
+
+def _log_created_object_changes(instances, *, user=None, request_id=None):
+    """Emit a Nautobot change-log entry for each managed device created via bulk_create.
+
+    bulk_create bypasses save() and its post_save signals, so the change-log
+    entries Nautobot would normally record are written explicitly here.
+    """
+    if not instances:
+        return
+    request_id = request_id or uuid.uuid4()
+    for instance in instances:
+        change = instance.to_objectchange(ObjectChangeActionChoices.ACTION_CREATE)
+        if change is None:
+            continue
+        change.user = user
+        change.request_id = request_id
+        change.change_context = ObjectChangeEventContextChoices.CONTEXT_WEB
+        change.change_context_detail = "bulk add managed devices"
+        change.save()
 
 
 def generate_config_store_url(

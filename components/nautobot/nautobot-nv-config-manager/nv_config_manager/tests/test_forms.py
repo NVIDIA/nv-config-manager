@@ -14,6 +14,7 @@
 #  limitations under the License.
 """Tests for nv_config_manager forms."""
 
+from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from nautobot.dcim.models import Device, DeviceType, Location, LocationType, Manufacturer
 from nautobot.extras.models import Role, Status
@@ -167,6 +168,7 @@ class ConfigManagerDeviceStatusBulkAddFormTestCase(TestCase):
             status=location_status,
         )
         cls.role = Role.objects.create(name="Bulk Form Role", color="333333")
+        cls.role.content_types.add(ContentType.objects.get_for_model(Device))
         cls.device_type = DeviceType.objects.create(
             manufacturer=manufacturer,
             model=data.SECOND_DEVICE_TYPE_MODEL,
@@ -216,3 +218,16 @@ class ConfigManagerDeviceStatusBulkAddFormTestCase(TestCase):
         self.assertTrue(form.is_valid())
         names = set(form.get_devices_to_add().values_list("name", flat=True))
         self.assertEqual(names, {self.device.name})
+
+    def test_roles_dropdown_filtered_to_device_roles(self):
+        """The role dropdown is scoped to device roles so its options match validation."""
+        form = ConfigManagerDeviceStatusBulkAddForm()
+        self.assertEqual(form.fields["roles"].query_params.get("content_types"), "dcim.device")
+
+    def test_rejects_non_device_role(self):
+        """A role lacking the dcim.device content type is rejected, not silently accepted."""
+        non_device_role = Role.objects.create(name="Bulk Form IPAM Role", color="444444")
+        non_device_role.content_types.set([ContentType.objects.get(app_label="ipam", model="prefix")])
+        form = ConfigManagerDeviceStatusBulkAddForm(self._base_data(roles=[str(non_device_role.pk)]))
+        self.assertFalse(form.is_valid())
+        self.assertIn("roles", form.errors)

@@ -66,9 +66,10 @@ class ConfigManagerDeviceStatusBulkAddForm(BootstrapMixin, forms.Form):
         required=True,
     )
     roles = DynamicModelMultipleChoiceField(
-        queryset=Role.objects.all(),
+        queryset=Role.objects.filter(content_types__app_label="dcim", content_types__model="device"),
         label="Role",
         required=True,
+        query_params={"content_types": "dcim.device"},
     )
     devices = DynamicModelMultipleChoiceField(
         queryset=Device.objects.all(),
