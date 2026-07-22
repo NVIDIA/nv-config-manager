@@ -143,7 +143,7 @@ global:
     # Polls the NATS monitoring endpoint and exposes nats_* Prometheus metrics.
     natsExporter:
       repository: docker.io/natsio/prometheus-nats-exporter
-      tag: "0.15.0"
+      tag: "0.20.1"
     # Project-owned Temporal images use distroless runtimes. temporalServer
     # and temporalUi may be replaced with compatible upstream or locally built
     # images. temporalBootstrap is intentionally project-owned: it contains

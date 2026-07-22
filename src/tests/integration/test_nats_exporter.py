@@ -75,14 +75,21 @@ def _kubectl_get_json(*args: str) -> dict | None:
     The module is already gated on OBSERVABILITY=true, so callers treat ``None``
     as a failure (broken observability install), not a skip.
     """
-    result = subprocess.run(
-        # --request-timeout caps the wait so an unreachable/stale API server
-        # fails fast instead of hanging until the pytest timeout.
-        ["kubectl", "get", *args, "-o", "json", "--request-timeout=15s"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            # --request-timeout caps the API request, but it does NOT bound a hung
+            # exec auth plugin or client-side setup; timeout= gives a hard process
+            # deadline so the test fails fast instead of hanging until the pytest
+            # timeout. Keep it above --request-timeout so the request-level timeout
+            # can surface its own error first.
+            ["kubectl", "get", *args, "-o", "json", "--request-timeout=15s"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     if result.returncode != 0:
         return None
     try:

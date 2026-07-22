@@ -698,8 +698,12 @@ spec:
       {{- end }}
 {{- end }}
 
-{{- /* Nautobot NATS exporter PodMonitor (JetStream metrics for KEDA autoscaling) */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.nautobotNats.metrics.enabled }}
+{{- /* Nautobot NATS exporter PodMonitor (JetStream metrics for KEDA autoscaling).
+       Gated on the same condition as the NATS Deployment (templates/nautobot.yaml):
+       only when Nautobot/NATS is deployed by this chart. With an external
+       Nautobot/NATS (externalServices.nautobot.local=false) there is no in-cluster
+       NATS pod / exporter sidecar to scrape, so the PodMonitor must not render. */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.nautobotNats.metrics.enabled .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
