@@ -4,7 +4,7 @@ sidebar-title: Reprovision
 position: 10
 ---
 
-The Device Reprovision workflow wipes a network switch back to factory state via an API-driven factory reset and re-runs the ZTP process against it, then takes a fresh configuration backup once the device is provisioned. It is the recovery action when a device is still up and running, still reachable over its management IP, but its on-box configuration can no longer be trusted to match its intended state in Nautobot.
+The Device Reprovision workflow takes a backup and validates the intended configuration, wipes a network switch back to factory state via an API-driven factory reset, re-runs the ZTP process against it, and then takes another configuration backup once the device is provisioned. It is the recovery action when a device is still up and running, still reachable over its management IP, but its on-box configuration can no longer be trusted to match its intended state in Nautobot.
 
 This workflow is **not** for devices that are already factory-reset or have been physically replaced — those boot with no configuration and run through ZTP automatically on first power-up. Use Reprovision only when the device still has a configuration that needs to be wiped over API.
 
@@ -48,7 +48,17 @@ After submission, a status page appears showing each stage as it runs. The workf
 
 ## Execution stages
 
-The workflow runs two stages in order. Each stage is defined as a Pydantic-validated input and runs against the device identified by `device_id`. Neither stage requires manual approval.
+The workflow runs three stages in order. Each stage is defined as a Pydantic-validated input and runs against the device identified by `device_id`. No stage requires manual approval.
+
+1. **`pre_reprovision_backup` — Back up the device and validate the intended configuration.**
+
+   This stage starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow before making any destructive change. The child loads and persists the running configuration, loads the latest intended configuration, and builds a candidate diff on the live switch. This confirms that the rendered configuration exists and that the device can parse it without applying any changes.
+
+   The stage output links to the child backup workflow whether it succeeds or fails:
+
+   - If the intended configuration is invalid, the stage stops before factory reset and links to both the invalid intended configuration and the failed backup workflow. Fix the configuration and retry this stage.
+   - If the backup succeeds, the stage links to the child backup workflow for configuration drift details and continues to ZTP.
+   - If the backup fails for another reason, the stage links to the failed child workflow and can be retried after the underlying problem is fixed.
 
 1. **`execute_ztp` — Reset the device and run ZTP.**
 
@@ -65,21 +75,27 @@ The workflow runs two stages in order. Each stage is defined as a Pydantic-valid
 
    Once ZTP succeeds, the workflow starts the [Configuration Backup](../configuration-backup/index.mdx) workflow as a child workflow against the same device, with `trigger=WORKFLOW` and a 10-minute run timeout. The child workflow ID is recorded on the parent so you can drill into the backup run from the Reprovision status page.
 
+   When the backup completes, the stage output links directly to the child backup workflow in the Temporal UI.
+
    The backup gives you a known-good starting point for future change tracking on the freshly provisioned device.
 
-After both stages complete, the workflow archives its results and returns success.
+After all three stages complete, the workflow archives its results and returns success.
 
 ## Verifying outcomes
 
 Confirm the reprovision succeeded by checking all of the following:
 
-- **Workflow status** shows both stages green on the Config Manager run page, and the run reports `display: "ZTP completed successfully"` and `display: "Configuration backup completed via workflow <id>."`.
+- **Workflow status** shows all three stages green on the Config Manager run page, links to the pre-reprovision backup for its drift result, confirms that ZTP completed successfully, and links to both completed backup workflows.
 - **Nautobot device status** has returned to **Provisioned**. ZTP is the process that flips the device into this state, so if the device is still showing Provisioning, ZTP did not finalize.
-- **Backup record** is present in the Config Manager backup store with a timestamp matching the workflow run. If the backup child workflow failed but ZTP succeeded, the device is provisioned but you should re-run the backup workflow directly — see [Configuration Backup](../configuration-backup/index.mdx).
+- **Backup records** are present in the Config Manager backup store for both the pre-reprovision and post-provision child workflows. If the post-provision backup child workflow failed but ZTP succeeded, the device is provisioned but you should re-run the backup workflow directly — see [Configuration Backup](../configuration-backup/index.mdx).
 - **Device is reachable** over its management IP using the current site root credentials from your secrets store, and the cumulus user is restored.
 - **Cable validation** still passes for any ports on the reprovisioned device. If you replaced hardware, run the [Cable Validation](../cable-validation/index.mdx) workflow on the device's site to confirm the new unit is cabled the same way as the old one.
 
 ## Common issues
+
+**The intended configuration is invalid.**
+
+The `pre_reprovision_backup` stage stops before factory reset and links to both the intended configuration that the switch could not load as a candidate and the failed backup workflow. Open the configuration link, fix and re-render the configuration, then retry the stage.
 
 **ZTP failed to complete within 30 minutes.**
 
@@ -93,7 +109,7 @@ The `execute_ztp` stage gives ZTP a hard 30-minute deadline. If it expires, the 
 
 If the device is unreachable, the ZTP activity will continue heartbeating until the 30-minute timeout. You do not need to cancel the workflow to investigate — log into the device via console or upstream SSH (see [Options for logging into a stuck device](../new-site-deployment/index.mdx#options-for-logging-into-a-stuck-device)) and inspect `/var/log/autoprovision`. If you fix the underlying issue before the timeout, ZTP will retry and the workflow will complete normally.
 
-**ZTP completed but the backup child workflow failed.**
+**ZTP completed but the post-provision backup child workflow failed.**
 
 The device is provisioned and in service, but no fresh backup was captured. Open the child workflow link from the Reprovision status page to see the backup failure, then re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
 
@@ -105,5 +121,5 @@ If the device's configuration has only drifted slightly, a full reprovision is o
 
 - [Network ZTP](../../network-ztp/index.mdx) — how Config Manager onboards devices end to end.
 - [New Site Bringup](../new-site-deployment/index.mdx) — full bringup procedure and the canonical DHCP/ZTP troubleshooting reference; includes [Device swaps](../new-site-deployment/index.mdx#device-swaps).
-- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow that runs at the end of Reprovision.
+- [Configuration Backup](../configuration-backup/index.mdx) — the child workflow that runs before and after ZTP.
 - [Switch OS Upgrade](../switch-os-upgrade/index.mdx) — required before reprovisioning a device that is on a pre-5.x Cumulus release.

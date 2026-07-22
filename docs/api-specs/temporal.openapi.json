@@ -21,6 +21,12 @@
             "description": "Config Store commit containing the intended configuration.",
             "title": "Intended Config Commit Id"
           },
+          "terminate_on_failure": {
+            "default": false,
+            "description": "Terminate the workflow instead of waiting to retry a failed stage.",
+            "title": "Terminate On Failure",
+            "type": "boolean"
+          },
           "trigger": {
             "$ref": "#/components/schemas/TriggerEnum",
             "description": "Reason the backup workflow was started."
@@ -4814,7 +4820,7 @@
     },
     "/v1/workflow/ngc/reprovision": {
       "post": {
-        "description": "Reprovision network device using ZTP and perform post-provision backup",
+        "description": "Reprovision a network device using pre- and post-ZTP backups",
         "operationId": "reprovisionworkflow_endpoint_v1_workflow_ngc_reprovision_post",
         "requestBody": {
           "content": {

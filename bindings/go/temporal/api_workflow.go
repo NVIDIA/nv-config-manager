@@ -3624,7 +3624,7 @@ func (r ApiReprovisionworkflowEndpointV1WorkflowNgcReprovisionPostRequest) Execu
 /*
 ReprovisionworkflowEndpointV1WorkflowNgcReprovisionPost Execute ReprovisionWorkflow
 
-Reprovision network device using ZTP and perform post-provision backup
+Reprovision a network device using pre- and post-ZTP backups
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiReprovisionworkflowEndpointV1WorkflowNgcReprovisionPostRequest

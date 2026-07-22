@@ -652,6 +652,7 @@ async def test_execute_workflow(
         expected_backup_input = {
             "device_id": "mock_device_uuid",
             "intended_config_commit_id": "mock_commit_id",
+            "terminate_on_failure": False,
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
@@ -1301,6 +1302,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
         expected_backup_input = {
             "device_id": "mock_device_uuid",
             "intended_config_commit_id": None,
+            "terminate_on_failure": False,
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
             "user_domain": None,
