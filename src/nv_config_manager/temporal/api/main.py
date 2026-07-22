@@ -29,6 +29,7 @@ from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
 from nv_config_manager.temporal.api import codec_server, parameter_v1, workflow_v1
+from nv_config_manager.temporal.api.audit import install_workflow_audit_logging
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.telemetry import setup_telemetry
 
@@ -83,6 +84,7 @@ def healthcheck() -> Literal["OK"]:
     return "OK"
 
 
+install_workflow_audit_logging(app)
 install_identity_probe(app)
 
 

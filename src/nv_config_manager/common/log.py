@@ -47,6 +47,7 @@ class LogCategory:
     TEMPORAL_WORKFLOW = "temporal.workflow"
     TEMPORAL_ACTIVITY = "temporal.activity"
     TEMPORAL_API = "temporal.api"
+    TEMPORAL_AUDIT = "temporal.audit"
     NAUTOBOT = "nautobot"
     AUTH = "auth"
     API = "api"  # Deprecated: use per-service variants (RENDER_API, etc.)
@@ -213,6 +214,13 @@ def _escape_log_argument(value: object) -> object:
 
 class EscapingLoggerAdapter(logging.LoggerAdapter):
     """Logger adapter that escapes unsafe characters in messages and arguments."""
+
+    def process(self, msg: object, kwargs: Any) -> tuple[object, Any]:
+        """Merge per-call structured fields with the adapter's default fields."""
+        call_extra = kwargs.get("extra") or {}
+        adapter_extra = self.extra or {}
+        kwargs["extra"] = {**adapter_extra, **call_extra}
+        return msg, kwargs
 
     def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
         """Delegate an enabled log call after sanitizing its message and arguments."""

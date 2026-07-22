@@ -279,7 +279,10 @@ class TestInstallIdentityProbe:
 
         @app.get("/state-user")
         async def state_user(request: Request):
-            return {"user": request.state.user}
+            return {
+                "user": request.state.user,
+                "auth_source": request.state.auth_source,
+            }
 
         install_identity_probe(app)
         return app
@@ -296,6 +299,10 @@ class TestInstallIdentityProbe:
         resp = client.get("/protected", headers={"X-Auth-Request-Email": "alice@example.com"})
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
+
+        resp = client.get("/state-user", headers={"X-Auth-Request-Email": "alice@example.com"})
+        assert resp.status_code == 200
+        assert resp.json() == {"user": "alice", "auth_source": "sso"}
 
     def test_docs_are_protected(self):
         auth_mod._auth_config = load_auth_config(
@@ -315,7 +322,7 @@ class TestInstallIdentityProbe:
 
         resp = client.get("/state-user")
         assert resp.status_code == 200
-        assert resp.json() == {"user": "anonymous"}
+        assert resp.json() == {"user": "anonymous", "auth_source": "anonymous"}
 
     def test_openapi_describes_default_bearer_auth_and_public_paths(self):
         schema = self._make_app().openapi()
