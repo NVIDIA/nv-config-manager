@@ -126,6 +126,7 @@ def install_workflow_audit_logging(app: FastAPI) -> None:
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        """Log the normalized result of each Workflow API POST action."""
         action_target = _workflow_action_target(request)
         if action_target is None:
             return await call_next(request)

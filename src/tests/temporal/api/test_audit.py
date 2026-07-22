@@ -57,27 +57,41 @@ def test_log_workflow_action_emits_consistent_structured_fields(mocker):
 
 
 def _audit_test_app() -> FastAPI:
+    """Build a small app that exercises audit middleware outcomes."""
     app = FastAPI()
     install_workflow_audit_logging(app)
 
     @app.middleware("http")
     async def set_identity(request: Request, call_next):
+        """Populate the normalized identity fields normally supplied by auth middleware."""
         request.state.user = "operator@example.com"
         request.state.roles = {"nvcm-network"}
         request.state.auth_source = "jwt"
         return await call_next(request)
 
     @app.post("/v1/workflow/ngc/{workflow_name}")
-    async def start(request: Request, workflow_name: str, denied: bool = False):
+    async def start(
+        request: Request,
+        workflow_name: str,
+        denied: bool = False,
+        failure: bool = False,
+        raises: bool = False,
+    ):
+        """Return selectable workflow-start outcomes for audit tests."""
         request.state.audit_workflow_type = f"{workflow_name.title()}Workflow"
+        if raises:
+            raise RuntimeError("workflow start failed")
         if denied:
             return Response(status_code=403)
+        if failure:
+            return Response(status_code=500)
         request.state.audit_workflow_id = "workflow-1"
         return {"id": "workflow-1"}
 
     @app.post("/v1/workflow/{workflow_id}/{action}")
     @app.post("/v1/workflow/{workflow_id}/{action}/{stage_name}")
     async def lifecycle(workflow_id: str, action: str, stage_name: str | None = None):
+        """Return lifecycle path parameters after middleware classification."""
         return {"id": workflow_id, "action": action, "stage_name": stage_name}
 
     return app
@@ -132,3 +146,31 @@ def test_audit_middleware_logs_workflow_start_and_denial(mocker, action):
     assert denied_fields["outcome"] == "denied"
     assert denied_fields["workflow_id"] is None
     assert denied_fields["detail"] == "HTTP 403"
+
+
+def test_audit_middleware_logs_workflow_failure_response(mocker):
+    """A 5xx response records a failure outcome and HTTP status detail."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+
+    response = TestClient(_audit_test_app()).post("/v1/workflow/ngc/deploy?failure=true")
+
+    assert response.status_code == 500
+    fields = audit_logger.info.call_args.kwargs["extra"]
+    assert fields["action"] == "deploy"
+    assert fields["outcome"] == "failure"
+    assert fields["workflow_type"] == "DeployWorkflow"
+    assert fields["detail"] == "HTTP 500"
+
+
+def test_audit_middleware_logs_and_reraises_workflow_exception(mocker):
+    """An endpoint exception is logged as a failure before being re-raised."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+
+    with pytest.raises(RuntimeError, match="workflow start failed"):
+        TestClient(_audit_test_app()).post("/v1/workflow/ngc/deploy?raises=true")
+
+    fields = audit_logger.info.call_args.kwargs["extra"]
+    assert fields["action"] == "deploy"
+    assert fields["outcome"] == "failure"
+    assert fields["workflow_type"] == "DeployWorkflow"
+    assert fields["detail"] == "RuntimeError"

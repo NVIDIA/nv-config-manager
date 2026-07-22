@@ -279,6 +279,7 @@ class TestInstallIdentityProbe:
 
         @app.get("/state-user")
         async def state_user(request: Request):
+            """Expose normalized request identity fields for middleware tests."""
             return {
                 "user": request.state.user,
                 "auth_source": request.state.auth_source,
