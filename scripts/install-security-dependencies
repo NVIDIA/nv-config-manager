@@ -800,7 +800,10 @@ spec:
           ensure_user "demo" "demo" "demo@config-manager.local" "Demo" "User" "nvcm-network"
 KEYCLOAK_CONFIG_EOF
 
-    kubectl wait --for=condition=complete job/keycloak-config -n keycloak --timeout=120s
+    # 300s (was 120s): the config job's pod must pull curlimages/curl and then
+    # poll until Keycloak serves /realms/master; under CI contention 120s was too
+    # tight and tripped "timed out waiting for the condition on jobs/keycloak-config".
+    kubectl wait --for=condition=complete job/keycloak-config -n keycloak --timeout=300s
     kubectl logs job/keycloak-config -n keycloak
 }
 
