@@ -55,6 +55,10 @@ export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid
     }
   };
 
+  const navigateToConfig = (filename: string) => {
+    globalThis.location.href = `/device/${uuid}/${filename}?file_type=${fileType}`;
+  };
+
   // Update fileType when URL changes
   useEffect(() => {
     const urlFileType = searchParams?.get("file_type") as "intended" | "backup";
@@ -165,10 +169,17 @@ export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid
                 </TableHeader>
                 <TableBody>
                   {configs.map((config) => (
-                    <TableRow 
-                      key={config.id} 
+                    <TableRow
+                      key={config.id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => window.location.href = `/device/${uuid}/${config.filename}?file_type=${fileType}`}
+                      onClick={() => navigateToConfig(config.filename)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          navigateToConfig(config.filename);
+                        }
+                      }}
+                      role="link"
+                      tabIndex={0}
                     >
                       <TableCell className="font-mono text-sm">
                         <FileText className="inline mr-2 h-4 w-4" />
@@ -219,4 +230,3 @@ export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid
     </div>
   );
 }
-

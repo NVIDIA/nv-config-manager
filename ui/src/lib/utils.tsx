@@ -187,7 +187,7 @@ export function getErrorMessage(error: unknown): string {
  * */
 export function sanitizeUrl(url: string): string {
   if (!url) return "";
-  const res = url.replace(/([^:]\/)\/+/g, "$1");
+  const res = url.replaceAll(/([^:]\/)\/+/g, "$1");
   return res;
 }
 
