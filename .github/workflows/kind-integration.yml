@@ -197,15 +197,32 @@ jobs:
           #
           # `make kind-up-sec` creates the cluster and installs the security
           # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
-          # pulling their images in-cluster through the runner's registry proxy
-          # cache. We deliberately do NOT pre-`kind load` those images: the
-          # runner's Docker uses the containerd image store, whose multi-arch
-          # index `kind load` can't import ("content digest not found"), and the
-          # in-cluster pulls complete within the helm timeout anyway.
+          # pulling their images in-cluster. The security stack pulls ~2x more
+          # docker.io images than a plain deploy, which can exhaust the shared
+          # runner's anonymous Docker Hub pull budget and 429 the in-cluster
+          # pulls (stalling the SPIRE install / keycloak-config job / app --wait).
+          # Fix: point Kind's containerd at the runner's Docker Hub mirror so
+          # those pulls are served from cache. If no mirror is discoverable the
+          # script is a no-op and make kind-up-sec falls back to preloading the
+          # images itself (see the Makefile).
           elif [ "${SECURITY}" = "true" ]; then
             echo "Security run: kind-up-sec security stack + CONFIGURED group mapping"
+
+            kind_config=deploy/kind-config.yaml
+            dockerhub_mirror="$(scripts/configure-kind-dockerhub-mirror \
+              --input deploy/kind-config.yaml \
+              --output "${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml")"
+            if [ -n "${dockerhub_mirror}" ]; then
+              kind_config="${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml"
+              echo "Kind containerd docker.io mirror: ${dockerhub_mirror}"
+            else
+              echo "No Docker Hub mirror discoverable; kind-up-sec will preload images"
+            fi
+
             make kind-up-sec \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              KIND_CONFIG="${kind_config}" \
+              KIND_DOCKERHUB_MIRROR="${dockerhub_mirror}" \
               HELM_TIMEOUT=20m
 
             helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \

@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Point a Kind cluster's in-cluster containerd at a Docker Hub pull-through
+# mirror so that anonymous docker.io pulls from inside the cluster are served
+# from the cache instead of registry-1.docker.io directly.
+#
+# Why: the secure bring-up (SPIRE + Keycloak + the app) pulls many more docker.io
+# images than a plain deploy, which exhausts the shared CI runner's anonymous
+# Docker Hub pull budget (~100/6h per IP). Once exhausted, any further in-cluster
+# pull 429s -- stalling the SPIRE install, the keycloak-config job, and the app
+# --wait. The runner's *host* Docker already uses this mirror (via the
+# setup-proxy-cache action), but Kind's containerd does its own pulls and bypasses
+# it. Adding a containerdConfigPatches mirror fixes every docker.io image at once,
+# which is why this supersedes the per-image preload in the Makefile.
+#
+# The mirror endpoint is discovered from (in order):
+#   1. the DOCKERHUB_MIRROR environment variable, or
+#   2. /etc/buildkit/buildkitd.toml on the runner (the nv-gha-runners fleet
+#      configures it there).
+#
+# Best-effort: if no mirror can be discovered this prints nothing and exits 0, so
+# callers fall back to the Makefile's image preload.
+#
+# Usage:
+#   configure-kind-dockerhub-mirror --input deploy/kind-config.yaml \
+#       --output "${RUNNER_TEMP}/kind-config-mirror.yaml"
+# On success the discovered mirror URL is printed to stdout and OUTPUT contains a
+# patched copy of INPUT; on fallback nothing is printed and OUTPUT is untouched.
+
+set -euo pipefail
+
+input=""
+output=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --input)
+            input="$2"
+            shift 2
+            ;;
+        --output)
+            output="$2"
+            shift 2
+            ;;
+        *)
+            echo "unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [ -z "${input}" ] || [ -z "${output}" ]; then
+    echo "usage: $0 --input FILE --output FILE" >&2
+    exit 2
+fi
+
+discover_mirror() {
+    if [ -n "${DOCKERHUB_MIRROR:-}" ]; then
+        printf '%s' "${DOCKERHUB_MIRROR}"
+        return
+    fi
+
+    local buildkit_config="/etc/buildkit/buildkitd.toml"
+    if [ -f "${buildkit_config}" ]; then
+        # Grab the first quoted value on a `mirrors = [ ... ]` line, tolerating
+        # single or double quotes (e.g. mirrors = ['cache.example.com']).
+        sed -nE "s/.*mirrors[[:space:]]*=[[:space:]]*\[?[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p" \
+            "${buildkit_config}" 2>/dev/null | head -n1
+    fi
+}
+
+mirror="$(discover_mirror)"
+mirror="${mirror%/}"
+
+if [ -z "${mirror}" ]; then
+    # No mirror available -- caller falls back to the image preload.
+    exit 0
+fi
+
+case "${mirror}" in
+    http://*|https://*) ;;
+    *) mirror="https://${mirror}" ;;
+esac
+
+cp "${input}" "${output}"
+
+if grep -q 'registry\.mirrors\."docker\.io"' "${output}"; then
+    # Already patched -- leave it and just report the mirror.
+    printf '%s\n' "${mirror}"
+    exit 0
+fi
+
+if grep -q '^containerdConfigPatches:' "${output}"; then
+    tmp="$(mktemp)"
+    awk -v mirror="${mirror}" '
+        /^containerdConfigPatches:/ {
+            print
+            print "  - |-"
+            print "    [plugins.\"io.containerd.grpc.v1.cri\".registry.mirrors.\"docker.io\"]"
+            print "      endpoint = [\"" mirror "\"]"
+            next
+        }
+        { print }
+    ' "${output}" > "${tmp}"
+    mv "${tmp}" "${output}"
+else
+    cat >> "${output}" <<EOF
+
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+      endpoint = ["${mirror}"]
+EOF
+fi
+
+printf '%s\n' "${mirror}"
