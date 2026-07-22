@@ -36,12 +36,16 @@ password=T0pS3cr3t  # NOSONAR - mock password for testing
 auth_method=password
 local=false
 config_manager_stream=nv-config-manager
+config_manager_api_prefix=$JS.API
 config_manager_subjects=nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result
 render_change_stream=nv-config-manager
+render_change_api_prefix=$JS.API
 render_change_subject=nv-config-manager.nautobotchange
 device_change_stream=nv-config-manager
+device_change_api_prefix=$JS.API
 device_change_subject=nv-config-manager.devicechange
 nautobot_stream=nautobot
+nautobot_api_prefix=$JS.CEREBRO.API
 nautobot_subjects=nautobot
 nautobot_subject=nautobot
 """
@@ -144,6 +148,7 @@ async def test_pull_nautobot_consumer_initialization(custom_ini):
     consumer = PullNautobotConsumer()
     assert consumer.stream == "nautobot"
     assert consumer.subject == "nautobot"
+    assert consumer.api_prefix == "$JS.CEREBRO.API"
     assert "nautobot" in consumer.queue
 
 
@@ -209,7 +214,35 @@ async def test_pull_device_change_consumer_initialization(custom_ini):
     consumer = PullDeviceChangeConsumer()
     assert consumer.stream == "nv-config-manager"
     assert consumer.subject == "nv-config-manager.nautobotchange"
+    assert consumer.api_prefix == "$JS.API"
     assert "device" in consumer.queue
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_uses_configured_api_prefix(custom_ini):
+    """Test that pull consumers create JetStream context with the configured API prefix."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+        api_prefix="$JS.CEREBRO.API",
+    )
+    mock_conn = MagicMock()
+    mock_conn.is_closed = True
+    mock_conn.jetstream.return_value = MagicMock()
+
+    with (
+        patch(
+            "nv_config_manager.render.pull_consumer.nats_connection", new_callable=AsyncMock
+        ) as mock_nats_connection,
+        patch.object(consumer, "_run_pull_consumer", new_callable=AsyncMock),
+    ):
+        mock_nats_connection.return_value = mock_conn
+
+        await consumer.main()
+
+    mock_conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
 
 
 @pytest.mark.asyncio

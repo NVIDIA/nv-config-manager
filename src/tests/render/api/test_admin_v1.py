@@ -38,12 +38,16 @@ def create_test_mocks():
     mock_config_obj.__getitem__.return_value = {
         "queue": "test-queue",
         "config_manager_stream": "nv-config-manager",
+        "config_manager_api_prefix": "$JS.API",
         "config_manager_subjects": "nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result",
         "render_change_stream": "nv-config-manager",
+        "render_change_api_prefix": "$JS.API",
         "render_change_subject": "nv-config-manager.nautobotchange",
         "device_change_stream": "nv-config-manager",
+        "device_change_api_prefix": "$JS.API",
         "device_change_subject": "nv-config-manager.devicechange",
         "nautobot_stream": "nautobot",
+        "nautobot_api_prefix": "$JS.CEREBRO.API",
         "nautobot_subjects": "nautobot",
         "nautobot_subject": "nautobot",
     }
@@ -97,6 +101,8 @@ class TestConsumerList:
         assert consumer["num_pending"] == 10
         assert consumer["num_ack_pending"] == 1
         assert consumer["num_delivered"] == 100
+        mock_conn.jetstream.assert_any_call(prefix="$JS.CEREBRO.API")
+        mock_conn.jetstream.assert_any_call(prefix="$JS.API")
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
@@ -167,6 +173,7 @@ class TestGetConsumerInfo:
         response = client.get("/v1/admin/consumers/device")
 
         assert response.status_code == 200
+        mock_conn.jetstream.assert_called_once_with(prefix="$JS.API")
         data = response.json()
         assert data["name"] == "test-queue-device"
         assert data["stream"] == "nv-config-manager"
@@ -231,6 +238,7 @@ class TestResetConsumer:
         response = client.delete("/v1/admin/consumers/nautobot/reset")
 
         assert response.status_code == 200
+        mock_conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
         data = response.json()
         assert data["consumer_name"] == "test-queue-nautobot"
         assert data["stream"] == "nautobot"
@@ -374,12 +382,16 @@ class TestConsumerConfigs:
         mock_config_obj.__getitem__.return_value = {
             "queue": "test-queue",
             "config_manager_stream": "nv-config-manager",
+            "config_manager_api_prefix": "$JS.API",
             "config_manager_subjects": "nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result",
             "render_change_stream": "nv-config-manager",
+            "render_change_api_prefix": "$JS.API",
             "render_change_subject": "nv-config-manager.nautobotchange",
             "device_change_stream": "nv-config-manager",
+            "device_change_api_prefix": "$JS.API",
             "device_change_subject": "nv-config-manager.devicechange",
             "nautobot_stream": "nautobot",
+            "nautobot_api_prefix": "$JS.CEREBRO.API",
             "nautobot_subjects": "nautobot",
             "nautobot_subject": "nautobot",
         }
@@ -398,12 +410,14 @@ class TestConsumerConfigs:
         assert nautobot_config["durable_name"] == "test-queue-nautobot"
         assert nautobot_config["stream"] == "nautobot"
         assert nautobot_config["subject"] == "nautobot"
+        assert nautobot_config["api_prefix"] == "$JS.CEREBRO.API"
 
         # Check device config
         device_config = configs["device"]
         assert device_config["durable_name"] == "test-queue-device"
         assert device_config["stream"] == "nv-config-manager"
         assert device_config["subject"] == "nv-config-manager.nautobotchange"
+        assert device_config["api_prefix"] == "$JS.API"
 
 
 class TestIntegration:

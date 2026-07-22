@@ -21,9 +21,12 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from nv_config_manager.common.config import (
+    DEFAULT_NATS_API_PREFIX,
     load_config,
     nats_connection,
+    nats_nautobot_api_prefix,
     nats_nautobot_change_config,
+    nats_render_change_api_prefix,
     nats_render_change_config,
 )
 from nv_config_manager.common.log import LogCategory, get_logger
@@ -79,20 +82,29 @@ def get_consumer_configs() -> dict[str, dict[str, str]]:
     queue_prefix = config["nats"]["queue"]
 
     nautobot_stream, nautobot_subject = nats_nautobot_change_config(config)
+    nautobot_api_prefix = nats_nautobot_api_prefix(config)
     render_stream, render_subject = nats_render_change_config(config)
+    render_api_prefix = nats_render_change_api_prefix(config)
 
     return {
         "nautobot": {
             "durable_name": f"{queue_prefix}-nautobot",
             "stream": nautobot_stream,
             "subject": nautobot_subject,
+            "api_prefix": nautobot_api_prefix,
         },
         "device": {
             "durable_name": f"{queue_prefix}-device",
             "stream": render_stream,
             "subject": render_subject,
+            "api_prefix": render_api_prefix,
         },
     }
+
+
+def jetstream_for_consumer(nats_conn: Any, consumer_config: dict[str, str]) -> Any:
+    """Return a JetStream context for this consumer's configured stream account."""
+    return nats_conn.jetstream(prefix=consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX))
 
 
 @router.get("/consumers", response_model=ConsumerListResponse)
@@ -100,11 +112,11 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
     """List all consumers and their current status."""
     try:
         nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
         consumer_configs = get_consumer_configs()
         consumers = []
 
         for config in consumer_configs.values():
+            jetstream = jetstream_for_consumer(nats_conn, config)
             try:
                 consumer_info = await jetstream.consumer_info(
                     stream=config["stream"], consumer=config["durable_name"]
@@ -152,7 +164,7 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
         config = consumer_configs[consumer_type]
 
         nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
+        jetstream = jetstream_for_consumer(nats_conn, config)
 
         # Try to get consumer info first to check if it exists
         try:
@@ -207,9 +219,9 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
         consumer_configs = get_consumer_configs()
 
         nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
 
         for consumer_type, config in consumer_configs.items():
+            jetstream = jetstream_for_consumer(nats_conn, config)
             try:
                 # Try to get consumer info first
                 try:
@@ -283,7 +295,7 @@ async def get_consumer_info(consumer_type: ConsumerType, request: Request) -> Co
         config = consumer_configs[consumer_type]
 
         nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
+        jetstream = jetstream_for_consumer(nats_conn, config)
 
         try:
             consumer_info = await jetstream.consumer_info(
