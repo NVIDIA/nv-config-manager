@@ -28,7 +28,7 @@ from enum import StrEnum
 from typing import Any, TypeVar, cast
 
 from py_markdown_table.markdown_table import markdown_table
-from pydantic import BaseModel, computed_field, field_serializer, field_validator
+from pydantic import BaseModel, Field, computed_field, field_serializer, field_validator
 from temporalio import workflow
 from temporalio.exceptions import (
     ActivityError,
@@ -76,7 +76,7 @@ def stage_executor(stage_name: str) -> Callable[[F], F]:
                     self.set_stage_state(stage_name, StateEnum.FAILED)
                     current_stage.traceback = traceback.format_exc()
 
-                    if not current_stage.retryable:
+                    if self.terminate_on_failure or not current_stage.retryable:
                         raise StageRuntimeFailure(
                             f"Stage {stage_name} has failed and is non-retryable: {{exc}}",
                             non_retryable=True,
@@ -201,6 +201,15 @@ class HistoryEntry(BaseModel):
         return datetime.fromisoformat(raw).timestamp()
 
 
+class StageWorkflowInput(BaseModel):
+    """Base input for workflows that configure stage failure behavior."""
+
+    terminate_on_failure: bool = Field(
+        default=False,
+        description="Terminate the workflow instead of waiting to retry a failed stage.",
+    )
+
+
 class StageInput(BaseModel):
     """Dataclass to represent Stage Input."""
 
@@ -307,10 +316,23 @@ class StageMixin(BaseMixin):
         """Initialize Workflow with Stages."""
         self._stages: list[Stage] = []
         self._input: BaseModel | None = None
+        self._terminate_on_failure = False
+
+    @property
+    def terminate_on_failure(self) -> bool:
+        """Return whether a stage failure should terminate the workflow."""
+        return self._terminate_on_failure
+
+    def set_terminate_on_failure(self, enabled: bool) -> None:
+        """Configure stage failures to terminate instead of waiting for retry."""
+        self._terminate_on_failure = enabled
 
     def set_input(self, workflow_input: BaseModel) -> None:
         """Set the workflow input."""
         self._input = workflow_input
+        self.set_terminate_on_failure(
+            isinstance(workflow_input, StageWorkflowInput) and workflow_input.terminate_on_failure
+        )
 
     def stage_exists(self, name: str) -> bool:
         """Return true if a stage has been defined with the given name."""

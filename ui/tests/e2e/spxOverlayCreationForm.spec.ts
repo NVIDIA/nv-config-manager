@@ -110,14 +110,25 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(page.getByLabel("Overlay ID")).toHaveValue(VPC_DATA.overlay_id);
+    await expect(page.getByLabel("Overlay ID")).toHaveValue(
+      VPC_DATA.overlay_id
+    );
     await expect(
-      page.getByRole("button", { name: VPC_DATA.tenant, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.tenant}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.namespace_tag}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(page.getByLabel("RD Min")).toHaveValue(
       VPC_DATA.rd_min.toString()
@@ -170,7 +181,10 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
 
     // Verify initial values are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Change the site
@@ -186,7 +200,10 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
 
     // Change the tenant
     await page
-      .getByRole("button", { name: VPC_DATA.tenant, exact: true })
+      .getByRole("button", {
+        name: `${VPC_DATA.tenant}. Open options`,
+        exact: true,
+      })
       .click();
     await page.getByRole("dialog").getByText(TENANT_LIST.nsv).click();
 
@@ -242,10 +259,16 @@ test.describe("New SpX Overlay Creation Workflow - URL Parameters", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: VPC_DATA.tenant, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.tenant}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Set up a listener for the request (after page is loaded)
@@ -302,14 +325,23 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
 
     // Verify all form elements are disabled during submission
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(page.getByLabel("Overlay ID")).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.ngc, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.ngc}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.namespace_tag}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(page.getByLabel("RD Min")).toBeDisabled();
     await expect(page.getByLabel("RD Max")).toBeDisabled();
@@ -326,7 +358,10 @@ test.describe("New SpX Overlay Creation Workflow - Standard Tests", () => {
 
     // Verify that namespace tag has the default value "spectrumx"
     await expect(
-      page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.namespace_tag}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Verify that RD Min has the default value "60000"

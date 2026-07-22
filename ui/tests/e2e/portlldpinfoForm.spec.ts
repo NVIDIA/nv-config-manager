@@ -277,8 +277,8 @@ test.describe("New Port LLDP Info Workflow", () => {
     );
 
     // Verify the form is pre-populated with URL parameter values
-    await expect(page.getByRole("button").getByText(siteName)).toBeVisible();
-    await expect(page.getByRole("button").getByText(deviceName)).toBeVisible();
+    await expect(page.getByRole("button", { name: siteName })).toBeVisible();
+    await expect(page.getByRole("button", { name: deviceName })).toBeVisible();
     await expect(page.getByLabel("Interface")).toHaveValue(SAMPLE_INTERFACE);
     await expect(page.getByLabel("MAC Address")).toBeDisabled();
 
@@ -406,11 +406,14 @@ test.describe("New Port LLDP Info Workflow", () => {
 
     // Verify all form elements are disabled during submission
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(
       page.getByRole("button", {
-        name: DEVICES_LIST[SITES_LIST.pdx01][0].name,
+        name: `${DEVICES_LIST[SITES_LIST.pdx01][0].name}. Open options`,
         exact: true,
       })
     ).toBeDisabled();
@@ -740,7 +743,7 @@ test.describe("New Port LLDP Info Workflow", () => {
       .click();
 
     // Verify initial selections are visible
-    await expect(page.getByRole("button").getByText(device.name)).toBeVisible();
+    await expect(page.getByRole("button", { name: device.name })).toBeVisible();
 
     // Find the X icon with the specific class inside the button's parent container
     await page
@@ -751,7 +754,7 @@ test.describe("New Port LLDP Info Workflow", () => {
 
     // Verify device and interface fields are reset to their default state
     await expect(
-      page.getByRole("button").getByText("Select a Device")
+      page.getByRole("button", { name: "Select a Device" })
     ).toBeVisible();
   });
 });

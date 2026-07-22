@@ -120,6 +120,10 @@ class ConfigApplyFailureException(NetworkDeviceException):
 class ConfigSyntaxException(ApplicationError):
     """To be thrown for syntactically invalid config."""
 
+    def __init__(self, message: str) -> None:
+        """Initialize with a stable Temporal failure type for retry policies."""
+        super().__init__(message, type="ConfigSyntaxException")
+
     @staticmethod
     def format_nvue_error(error_json: dict[str, Any]) -> str:
         """Formats an NVUE API error response into a human-readable string."""
