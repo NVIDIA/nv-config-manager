@@ -903,7 +903,13 @@ kind-up-secure:
 		fi; \
 		rm -f "$$tar"; \
 	done
-	./scripts/install-security-dependencies \
+	@# ``@``-prefixed so make does not echo the expanded recipe: these commands
+	@# carry --keycloak-admin-password / --oidc-client-secret, and make's default
+	@# command echo would print them verbatim into the (public) CI log. They are
+	@# dev defaults today, but suppressing keeps real creds out of logs if these
+	@# vars are ever overridden. The scripts still print their own progress.
+	@echo "🔐 Installing security dependencies (keycloak / SPIRE / gateway)..."
+	@./scripts/install-security-dependencies \
 		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
 		--app-namespace $(KIND_SEC_NAMESPACE) \
@@ -913,7 +919,8 @@ kind-up-secure:
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
 		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET) \
 		--helm-timeout $(HELM_TIMEOUT)
-	uv run python scripts/render-local-security-config \
+	@echo "🔧 Rendering local security config..."
+	@uv run python scripts/render-local-security-config \
 		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
 		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
