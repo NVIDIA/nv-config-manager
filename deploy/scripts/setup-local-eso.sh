@@ -147,14 +147,14 @@ generate_test_secrets() {
     
     # Simple path structure: {environment}/{secret}
     local env_path="${ENVIRONMENT}"
-    local TOKEN="root"
+    local token="root"
     
     # Helper function to write secrets
     write_secret() {
         local path="$1"
         shift
         kubectl -n "$OPENBAO_NAMESPACE" exec "$OPENBAO_POD" -- \
-            env BAO_TOKEN="$TOKEN" bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1
+            env BAO_TOKEN="$token" bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1
     }
     
     # Nautobot
