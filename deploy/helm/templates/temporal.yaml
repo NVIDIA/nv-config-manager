@@ -74,6 +74,12 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" $ "app" $temporalName) | nindent 8 }}
         {{- end }}
     spec:
+      {{- if $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range $.Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
       securityContext:
         fsGroup: 1000
         runAsUser: 1000
@@ -744,6 +750,12 @@ spec:
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" (printf "%s-web" $temporalName)) | nindent 8 }}
         {{- end }}
     spec:
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range .Values.global.imagePullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
       {{- include "nv-config-manager.podSecurityContext" . | nindent 6 }}
       {{- include "nv-config-manager.scheduling" .Values.temporal.devUi | nindent 6 }}
       containers:
