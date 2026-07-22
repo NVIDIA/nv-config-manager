@@ -173,13 +173,6 @@ export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid
                       key={config.id}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigateToConfig(config.filename)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          navigateToConfig(config.filename);
-                        }
-                      }}
-                      role="link"
-                      tabIndex={0}
                     >
                       <TableCell className="font-mono text-sm">
                         <FileText className="inline mr-2 h-4 w-4" />
