@@ -81,8 +81,8 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     def __init__(self) -> None:
         """Initialize workflow."""
         StageMixin.__init__(self)
-        self._workflow_updates_enabled = workflow.patched(REPROVISION_WORKFLOW_UPDATES_PATCH_ID)
-        if self._workflow_updates_enabled:
+        self._pre_backup_test_enabled = workflow.patched(REPROVISION_WORKFLOW_UPDATES_PATCH_ID)
+        if self._pre_backup_test_enabled:
             self.define_stage(
                 name="pre_reprovision_backup",
                 description="Back up the device and validate the intended configuration.",
@@ -94,7 +94,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             name="execute_ztp",
             description="Execute ZTP and wait for completion.",
             requires_approval=False,
-            depends_on=(["pre_reprovision_backup"] if self._workflow_updates_enabled else []),
+            depends_on=(["pre_reprovision_backup"] if self._pre_backup_test_enabled else []),
         )
 
         self.define_stage(
@@ -117,7 +117,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
 
     async def _get_ui_base_url(self) -> str:
         """Return the Temporal UI URL without blocking backups when lookup fails."""
-        if not self._workflow_updates_enabled:
+        if not self._pre_backup_test_enabled:
             return ""
         try:
             return await workflow.execute_activity(
@@ -311,7 +311,7 @@ class ReprovisionWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         self.set_input(workflow_input)
 
         # Validate intended configuration
-        if self._workflow_updates_enabled:
+        if self._pre_backup_test_enabled:
             await self.pre_reprovision_backup(
                 ReprovisionWorkflow.PreReprovisionBackupStageInput(
                     device_id=workflow_input.device_id
