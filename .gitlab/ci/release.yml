@@ -265,6 +265,9 @@ update-version:
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$CI_COMMIT_SHORT_SHA
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$CI_COMMIT_SHORT_SHA
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$CI_COMMIT_SHORT_SHA
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$CI_COMMIT_SHORT_SHA
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$CI_COMMIT_SHORT_SHA
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$NEW_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$CI_COMMIT_SHORT_SHA
     - |
       if [ "${NEW_VERSION#*-}" = "$NEW_VERSION" ]; then
         echo "Creating latest tags for stable release $NEW_VERSION..."
@@ -274,6 +277,9 @@ update-version:
         docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$NEW_VERSION
         docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$NEW_VERSION
         docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$NEW_VERSION
+        docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$NEW_VERSION
+        docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$NEW_VERSION
+        docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:latest $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$NEW_VERSION
       else
         echo "Skipping latest tags for prerelease $NEW_VERSION"
       fi
@@ -286,6 +292,9 @@ update-version:
     - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$NEW_VERSION
     - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$NEW_VERSION
     - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$NEW_VERSION
+    - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$NEW_VERSION
+    - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$NEW_VERSION
+    - docker buildx imagetools inspect $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$NEW_VERSION
   needs:
     - job: release-version
       artifacts: true
@@ -463,6 +472,9 @@ promote-docker-images:
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-ui:$RC_VERSION
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-nautobot:$RC_VERSION
     - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-nats-ready:$RC_VERSION
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal:$RC_VERSION
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-bootstrap:$RC_VERSION
+    - docker buildx imagetools create -t $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$PROMOTE_VERSION $IMAGE_REPOSITORY_BASE/nv-config-manager-temporal-ui:$RC_VERSION
     - echo "✅ Docker images promoted to $PROMOTE_VERSION"
   needs:
     - job: determine-promote-version
