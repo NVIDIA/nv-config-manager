@@ -62,6 +62,11 @@ class LogCategory:
 _logging_configured = False
 _custom_labels: dict[str, str] = {}
 
+
+class _FallbackStreamHandler(logging.StreamHandler):
+    """Temporary handler used before process-wide logging is configured."""
+
+
 _LOG_LINE_BREAK_ESCAPES = str.maketrans(
     {
         "\n": r"\n",
@@ -255,6 +260,18 @@ def configure_logging(service: str | None = None) -> None:
     for h in root.handlers[:]:
         root.removeHandler(h)
 
+    # Modules can call get_logger() while the service entry point is still
+    # importing. Remove only the temporary handlers installed by get_logger()
+    # so those records do not also propagate to the newly configured root
+    # handler and appear twice.
+    for managed_logger in logging.Logger.manager.loggerDict.values():
+        if not isinstance(managed_logger, logging.Logger):
+            continue
+        for existing_handler in managed_logger.handlers[:]:
+            if isinstance(existing_handler, _FallbackStreamHandler):
+                managed_logger.removeHandler(existing_handler)
+                existing_handler.close()
+
     handler = logging.StreamHandler()
     handler.setFormatter(_build_formatter())
     root.addHandler(handler)
@@ -299,7 +316,7 @@ def get_logger(
     logger = logging.getLogger(name)
 
     if not _logging_configured and not logger.handlers:
-        handler = logging.StreamHandler()
+        handler = _FallbackStreamHandler()
         handler.setFormatter(
             _build_formatter()
             if json_format
