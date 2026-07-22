@@ -112,6 +112,9 @@ include:
             - nv-config-manager-ui
             - nv-config-manager-nautobot
             - nv-config-manager-nats-ready
+            - nv-config-manager-temporal
+            - nv-config-manager-temporal-bootstrap
+            - nv-config-manager-temporal-ui
           PULSE_CONTAINER_SCANNER_PLATFORM:
             - linux/amd64
             - linux/arm64

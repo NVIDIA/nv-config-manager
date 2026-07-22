@@ -25,5 +25,11 @@ yq -i '
   .global.images.nautobot.repository = strenv(NVCM_IMAGE_REPOSITORY) + "/nv-config-manager-nautobot" |
   .global.images.nautobot.tag = strenv(NVCM_IMAGE_TAG) |
   .global.images.natsReady.repository = strenv(NVCM_IMAGE_REPOSITORY) + "/nv-config-manager-nats-ready" |
-  .global.images.natsReady.tag = strenv(NVCM_IMAGE_TAG)
+  .global.images.natsReady.tag = strenv(NVCM_IMAGE_TAG) |
+  .global.images.temporalServer.repository = strenv(NVCM_IMAGE_REPOSITORY) + "/nv-config-manager-temporal" |
+  .global.images.temporalServer.tag = strenv(NVCM_IMAGE_TAG) |
+  .global.images.temporalBootstrap.repository = strenv(NVCM_IMAGE_REPOSITORY) + "/nv-config-manager-temporal-bootstrap" |
+  .global.images.temporalBootstrap.tag = strenv(NVCM_IMAGE_TAG) |
+  .global.images.temporalUi.repository = strenv(NVCM_IMAGE_REPOSITORY) + "/nv-config-manager-temporal-ui" |
+  .global.images.temporalUi.tag = strenv(NVCM_IMAGE_TAG)
 ' "$values_file"
