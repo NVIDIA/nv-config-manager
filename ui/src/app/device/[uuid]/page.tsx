@@ -17,7 +17,7 @@
  */
 
 import { useState, useEffect, use } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDeviceConfigs } from "@/lib/config-store-api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,7 @@ import Link from "next/link";
 
 export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid: string }> }>) {
   const { uuid } = use(params);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialFileType = (searchParams?.get("file_type") as "intended" | "backup") || "intended";
   const [fileType, setFileType] = useState<"intended" | "backup">(initialFileType);
@@ -56,7 +57,7 @@ export default function DevicePage({ params }: Readonly<{ params: Promise<{ uuid
   };
 
   const navigateToConfig = (filename: string) => {
-    globalThis.location.href = `/device/${uuid}/${filename}?file_type=${fileType}`;
+    router.push(`/device/${uuid}/${filename}?file_type=${fileType}`);
   };
 
   // Update fileType when URL changes
