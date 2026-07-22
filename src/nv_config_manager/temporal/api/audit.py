@@ -28,6 +28,7 @@ from nv_config_manager.common.log import LogCategory, escape_log_newlines, get_l
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_AUDIT)
 
 AuditOutcome = Literal["success", "denied", "failure"]
+_LIFECYCLE_ACTIONS = frozenset({"approve", "reject", "retry", "terminate"})
 
 _WORKFLOW_ACTION_PATH = re.compile(
     r"^/v1/workflow/(?P<workflow_id>[^/]+)/"
@@ -71,7 +72,7 @@ def log_workflow_action(
         outcome,
         extra={
             "event_type": "workflow_action",
-            "action": action,
+            "action": escape_log_newlines(action),
             "outcome": outcome,
             "actor": escape_log_newlines(actor),
             "roles": [escape_log_newlines(role) for role in roles],
@@ -96,16 +97,33 @@ def _workflow_action_target(request: Request) -> tuple[str, str | None, str | No
     if not path.startswith(prefix):
         return None
 
-    lifecycle_match = _WORKFLOW_ACTION_PATH.fullmatch(path)
-    if lifecycle_match:
+    # Prefer the matched route name so a dynamic start endpoint whose final
+    # segment equals a lifecycle verb is still classified as a workflow start.
+    route = request.scope.get("route")
+    route_name = getattr(route, "name", None)
+    if route_name in _LIFECYCLE_ACTIONS:
         return (
-            lifecycle_match.group("action"),
-            lifecycle_match.group("workflow_id"),
-            lifecycle_match.group("stage_name"),
+            route_name,
+            request.path_params.get("workflow_id"),
+            request.path_params.get("stage_name"),
             path,
         )
 
+    # Route metadata is unavailable for unmatched requests. Retain the path
+    # parser so failed lifecycle attempts still receive useful audit fields.
+    if route_name is None:
+        lifecycle_match = _WORKFLOW_ACTION_PATH.fullmatch(path)
+        if lifecycle_match:
+            return (
+                lifecycle_match.group("action"),
+                lifecycle_match.group("workflow_id"),
+                lifecycle_match.group("stage_name"),
+                path,
+            )
+
     target = path.removeprefix(prefix).rstrip("/")
+    if not target:
+        return None
     return target.rsplit("/", maxsplit=1)[-1], None, None, target
 
 
@@ -127,14 +145,19 @@ def install_workflow_audit_logging(app: FastAPI) -> None:
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         """Log the normalized result of each Workflow API POST action."""
-        action_target = _workflow_action_target(request)
-        if action_target is None:
+        is_workflow_action = request.method == "POST" and request.url.path.startswith(
+            "/v1/workflow/"
+        )
+        if not is_workflow_action:
             return await call_next(request)
 
-        action, path_workflow_id, stage_name, target = action_target
         try:
             response = await call_next(request)
         except Exception as exc:
+            action_target = _workflow_action_target(request)
+            if action_target is None:
+                raise
+            action, path_workflow_id, stage_name, target = action_target
             log_workflow_action(
                 request,
                 action=action,
@@ -147,6 +170,10 @@ def install_workflow_audit_logging(app: FastAPI) -> None:
             )
             raise
 
+        action_target = _workflow_action_target(request)
+        if action_target is None:
+            return response
+        action, path_workflow_id, stage_name, target = action_target
         outcome = _audit_outcome(response.status_code)
         log_workflow_action(
             request,

@@ -289,7 +289,7 @@ async def test_approve(mock_signal):
 
 @pytest.mark.asyncio
 async def test_approve_emits_identity_aware_audit_log(mocker):
-    """Workflow action middleware logs the normalized caller identity."""
+    """Identity-aware audit fields guard the required middleware ordering."""
     mocker.patch("nv_config_manager.temporal.api.workflow_v1.signal_workflow")
     audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
     workflow_id = str(uuid4())

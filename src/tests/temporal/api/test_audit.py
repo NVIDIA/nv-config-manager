@@ -88,11 +88,25 @@ def _audit_test_app() -> FastAPI:
         request.state.audit_workflow_id = "workflow-1"
         return {"id": "workflow-1"}
 
-    @app.post("/v1/workflow/{workflow_id}/{action}")
-    @app.post("/v1/workflow/{workflow_id}/{action}/{stage_name}")
-    async def lifecycle(workflow_id: str, action: str, stage_name: str | None = None):
-        """Return lifecycle path parameters after middleware classification."""
-        return {"id": workflow_id, "action": action, "stage_name": stage_name}
+    @app.post("/v1/workflow/{workflow_id}/approve/{stage_name}")
+    async def approve(workflow_id: str, stage_name: str):
+        """Return an approved lifecycle action."""
+        return {"id": workflow_id, "stage_name": stage_name}
+
+    @app.post("/v1/workflow/{workflow_id}/reject/{stage_name}")
+    async def reject(workflow_id: str, stage_name: str):
+        """Return a rejected lifecycle action."""
+        return {"id": workflow_id, "stage_name": stage_name}
+
+    @app.post("/v1/workflow/{workflow_id}/retry/{stage_name}")
+    async def retry(workflow_id: str, stage_name: str):
+        """Return a retried lifecycle action."""
+        return {"id": workflow_id, "stage_name": stage_name}
+
+    @app.post("/v1/workflow/{workflow_id}/terminate")
+    async def terminate(workflow_id: str):
+        """Return a terminated lifecycle action."""
+        return {"id": workflow_id}
 
     return app
 
@@ -146,6 +160,48 @@ def test_audit_middleware_logs_workflow_start_and_denial(mocker, action):
     assert denied_fields["outcome"] == "denied"
     assert denied_fields["workflow_id"] is None
     assert denied_fields["detail"] == "HTTP 403"
+
+
+def test_log_workflow_action_escapes_action(mocker):
+    """Line breaks are escaped in the structured action field."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+    request = MagicMock()
+    request.state.user = "operator@example.com"
+    request.state.roles = {"nvcm-network"}
+    request.state.auth_source = "jwt"
+
+    log_workflow_action(
+        request,
+        action="deploy\nforged",
+        outcome="success",
+    )
+
+    fields = audit_logger.info.call_args.kwargs["extra"]
+    assert fields["action"] == r"deploy\nforged"
+
+
+def test_dynamic_start_named_like_lifecycle_verb_is_not_misclassified(mocker):
+    """Matched route metadata distinguishes starts from lifecycle actions."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+
+    response = TestClient(_audit_test_app()).post("/v1/workflow/ngc/retry")
+
+    assert response.status_code == 200
+    fields = audit_logger.info.call_args.kwargs["extra"]
+    assert fields["action"] == "retry"
+    assert fields["workflow_id"] == "workflow-1"
+    assert fields["stage_name"] is None
+    assert fields["target"] == "ngc/retry"
+
+
+def test_bare_workflow_path_does_not_emit_empty_action(mocker):
+    """A bare workflow collection POST is not recorded as an empty action."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+
+    response = TestClient(_audit_test_app()).post("/v1/workflow/")
+
+    assert response.status_code == 404
+    audit_logger.info.assert_not_called()
 
 
 def test_audit_middleware_logs_workflow_failure_response(mocker):

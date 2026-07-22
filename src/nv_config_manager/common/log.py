@@ -220,13 +220,6 @@ def _escape_log_argument(value: object) -> object:
 class EscapingLoggerAdapter(logging.LoggerAdapter):
     """Logger adapter that escapes unsafe characters in messages and arguments."""
 
-    def process(self, msg: object, kwargs: Any) -> tuple[object, Any]:
-        """Merge per-call structured fields with the adapter's default fields."""
-        call_extra = kwargs.get("extra") or {}
-        adapter_extra = self.extra or {}
-        kwargs["extra"] = {**adapter_extra, **call_extra}
-        return msg, kwargs
-
     def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
         """Delegate an enabled log call after sanitizing its message and arguments."""
         if self.isEnabledFor(level):
@@ -325,4 +318,8 @@ def get_logger(
         logger.addHandler(handler)
         logger.setLevel(_get_log_level())
 
-    return EscapingLoggerAdapter(logger, extra={"category": category})
+    return EscapingLoggerAdapter(
+        logger,
+        extra={"category": category},
+        merge_extra=True,
+    )

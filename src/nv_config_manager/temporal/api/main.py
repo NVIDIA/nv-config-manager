@@ -84,6 +84,8 @@ def healthcheck() -> Literal["OK"]:
     return "OK"
 
 
+# Starlette executes the last-added HTTP middleware first. Install identity
+# second so it populates request.state before audit logging reads those fields.
 install_workflow_audit_logging(app)
 install_identity_probe(app)
 
