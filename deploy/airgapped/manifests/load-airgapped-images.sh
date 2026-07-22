@@ -43,10 +43,29 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_info() {
+    local message="$1"
+    echo -e "${BLUE}[INFO]${NC} $message"
+    return 0
+}
+
+log_success() {
+    local message="$1"
+    echo -e "${GREEN}[SUCCESS]${NC} $message"
+    return 0
+}
+
+log_warning() {
+    local message="$1"
+    echo -e "${YELLOW}[WARNING]${NC} $message"
+    return 0
+}
+
+log_error() {
+    local message="$1"
+    echo -e "${RED}[ERROR]${NC} $message" >&2
+    return 0
+}
 
 # Defaults
 IMAGES_PATH=""
