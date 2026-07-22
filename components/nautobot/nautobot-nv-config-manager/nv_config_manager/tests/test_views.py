@@ -17,6 +17,7 @@
 
 import re
 from datetime import timedelta
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
@@ -51,8 +52,6 @@ from nv_config_manager.models import (
 )
 from nv_config_manager.tests.fixtures import mock_data as data
 from nv_config_manager.tests.fixtures.create_obj_fixtures import create_nested_locations
-
-from unittest.mock import patch
 
 with_temporal_url = override_settings(
     PLUGINS_CONFIG={"nv_config_manager": {"temporal_url": "https://temporal.example.com"}}
