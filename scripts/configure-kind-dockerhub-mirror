@@ -64,10 +64,19 @@ discover_mirror() {
 
     local buildkit_config="/etc/buildkit/buildkitd.toml"
     if [ -f "${buildkit_config}" ]; then
-        # Grab the first quoted value on a `mirrors = [ ... ]` line, tolerating
-        # single or double quotes (e.g. mirrors = ['cache.example.com']).
-        sed -nE "s/.*mirrors[[:space:]]*=[[:space:]]*\[?[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p" \
-            "${buildkit_config}" 2>/dev/null | head -n1
+        # Extract the mirror endpoint ONLY from the [registry."docker.io"]
+        # section. buildkitd.toml can define mirrors for several registries, so
+        # grabbing the first `mirrors =` anywhere would misassign another
+        # registry's endpoint to docker.io -- and because a non-empty result
+        # disables the Makefile's preload fallback, an unreachable endpoint would
+        # then break the secure-stack pulls with no backstop. Tolerates single-
+        # or double-quoted values.
+        awk '
+            /^\[registry\."docker\.io"\][[:space:]]*$/ { in_docker_hub = 1; next }
+            /^\[/ { in_docker_hub = 0 }
+            in_docker_hub && /^[[:space:]]*mirrors[[:space:]]*=/ { print; exit }
+        ' "${buildkit_config}" 2>/dev/null |
+            sed -nE "s/.*mirrors[[:space:]]*=[[:space:]]*\[?[[:space:]]*[\"']([^\"']+)[\"'].*/\1/p"
     fi
 }
 
