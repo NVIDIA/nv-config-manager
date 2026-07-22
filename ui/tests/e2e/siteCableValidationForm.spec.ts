@@ -25,7 +25,10 @@ import {
 import { test, TEST_TIMEOUT } from "./shared/utils";
 
 const statusSelectButton = (page: Page) =>
-  page.getByText("Device Status", { exact: true }).locator("..").getByRole("button");
+  page
+    .getByText("Device Status", { exact: true })
+    .locator("..")
+    .getByRole("button", { name: /\. Open options$/ });
 
 const openSelectDialog = (page: Page) =>
   page.locator('[role="dialog"][data-state="open"]');
@@ -59,8 +62,12 @@ test.describe("Site Cable Validation Form", () => {
     });
     await expect(page.getByText("Device Status is required")).not.toBeVisible();
     await expect(page.getByText("Tenant is required")).not.toBeVisible();
-    await expect(page.getByRole("button", { name: STATUS_LIST.active })).toBeVisible();
-    await expect(page.getByRole("button", { name: STATUS_LIST.provisioned })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
+    ).toBeVisible();
   });
 
   test("handles URL parameters correctly and submits with those values", async ({
@@ -82,16 +89,28 @@ test.describe("Site Cable Validation Form", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.leaf}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active, exact: true })
+      page.getByRole("button", {
+        name: `${STATUS_LIST.active}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.nsv, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.nsv}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Submit the form with the URL parameters
@@ -136,7 +155,10 @@ test.describe("Site Cable Validation Form", () => {
 
     // Verify initial values are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Change the site
@@ -148,7 +170,9 @@ test.describe("Site Cable Validation Form", () => {
       .click();
 
     // Add another role
-    await page.getByRole("button", { name: ROLES_LIST.leaf }).click();
+    await page
+      .getByRole("button", { name: `${ROLES_LIST.leaf}. Open options` })
+      .click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -199,10 +223,10 @@ test.describe("Site Cable Validation Form", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Test multiple selections for Device Status
@@ -215,16 +239,16 @@ test.describe("Site Cable Validation Form", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.provisioned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.planned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.planned}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.staged })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.staged}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
@@ -297,11 +321,14 @@ test.describe("Site Cable Validation Form", () => {
     const submissionReleased = new Promise<void>((resolve) => {
       releaseSubmission = resolve;
     });
-    await page.route("**/v1/workflow/ngc/site_cable_validation", async (route) => {
-      markSubmissionStarted();
-      await submissionReleased;
-      await route.fallback();
-    });
+    await page.route(
+      "**/v1/workflow/ngc/site_cable_validation",
+      async (route) => {
+        markSubmissionStarted();
+        await submissionReleased;
+        await route.fallback();
+      }
+    );
 
     await page.getByRole("button", { name: "Site" }).click();
     await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
@@ -336,25 +363,31 @@ test.describe("Site Cable Validation Form", () => {
     await submissionStarted;
 
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.provisioned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.planned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.planned}` })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.nsv, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.nsv}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: "Submitting..." })

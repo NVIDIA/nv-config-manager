@@ -80,16 +80,16 @@ test.describe("Switch OS Upgrade Form - Additional Tests", () => {
     );
 
     // Verify the form is pre-populated with URL parameter values
-    await expect(page.getByRole("button").getByText(siteName)).toBeVisible({
+    await expect(page.getByRole("button", { name: siteName })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByRole("button").getByText(deviceName)).toBeVisible({
+    await expect(page.getByRole("button", { name: deviceName })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     // Change the values manually
     const newSiteName = SITES_LIST.rno1;
-    await page.getByRole("button").getByText(siteName, { exact: true }).click();
+    await page.getByRole("button", { name: siteName }).click();
     await page.getByRole("dialog").getByText(newSiteName).click();
 
     // Select a new device from the new site
@@ -98,12 +98,12 @@ test.describe("Switch OS Upgrade Form - Additional Tests", () => {
     await page.getByRole("dialog").getByText(newDeviceName).click();
 
     // Verify the form is updated with the new values
-    await expect(
-      page.getByRole("button").getByText(newSiteName, { exact: true })
-    ).toBeVisible({ timeout: TEST_TIMEOUT });
-    await expect(
-      page.getByRole("button").getByText(newDeviceName, { exact: true })
-    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByRole("button", { name: newSiteName })).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
+    await expect(page.getByRole("button", { name: newDeviceName })).toBeVisible(
+      { timeout: TEST_TIMEOUT }
+    );
 
     // Set up a listener for the request
     const requestPromise = page.waitForRequest((request) => {
@@ -144,10 +144,10 @@ test.describe("Switch OS Upgrade Form - Additional Tests", () => {
     );
 
     // Verify the form is pre-populated with URL parameter values
-    await expect(page.getByRole("button").getByText(siteName)).toBeVisible({
+    await expect(page.getByRole("button", { name: siteName })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByRole("button").getByText(deviceName)).toBeVisible({
+    await expect(page.getByRole("button", { name: deviceName })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 

@@ -42,8 +42,12 @@ test.describe("Site Backup Form", () => {
     await expect(page.getByText("Site is required")).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
-    await expect(page.getByRole("button", { name: STATUS_LIST.active })).toBeVisible();
-    await expect(page.getByRole("button", { name: STATUS_LIST.provisioned })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
+    ).toBeVisible();
     await expect(page.getByLabel("Backup enabled only")).toBeChecked();
   });
 
@@ -64,7 +68,10 @@ test.describe("Site Backup Form", () => {
     );
 
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(page.getByLabel("Backup enabled only")).not.toBeChecked();
 
@@ -86,7 +93,9 @@ test.describe("Site Backup Form", () => {
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
-  test("submits backup_enabled_only when checkbox is checked", async ({ page }) => {
+  test("submits backup_enabled_only when checkbox is checked", async ({
+    page,
+  }) => {
     const requestPromise = page.waitForRequest((request) => {
       return request.url().includes("/v1/workflow/ngc/site_backup");
     });
