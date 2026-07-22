@@ -25,7 +25,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Card,
   CardContent,
@@ -446,6 +453,12 @@ export const WorkflowClientComponent: React.FC<
                       <AccordionTrigger>State History</AccordionTrigger>
                       <AccordionContent>
                         <Table>
+                          <TableHeader>
+                            <TableRow className="sr-only">
+                              <TableHead>State</TableHead>
+                              <TableHead>Time</TableHead>
+                            </TableRow>
+                          </TableHeader>
                           <TableBody>
                             {stage.state_history.map((state, index) => (
                               <TableRow key={index}>

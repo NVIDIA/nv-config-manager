@@ -33,7 +33,9 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     page,
   }) => {
     await expect(
-      page.getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
+      page.getByRole("heading", {
+        name: "New Multi-Configuration Deploy Workflow",
+      })
     ).toBeVisible();
   });
 
@@ -173,7 +175,10 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
 
     // Verify fields are pre-populated
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.spine}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     await expect(
@@ -181,7 +186,10 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     ).toHaveValue("15");
 
     await expect(
-      page.getByRole("button", { name: SITES_LIST.rno1, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.rno1}. Open options`,
+        exact: true,
+      })
     ).toBeVisible();
 
     // For multi-select status, verify both badges are displayed
@@ -189,7 +197,10 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     await expect(page.getByText(STATUS_LIST.provisioning)).toBeVisible();
 
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.nsv, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.nsv}. Open options`,
+        exact: true,
+      })
     ).toBeVisible();
   });
 
@@ -215,7 +226,10 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
         `&location=${locationName}`
     );
     await expect(
-      page.getByRole("button", { name: locationName, exact: true })
+      page.getByRole("button", {
+        name: `${locationName}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     await page.getByRole("button", { name: "Submit" }).click();
@@ -245,11 +259,16 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
 
     // Wait for form to load with pre-filled values
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.leaf}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Manually change role
-    await page.getByRole("button", { name: ROLES_LIST.leaf }).click();
+    await page
+      .getByRole("button", { name: `${ROLES_LIST.leaf}. Open options` })
+      .click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
 
     // Manually change batch size
@@ -264,7 +283,9 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     await page.getByRole("dialog").getByText(SITES_LIST.rno1).click();
 
     // Add another status
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await page
+      .getByRole("button", { name: `${STATUS_LIST.active}. Open options` })
+      .click();
     await page.getByRole("dialog").getByText(STATUS_LIST.provisioning).click();
     await page
       .getByRole("heading", { name: "New Multi-Configuration Deploy Workflow" })
@@ -312,17 +333,25 @@ test.describe("New Multi-Configuration Deploy Workflow", () => {
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
 
     // Try to select another role - it should replace the first one
-    await page.getByRole("button", { name: ROLES_LIST.leaf }).click();
+    await page
+      .getByRole("button", { name: `${ROLES_LIST.leaf}. Open options` })
+      .click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
 
     // Verify only the second role is selected
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.spine}. Open options`,
+        exact: true,
+      })
     ).toBeVisible();
 
     // Verify first role is not shown
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.leaf}. Open options`,
+        exact: true,
+      })
     ).not.toBeVisible();
   });
 

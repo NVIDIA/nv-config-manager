@@ -48,8 +48,12 @@ test.describe("Cumulus Hardware Validation Form", () => {
     });
     await expect(page.getByText("Device Status is required")).not.toBeVisible();
     await expect(page.getByText("Tenant is required")).not.toBeVisible();
-    await expect(page.getByRole("button", { name: STATUS_LIST.active })).toBeVisible();
-    await expect(page.getByRole("button", { name: STATUS_LIST.provisioned })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
+    ).toBeVisible();
   });
 
   test("handles URL parameters correctly and submits with those values", async ({
@@ -73,16 +77,28 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.leaf}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active, exact: true })
+      page.getByRole("button", {
+        name: `${STATUS_LIST.active}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.nsv, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.nsv}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Submit the form with the URL parameters
@@ -128,16 +144,28 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf, exact: true })
+      page.getByRole("button", {
+        name: `${ROLES_LIST.leaf}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active, exact: true })
+      page.getByRole("button", {
+        name: `${STATUS_LIST.active}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: TENANT_LIST.nsv, exact: true })
+      page.getByRole("button", {
+        name: `${TENANT_LIST.nsv}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Manually change the site field
@@ -151,7 +179,9 @@ test.describe("Cumulus Hardware Validation Form", () => {
       .click();
 
     // Manually change the roles field - add another role
-    await page.getByRole("button", { name: ROLES_LIST.leaf }).click();
+    await page
+      .getByRole("button", { name: `${ROLES_LIST.leaf}. Open options` })
+      .click();
     await page.getByRole("dialog").getByText(ROLES_LIST.spine).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -198,14 +228,18 @@ test.describe("Cumulus Hardware Validation Form", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Test multiple selections for Device Status
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await page
+      .getByRole("button", {
+        name: `${STATUS_LIST.active}, ${STATUS_LIST.provisioned}. Open options`,
+      })
+      .click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     await page.getByRole("dialog").getByText(STATUS_LIST.staged).click();
     // Click outside to close any dropdown that might be open
@@ -216,16 +250,16 @@ test.describe("Cumulus Hardware Validation Form", () => {
       .click();
 
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.provisioned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.provisioned}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.planned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.planned}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.staged })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.staged}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
   });
 
@@ -256,7 +290,11 @@ test.describe("Cumulus Hardware Validation Form", () => {
       })
       .click();
 
-    await page.getByRole("button", { name: STATUS_LIST.active }).click();
+    await page
+      .getByRole("button", {
+        name: `${STATUS_LIST.active}, ${STATUS_LIST.provisioned}. Open options`,
+      })
+      .click();
     await page.getByRole("dialog").getByText(STATUS_LIST.planned).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -378,14 +416,18 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
     // Verify roles are selected
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeVisible();
 
     // Clear one role by clicking on it again
-    await page.getByRole("button", { name: ROLES_LIST.leaf }).click();
+    await page
+      .getByRole("button", {
+        name: `${ROLES_LIST.leaf}, ${ROLES_LIST.spine}. Open options`,
+      })
+      .click();
     await page.getByRole("dialog").getByText(ROLES_LIST.leaf).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -396,10 +438,10 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
     // Verify only spine role remains
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).not.toBeVisible();
   });
 
@@ -426,16 +468,16 @@ test.describe("Cumulus Hardware Validation Form", () => {
 
     // Verify multiple values are pre-populated
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.leaf })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.leaf}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: ROLES_LIST.spine })
+      page.getByRole("button", { name: `Remove ${ROLES_LIST.spine}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.active })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.active}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: STATUS_LIST.planned })
+      page.getByRole("button", { name: `Remove ${STATUS_LIST.planned}` })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Submit the form
