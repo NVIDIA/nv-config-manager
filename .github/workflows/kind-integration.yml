@@ -13,8 +13,9 @@ on:
         required: false
         default: false
         type: boolean
+      # Slow (~9m+ for SPIRE alone), so it's off by default and opt-in per run.
       security:
-        description: Deploy the full security stack (Keycloak + SPIRE) and run the auth-aware suite (--sso/--rbac/--spiffe). Slow (~9m+ for SPIRE alone); off by default.
+        description: Deploy the full security stack (Keycloak + SPIRE) and run the auth-aware suite (--sso/--rbac/--spiffe)
         required: false
         default: false
         type: boolean
