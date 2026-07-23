@@ -2825,6 +2825,16 @@ nautobotNats:
     enabled: false
     # Port the exporter serves /metrics on (scraped by the NATS PodMonitor).
     port: 7777
+    # Resources for the prometheus-nats-exporter sidecar. -jsz=all scrapes every
+    # JetStream stream/consumer, so the transient response scales with consumer
+    # count; the memory limit is set above the observed footprint to avoid OOM
+    # kills on larger deployments. Tune here if you run many consumers.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
   # NATS resources
   resources:
     requests:

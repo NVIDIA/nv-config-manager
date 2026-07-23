@@ -248,4 +248,23 @@ def test_nats_deployment_has_exporter_sidecar(nats_deployment: dict) -> None:
             f"(metrics KEDA/PromQL rely on would be absent or misnamed); args={args}"
         )
 
+    # Hardening contract: the sidecar must run non-root with all capabilities
+    # dropped and no privilege escalation (nv-config-manager.containerSecurityContext).
+    # The exporter only needs to read localhost:8222 and serve /metrics, so it has
+    # no reason to run privileged — regressing this widens the pod's attack surface.
+    sec = container.get("securityContext") or {}
+    if sec.get("runAsNonRoot") is not True:
+        problems.append(
+            f"'{EXPORTER_CONTAINER}' securityContext.runAsNonRoot is not true ({sec!r})"
+        )
+    if sec.get("allowPrivilegeEscalation") is not False:
+        problems.append(
+            f"'{EXPORTER_CONTAINER}' securityContext.allowPrivilegeEscalation is not false ({sec!r})"
+        )
+    dropped = (sec.get("capabilities") or {}).get("drop") or []
+    if "ALL" not in dropped:
+        problems.append(
+            f"'{EXPORTER_CONTAINER}' securityContext does not drop ALL capabilities (drop={dropped})"
+        )
+
     assert not problems, f"{name}: NATS exporter sidecar misconfigured:\n" + "\n".join(problems)
