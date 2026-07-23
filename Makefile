@@ -581,7 +581,7 @@ docker-build-single-nv-config-manager: ## Builds and pushes NVIDIA Config Manage
 		-f build/nv-config-manager.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-kea
 docker-build-single-kea: ## Builds and pushes KEA image for PLATFORM.
@@ -594,7 +594,7 @@ docker-build-single-kea: ## Builds and pushes KEA image for PLATFORM.
 		-f build/kea.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager-kea:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-kea:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-kea-admin
 docker-build-single-kea-admin: ## Builds and pushes KEA Admin image for PLATFORM.
@@ -607,7 +607,7 @@ docker-build-single-kea-admin: ## Builds and pushes KEA Admin image for PLATFORM
 		-f build/kea-admin.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager-kea-admin:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-kea-admin:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-ui
 docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
@@ -620,7 +620,7 @@ docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
 		-f build/ui.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		ui/
-	@echo "✅ nv-config-manager-ui:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-ui:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-nb
 docker-build-single-nb: ## Builds and pushes Nautobot image for PLATFORM.
@@ -635,7 +635,7 @@ docker-build-single-nb: ## Builds and pushes Nautobot image for PLATFORM.
 		-f build/nautobot.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		components/nautobot/
-	@echo "✅ nv-config-manager-nautobot:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-nautobot:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-nats-ready
 docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFORM.
@@ -648,7 +648,7 @@ docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFO
 		-f build/nats-ready.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		components/nats-ready/
-	@echo "✅ nv-config-manager-nats-ready:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-nats-ready:$(VERSION) built/exported ($(REGISTRY))"
 
 # One buildx invocation per Temporal image so each maps 1:1 to a build target,
 # matching the other docker-build-single-* recipes. This lets the secret-free
