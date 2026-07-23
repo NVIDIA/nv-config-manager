@@ -1441,7 +1441,8 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
     write_bao_secret() {
         local path="$1"
         shift
-        kubectl -n openbao exec openbao-0 -- env BAO_TOKEN=root bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1
+        kubectl -n openbao exec openbao-0 -- env BAO_TOKEN=root bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1 || return $?
+        return 0
     }
     
     # Nautobot API token - must match superuser_api_token in demo/nautobot-app
@@ -1552,7 +1553,9 @@ if [[ "$INSTALL_OPENBAO" == "true" ]]; then
         
         # Generate random passwords for site secrets
         generate_password() {
-            openssl rand -base64 16 | tr -d '/+=' | head -c "$1"
+            local length="$1"
+            openssl rand -base64 16 | tr -d '/+=' | head -c "$length" || return $?
+            return 0
         }
         
         MOCK_ROOT_PASSWORD=$(generate_password 16)
