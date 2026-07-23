@@ -667,23 +667,26 @@ spec:
                 name: {{ $nautobotName }}-env
           resources:
             {{- toYaml .Values.nautobot.server.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /health/
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
           livenessProbe:
-            exec:
-              command:
-                - nautobot-server
-                - health_check
-            initialDelaySeconds: 60
+            httpGet:
+              path: /health/
+              port: http
             periodSeconds: 120
-            timeoutSeconds: 60
+            timeoutSeconds: 5
             failureThreshold: 5
           readinessProbe:
-            exec:
-              command:
-                - nautobot-server
-                - health_check
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 60
+            httpGet:
+              path: /health/
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
           volumeMounts:
             - name: nautobot-config

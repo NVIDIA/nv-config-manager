@@ -52,6 +52,8 @@ Custom label keys must work as Kubernetes labels, Prometheus labels, and Python 
 
 Services expose Prometheus metrics on their operational `/metrics` endpoints. Enable chart monitoring resources with `monitoring.enabled` and `monitoring.podMonitors.enabled` when the target cluster has Prometheus Operator CRDs installed.
 
+When network policies are enabled, set `monitoring.prometheus.namespace` to the namespace where Prometheus runs so scraping traffic is allowed. The installer maps `infrastructure.monitoring.prometheus_namespace` (default `monitoring`) into that Helm value when **Enable monitoring** is on and **Enable local observability stack** is off. When the local observability stack is enabled, the installer uses `config.cluster.namespace` instead and ignores `prometheus_namespace`, because the bundled Prometheus runs in the same namespace as NVCM.
+
 The chart can also render HTTP probes for gateway-facing endpoints when `monitoring.probes.enabled` is set and a Blackbox Exporter is available. Set `monitoring.grafanaUrl` to display a Grafana link in the Config Manager UI.
 
 Key service metrics include:

@@ -2859,7 +2859,7 @@ monitoring:
   grafanaUrl: ""
   # Prometheus namespace (for network policy to allow scraping)
   prometheus:
-    namespace: monitoring
+    namespace: "monitoring"
   # PodMonitor configuration
   # ---------------------------------------------------------------------------
   # Probes (Blackbox Exporter)
@@ -2893,6 +2893,11 @@ monitoring:
     interval: 30s
     # Default scrape timeout
     scrapeTimeout: 10s
+    # Advertise only the text protocol Nautobot 2.x emits to avoid intermittent
+    # HTTP 406 responses during Prometheus content negotiation.
+    nautobot:
+      scrapeProtocols:
+        - PrometheusText1.0.0
     # Per-endpoint metricRelabelings for global.customLabels are rendered in monitoring.yaml (job-based).
 # =============================================================================
 # Local Observability Stack (subcharts)
