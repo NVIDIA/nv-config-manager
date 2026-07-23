@@ -100,7 +100,10 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
       await page.getByRole("dialog").getByText(initialDevice).click();
 
       await page
-        .getByRole("button", { name: initialSite, exact: true })
+        .getByRole("button", {
+          name: `${initialSite}. Open options`,
+          exact: true,
+        })
         .first()
         .click();
       await page.getByRole("dialog").getByText(changedSite).click();
@@ -125,10 +128,16 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
 
       // Verify selections are visible
       await expect(
-        page.getByRole("button", { name: initialSite, exact: true })
+        page.getByRole("button", {
+          name: `${initialSite}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: initialDevice, exact: true })
+        page.getByRole("button", {
+          name: `${initialDevice}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
 
       // Find the X icon with the specific class inside the button's parent container
@@ -158,16 +167,25 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
 
       // Verify first site's selections are visible
       await expect(
-        page.getByRole("button", { name: firstSite, exact: true })
+        page.getByRole("button", {
+          name: `${firstSite}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: firstDevice, exact: true })
+        page.getByRole("button", {
+          name: `${firstDevice}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
 
       // Switch to second site
       const secondSite = SITES_LIST.rno1 as keyof typeof DEVICES_LIST;
       await page
-        .getByRole("button", { name: firstSite, exact: true })
+        .getByRole("button", {
+          name: `${firstSite}. Open options`,
+          exact: true,
+        })
         .first()
         .click();
       await page.getByRole("dialog").getByText(secondSite).click();
@@ -184,15 +202,24 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
 
       // Verify second site's selections are visible
       await expect(
-        page.getByRole("button", { name: secondSite, exact: true })
+        page.getByRole("button", {
+          name: `${secondSite}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: secondDevice, exact: true })
+        page.getByRole("button", {
+          name: `${secondDevice}. Open options`,
+          exact: true,
+        })
       ).toBeVisible();
 
       // Switch back to first site
       await page
-        .getByRole("button", { name: secondSite, exact: true })
+        .getByRole("button", {
+          name: `${secondSite}. Open options`,
+          exact: true,
+        })
         .first()
         .click();
       await page.getByRole("dialog").getByText(firstSite).click();
@@ -214,10 +241,13 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
       await page.goto(`${formPath}?site=${site}&device-id=${deviceId}`);
 
       await expect(
-        page.getByRole("button", { name: site, exact: true })
+        page.getByRole("button", { name: `${site}. Open options`, exact: true })
       ).toBeVisible({ timeout: TEST_TIMEOUT });
       await expect(
-        page.getByRole("button", { name: deviceName, exact: true })
+        page.getByRole("button", {
+          name: `${deviceName}. Open options`,
+          exact: true,
+        })
       ).toBeVisible({ timeout: TEST_TIMEOUT });
 
       await page.getByRole("button", { name: "Submit" }).click();
@@ -241,10 +271,13 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
       await page.getByRole("button", { name: "Submit" }).click();
 
       await expect(
-        page.getByRole("button", { name: site, exact: true })
+        page.getByRole("button", { name: `${site}. Open options`, exact: true })
       ).toBeDisabled();
       await expect(
-        page.getByRole("button", { name: device, exact: true })
+        page.getByRole("button", {
+          name: `${device}. Open options`,
+          exact: true,
+        })
       ).toBeDisabled();
       await expect(
         page.getByRole("button", { name: "Submitting..." })

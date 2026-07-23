@@ -40,14 +40,14 @@ test("tenant change selects from the site's Spectrum-X overlays", async ({
   );
   await expect(
     page.getByRole("button", {
-      name: SPX_OVERLAY_LIST.primary,
+      name: `${SPX_OVERLAY_LIST.primary}. Open options`,
       exact: true,
     })
   ).toBeVisible({ timeout: TEST_TIMEOUT });
 
   await page
     .getByRole("button", {
-      name: SPX_OVERLAY_LIST.primary,
+      name: `${SPX_OVERLAY_LIST.primary}. Open options`,
       exact: true,
     })
     .click();

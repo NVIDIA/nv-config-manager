@@ -279,7 +279,9 @@ export default function ConfigsPage() {
                       <TableHead>Last Updated</TableHead>
                       <TableHead>Author</TableHead>
                       <TableHead>Latest Change</TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[50px]">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

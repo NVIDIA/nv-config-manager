@@ -18,7 +18,7 @@ import asyncio
 from datetime import timedelta
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
@@ -29,6 +29,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageInput,
     StageMixin,
     StageOutput,
+    StageWorkflowInput,
     stage_executor,
 )
 
@@ -69,7 +70,7 @@ class TriggerEnum(StrEnum):
     API = "API"
 
 
-class BackupInput(BaseModel):
+class BackupInput(StageWorkflowInput):
     """Backup Workflow Input Definiton."""
 
     device_id: str = Field(description="Identifier of the network device to back up.")

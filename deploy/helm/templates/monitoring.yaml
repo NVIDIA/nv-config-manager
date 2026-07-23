@@ -681,6 +681,10 @@ metadata:
     {{- end }}
 spec:
   {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  {{- with .Values.monitoring.podMonitors.nautobot.scrapeProtocols }}
+  scrapeProtocols:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   namespaceSelector:
     matchNames:
       - {{ $namespace }}

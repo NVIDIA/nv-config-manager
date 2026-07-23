@@ -1004,6 +1004,48 @@ class TestImagesInHelmValues:
         assert values["alloy"]["configReloader"]["image"]["tag"] == "v0.90.1"
         assert values.get("grafana", {}).get("enabled") is not True
         assert values.get("loki", {}).get("enabled") is not True
+        assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager"
+
+
+class TestMonitoringHelmValues:
+    def test_monitoring_enabled_sets_default_prometheus_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(enabled=True),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["enabled"] is True
+        assert values["monitoring"]["prometheus"]["namespace"] == "monitoring"
+
+    def test_monitoring_enabled_honors_custom_prometheus_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    enabled=True,
+                    prometheus_namespace="kiwi-prometheus",
+                ),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["prometheus"]["namespace"] == "kiwi-prometheus"
+
+    def test_observability_enabled_uses_release_namespace_for_prometheus(self):
+        config = _make_config(
+            cluster=ClusterConfig(
+                hostname="test.example.com",
+                environment="local",
+                namespace="nv-config-manager-dev",
+            ),
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    prometheus_namespace="monitoring",
+                    observability_enabled=True,
+                ),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager-dev"
 
 
 class TestGitTokensInHelmValues:

@@ -19,6 +19,9 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -878,12 +881,47 @@ class TestGetJwksClient:
         mod = _import_module()
         mod._jwks_clients.clear()
 
+    def test_serializes_cold_keyset_fetches(self):
+        mod = _import_module()
+        mod._jwks_signing_key_locks.clear()
+
+        class ColdCacheClient:
+            def __init__(self):
+                self.cached = False
+                self.fetches = 0
+                self.lock = Lock()
+
+            def get_signing_key_from_jwt(self, token):
+                if not self.cached:
+                    with self.lock:
+                        self.fetches += 1
+                    time.sleep(0.01)
+                    self.cached = True
+                return MagicMock()
+
+        client = ColdCacheClient()
+        with patch.object(mod, "_get_jwks_client", return_value=client):
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                list(
+                    executor.map(
+                        lambda _: mod._get_signing_key_from_jwks("https://idp.example.com/jwks", "token"),
+                        range(8),
+                    )
+                )
+
+        assert client.fetches == 1
+        mod._jwks_signing_key_locks.clear()
+
         with patch.object(mod.pyjwt, "PyJWKClient") as mock_cls:
             mock_cls.return_value = MagicMock()
             c1 = mod._get_jwks_client("https://example.com/jwks")
             c2 = mod._get_jwks_client("https://example.com/jwks")
             assert c1 is c2
-            mock_cls.assert_called_once()
+            mock_cls.assert_called_once_with(
+                "https://example.com/jwks",
+                cache_jwk_set=True,
+                lifespan=mod.JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
+            )
 
         mod._jwks_clients.clear()
 
@@ -1058,6 +1096,7 @@ class TestNVConfigManagerJWTAuthentication:
         monkeypatch.setattr(mod, "_extract_token", lambda r: "token")
         monkeypatch.setattr(mod, "_try_spiffe", lambda t: None)
         monkeypatch.setattr(mod, "_get_providers", lambda: [provider])
+        monkeypatch.setattr(mod, "_unverified_jwt_issuer", lambda t: provider.issuer)
         monkeypatch.setattr(
             mod,
             "_try_jwt_provider",
@@ -1067,6 +1106,39 @@ class TestNVConfigManagerJWTAuthentication:
         auth = mod.NVConfigManagerJWTAuthentication()
         result = auth.authenticate(MagicMock())
         assert result == (mock_user, "oidc:jdoe")
+
+    def test_tries_only_provider_matching_unverified_issuer(self, monkeypatch, mock_user):
+        mod = _import_module()
+        other = mod.JwtProviderConfig(
+            name="other",
+            issuer="https://other.example.com",
+            audiences=["aud"],
+            jwks_uri="https://other.example.com/jwks",
+        )
+        starfleet = mod.JwtProviderConfig(
+            name="starfleet",
+            issuer="https://starfleet.example.com",
+            audiences=["aud"],
+            jwks_uri="https://starfleet.example.com/jwks",
+        )
+        attempted: list[str] = []
+
+        def try_provider(token, provider):
+            attempted.append(provider.name)
+            if provider is starfleet:
+                return (mock_user, "starfleet:operator")
+            return None
+
+        monkeypatch.setattr(mod, "_extract_token", lambda r: "token")
+        monkeypatch.setattr(mod, "_try_spiffe", lambda t: None)
+        monkeypatch.setattr(mod, "_get_providers", lambda: [other, starfleet])
+        monkeypatch.setattr(mod, "_unverified_jwt_issuer", lambda t: starfleet.issuer)
+        monkeypatch.setattr(mod, "_try_jwt_provider", try_provider)
+
+        result = mod.NVConfigManagerJWTAuthentication().authenticate(MagicMock())
+
+        assert result == (mock_user, "starfleet:operator")
+        assert attempted == ["starfleet"]
 
     def test_returns_none_when_no_provider_matches(self, monkeypatch):
         mod = _import_module()

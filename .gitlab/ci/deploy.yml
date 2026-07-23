@@ -80,6 +80,9 @@ update-image-tags:
     - yq -i '.global.images.keaAdmin.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
     - yq -i '.global.images.nautobot.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
     - yq -i '.global.images.natsReady.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
+    - yq -i '.global.images.temporalServer.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
+    - yq -i '.global.images.temporalBootstrap.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
+    - yq -i '.global.images.temporalUi.tag = "'$NEW_VERSION'"' $VALUES_FILE_PATH
     - git diff -- deploy/helm/Chart.yaml $VALUES_FILE_PATH
     - echo "Skipping commit/push so the mirror does not diverge from upstream."
 
