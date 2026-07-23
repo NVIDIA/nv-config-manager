@@ -66,6 +66,15 @@ NATS_COMPONENT_SELECTOR = "app.kubernetes.io/component=nautobot-nats"
 EXPORTER_CONTAINER = "prom-exporter"
 EXPORTER_PORT = "prom-metrics"
 EXPORTER_JSZ_ARG = "-jsz=all"
+# Every arg the sidecar must carry for the metrics KEDA/PromQL rely on:
+# -connz/-varz select the connection + server endpoints, -jsz=all emits the
+# JetStream consumer series, and -prefix=nats yields the nats_* metric names.
+EXPORTER_REQUIRED_ARGS = ("-connz", "-varz", EXPORTER_JSZ_ARG, "-prefix=nats")
+# The exporter image, regardless of registry. Pinned upstream to
+# docker.io/natsio/prometheus-nats-exporter, but air-gapped installs legitimately
+# mirror it under another registry (e.g. nvcr.io/...), so match by repo suffix
+# rather than an exact string.
+EXPORTER_IMAGE_REPO = "prometheus-nats-exporter"
 
 
 def _kubectl_get_json(*args: str) -> dict | None:
@@ -202,27 +211,41 @@ def _exporter_container(deployment: dict) -> dict | None:
 
 
 def test_nats_deployment_has_exporter_sidecar(nats_deployment: dict) -> None:
-    """The NATS server Deployment must carry the exporter sidecar with JetStream on.
+    """The NATS server Deployment must carry the fully-configured exporter sidecar.
 
-    Asserts the container exists, exposes the ``prom-metrics`` port the
-    PodMonitor scrapes, and runs with ``-jsz=all`` so the JetStream consumer
-    series (``nats_consumer_num_pending``) that KEDA scales on are emitted.
+    Asserts the container exists, runs the prometheus-nats-exporter image (any
+    registry, so an air-gapped mirror is accepted), exposes the ``prom-metrics``
+    port the PodMonitor scrapes, and carries every required arg — ``-connz``,
+    ``-varz``, ``-jsz=all`` (JetStream ``nats_consumer_num_pending`` for KEDA),
+    and ``-prefix=nats`` (so metrics are named ``nats_*``).
     """
     name = nats_deployment.get("metadata", {}).get("name", "<unknown>")
     container = _exporter_container(nats_deployment)
     assert container is not None, f"{name}: missing '{EXPORTER_CONTAINER}' sidecar container"
 
     problems: list[str] = []
+
+    # Image: match by repo suffix so any registry (incl. air-gapped mirror) passes,
+    # but a wrong image (e.g. a copy-paste of another sidecar) is rejected.
+    image = container.get("image", "")
+    repo = image.rsplit(":", 1)[0]  # strip tag; ignore version for the contract
+    if not repo.endswith(EXPORTER_IMAGE_REPO):
+        problems.append(
+            f"'{EXPORTER_CONTAINER}' image {image!r} is not a '{EXPORTER_IMAGE_REPO}' image"
+        )
+
     port_names = [p.get("name") for p in container.get("ports", [])]
     if EXPORTER_PORT not in port_names:
         problems.append(
             f"'{EXPORTER_CONTAINER}' does not expose port '{EXPORTER_PORT}' (ports={port_names})"
         )
+
     args = container.get("args", [])
-    if EXPORTER_JSZ_ARG not in args:
+    missing_args = [arg for arg in EXPORTER_REQUIRED_ARGS if arg not in args]
+    if missing_args:
         problems.append(
-            f"'{EXPORTER_CONTAINER}' missing '{EXPORTER_JSZ_ARG}' arg "
-            f"(JetStream metrics would be absent); args={args}"
+            f"'{EXPORTER_CONTAINER}' missing required arg(s) {missing_args} "
+            f"(metrics KEDA/PromQL rely on would be absent or misnamed); args={args}"
         )
 
     assert not problems, f"{name}: NATS exporter sidecar misconfigured:\n" + "\n".join(problems)
