@@ -49,9 +49,16 @@ def _copy_content(src: Path, dest: Path) -> None:
 
 
 def _extract_tarball(tarball: Path, dest: Path) -> None:
-    """Extract a .tar.gz into the destination directory."""
+    """Extract a regular-file-only .tar.gz into the destination directory."""
     with tarfile.open(tarball, "r:gz") as tf:
-        tf.extractall(path=dest, filter="data")
+        members = tf.getmembers()
+        for member in members:
+            member_path = Path(member.name)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Archive contains an unsafe path: {member.name}")
+            if not (member.isdir() or member.isfile()):
+                raise ValueError(f"Archive contains unsupported entry: {member.name}")
+        tf.extractall(path=dest, members=members, filter="data")
 
 
 def stage_jobs(config: NVConfigManagerInstallConfig, staging_dir: Path) -> Path:
