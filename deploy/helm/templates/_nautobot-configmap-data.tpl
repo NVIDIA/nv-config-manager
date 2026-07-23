@@ -119,8 +119,8 @@ uwsgi.ini: |
   ; Set the harakiri timeout
   harakiri = {{ .Values.nautobot.server.uwsgi.harakiri }}
   
-  ; Load Nautobot and prebuild its dynamic GraphQL schema before workers fork
-  module = nv_config_manager_wsgi:application
+  ; The WSGI module to load
+  module = nautobot.core.wsgi:application
   
   ; Listen queue size
   listen = {{ .Values.nautobot.server.uwsgi.listen }}

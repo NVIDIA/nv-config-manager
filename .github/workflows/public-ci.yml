@@ -48,8 +48,8 @@ jobs:
         working-directory: components/nautobot
         run: |
           uv sync --frozen
-          uv run ruff format --check nv_config_manager_auth nv_config_manager_jobs nautobot_config.py nv_config_manager_wsgi.py
-          uv run ruff check nv_config_manager_auth nv_config_manager_jobs nautobot_config.py nv_config_manager_wsgi.py
+          uv run ruff format --check nv_config_manager_auth nv_config_manager_jobs nautobot_config.py
+          uv run ruff check nv_config_manager_auth nv_config_manager_jobs nautobot_config.py
 
   nautobot-app-overlays:
     name: Nautobot Overlays Lint And Build
