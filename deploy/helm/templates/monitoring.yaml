@@ -692,7 +692,8 @@ spec:
       app.kubernetes.io/name: {{ $nautobotName }}
   podMetricsEndpoints:
     - port: http
-      path: /metrics
+      # Nautobot serves metrics at /metrics/ (trailing slash); /metrics 404s.
+      path: /metrics/
       interval: {{ $scrapeInterval }}
       scrapeTimeout: {{ $scrapeTimeout }}
       {{- if .Values.global.customLabels }}

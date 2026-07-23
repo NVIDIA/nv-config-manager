@@ -1,0 +1,35 @@
+# Helm override for local testing of PR #24 (nautobot rbac group mapping).
+#
+# Layer this on top of a `make kind-up-sec` deploy to move the chart from the
+# default UNCONFIGURED state into the CONFIGURED state:
+#
+#   helm upgrade nv-config-manager deploy/helm -n nv-config-manager \
+#     --reuse-values -f scripts/rbac-local-test/values-configured.yaml
+#
+# Entry `name` is matched against the JWT `roles` claim emitted by the local
+# Keycloak realm. The seeded users carry these roles:
+#   nvcm-readonly -> [nvcm-readonly]
+#   nvcm-network  -> [nvcm-network]
+#   nvcm-admin    -> [nvcm-admin, nvcm-network]
+#   demo          -> [nvcm-network]
+#
+# On login the chart-mounted mapping produces:
+#   Django Group  "nvcm-network"      with ObjectPermissions
+#                 "nvcm-network_view" and "nvcm-network_change"
+#   Django Group  "nvcm-admin"        with is_superuser=True (perms pruned)
+nautobot:
+  rbac:
+    # Auto-create the Django Groups named below on first login. Default is
+    # false (the sync only adds users to pre-existing groups and logs a hint
+    # to create them). We enable it here so this test demonstrates the full
+    # create-group + attach-permission path end to end.
+    autoCreateGroups: true
+    groupMapping:
+      - name: "nvcm-network"
+        nautobot_permissions:
+          view:
+            content_types: ["all"]
+          change:
+            content_types: ["dcim.*", "ipam.*"]
+      - name: "nvcm-admin"
+        is_superuser: true

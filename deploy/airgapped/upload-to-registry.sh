@@ -39,6 +39,7 @@ Environment equivalents:
   OCI_REGISTRY, OCI_CHART_REGISTRY, REGISTRY_USERNAME, REGISTRY_PASSWORD,
   IMAGES_DIR, CHART_DIR, CHARTS_DIR, UPLOAD_MODE, UPLOAD_PLATFORM, SKOPEO_BIN
 EOF
+    return 0
 }
 
 REGISTRY_NAMESPACE="${OCI_REGISTRY:-}"
@@ -94,7 +95,8 @@ strip_registry_scheme() {
     value="${value#https://}"
     value="${value#oci://}"
     value="${value%/}"
-    printf '%s\n' "$value"
+    printf '%s\n' "$value" || return $?
+    return 0
 }
 
 find_skopeo() {
@@ -182,7 +184,8 @@ fi
 
 image_to_filename() {
     local image="$1"
-    echo "${image}" | sed 's|[/:@]|-|g; s|$|.tar|'
+    echo "${image}" | sed 's|[/:@]|-|g; s|$|.tar|' || return $?
+    return 0
 }
 
 target_ref() {
@@ -216,7 +219,8 @@ target_ref() {
         path="${path##*/}"
     fi
 
-    printf '%s/%s:%s\n' "$REGISTRY_NAMESPACE" "$path" "$tag"
+    printf '%s/%s:%s\n' "$REGISTRY_NAMESPACE" "$path" "$tag" || return $?
+    return 0
 }
 
 copy_with_skopeo() {
@@ -346,7 +350,8 @@ collect_charts() {
         done < <(find "$CHARTS_DIR" -maxdepth 1 -name '*.tgz' -type f | sort)
     fi
 
-    printf '%s\n' "${charts[@]}"
+    printf '%s\n' "${charts[@]}" || return $?
+    return 0
 }
 
 upload_charts() {

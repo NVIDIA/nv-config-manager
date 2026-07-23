@@ -8,6 +8,11 @@ NAMESPACE ?= nv-config-manager
 RELEASE_NAME ?= nv-config-manager
 HOSTNAME ?= config-manager.local
 KIND_CLUSTER_NAME ?= nv-config-manager
+# Kind cluster config. CI overrides this with a copy patched to route in-cluster
+# docker.io pulls through a Docker Hub mirror (see
+# scripts/configure-kind-dockerhub-mirror), which keeps the security stack's
+# ~2x-heavier docker.io pulls off the shared runner's anonymous rate limit.
+KIND_CONFIG ?= deploy/kind-config.yaml
 DEPLOY_SIZE ?= small  # Resource sizing: small (24GB Mac) or medium (64GB VM)
 INSTALL_CONFIG ?= deploy/configs/local-superpod.yaml
 KIND_SEC_INSTALL_CONFIG ?= deploy/configs/local-sec.yaml
@@ -834,7 +839,7 @@ kind-up:
 	@echo "🚀 Deploying NVIDIA Config Manager with installer to Kind (config: $(INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
-		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG) --wait 5m; \
 	fi
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG) \
 		--image-source local \
@@ -858,10 +863,16 @@ kind-up-secure:
 	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and $(KIND_SEC_GATEWAY_CONTROLLER) to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
-		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG) --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	./scripts/install-security-dependencies \
+	@# ``@``-prefixed so make does not echo the expanded recipe: these commands
+	@# carry --keycloak-admin-password / --oidc-client-secret, and make's default
+	@# command echo would print them verbatim into the (public) CI log. They are
+	@# dev defaults today, but suppressing keeps real creds out of logs if these
+	@# vars are ever overridden. The scripts still print their own progress.
+	@echo "🔐 Installing security dependencies (keycloak / SPIRE / gateway)..."
+	@./scripts/install-security-dependencies \
 		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
 		--app-namespace $(KIND_SEC_NAMESPACE) \
@@ -869,8 +880,10 @@ kind-up-secure:
 		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
 		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
-		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
-	uv run python scripts/render-local-security-config \
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET) \
+		--helm-timeout $(HELM_TIMEOUT)
+	@echo "🔧 Rendering local security config..."
+	@uv run python scripts/render-local-security-config \
 		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
 		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \
