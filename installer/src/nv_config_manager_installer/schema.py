@@ -28,7 +28,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_KUBERNETES_NAMESPACE_RE = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -460,12 +462,30 @@ class CNPGBackupConfig(BaseModel):
 class MonitoringConfig(BaseModel):
     """Monitoring / observability configuration."""
 
+    model_config = ConfigDict(validate_assignment=True)
+
     enabled: bool = False
+    # Namespace where Prometheus scrapes from (for network policy ingress).
+    # Ignored when observability_enabled is true — the local stack runs in
+    # cluster.namespace and helm_values sets that automatically.
+    prometheus_namespace: str = "monitoring"
     # Bundles Prometheus + Grafana Alloy as subcharts of nv-config-manager
     # (see deploy/helm/values-observability.yaml). LOCAL-DEV / KIND ONLY.
     # Grafana/Loki are AGPL-licensed and are not enabled by the default
     # installer-managed observability path.
     observability_enabled: bool = False
+
+    @field_validator("prometheus_namespace")
+    @classmethod
+    def _validate_prometheus_namespace(cls, v: str) -> str:
+        if not v:
+            raise ValueError("namespace must not be empty")
+        if not _KUBERNETES_NAMESPACE_RE.fullmatch(v):
+            raise ValueError(
+                "namespace must be a lowercase DNS-1123 label (alphanumeric, hyphens, "
+                "start/end with alphanumeric, max 63 characters)"
+            )
+        return v
 
 
 class NLBServiceConfig(BaseModel):

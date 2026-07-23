@@ -991,10 +991,15 @@ def build_values(
         # (both default false in values.yaml) so without these Alloy's
         # prometheus.operator.* informers run but find zero CRs to scrape and
         # Prometheus stays empty.
+        prometheus_namespace = config.infrastructure.monitoring.prometheus_namespace
+        if config.infrastructure.monitoring.observability_enabled:
+            # Local Prometheus + Alloy run in the release namespace.
+            prometheus_namespace = config.cluster.namespace
         values["monitoring"] = {
             "enabled": True,
             "podMonitors": {"enabled": True},
             "probes": {"enabled": True},
+            "prometheus": {"namespace": prometheus_namespace},
         }
 
     if config.infrastructure.monitoring.observability_enabled:
