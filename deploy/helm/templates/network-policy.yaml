@@ -34,6 +34,27 @@ spec:
     # Allow all traffic from within the same namespace
     - from:
         - podSelector: {}
+    {{- if and .Values.monitoring.enabled .Values.monitoring.prometheus.namespace }}
+    # Allow Prometheus scraping from the monitoring namespace, restricted to the
+    # TCP ports used by PodMonitor endpoints across all NVCM services.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.prometheus.namespace | quote }}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8003
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: {{ .Values.networkDhcp.kea.storkAgentPort }}
+        - protocol: TCP
+          port: 9187  # CNPG metrics exporter
+    {{- end }}
     {{- if .Values.networkPolicy.allowFromGatewayNamespace }}
     # Allow traffic from Envoy Gateway system namespace (data plane proxies)
     - from:
