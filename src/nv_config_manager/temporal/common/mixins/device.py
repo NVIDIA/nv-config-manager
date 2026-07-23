@@ -41,6 +41,7 @@ class Platform(StrEnum):
     CUMULUS_LINUX = "cumulus-linux"
     NV_OS = "nv-os"
     MLNX_OS = "mlnx-os"
+    JUNIPER_JUNOS = "juniper-junos"
     UFM = "ufm"
 
     @property
@@ -51,6 +52,7 @@ class Platform(StrEnum):
             Platform.CUMULUS_LINUX: "Cumulus Linux",
             Platform.NV_OS: "NV-OS",
             Platform.MLNX_OS: "MLNX-OS",
+            Platform.JUNIPER_JUNOS: "Juniper Junos",
             Platform.UFM: "UFM",
         }
         return _nautobot_names[self]
@@ -184,6 +186,10 @@ class NetworkDeviceData(DeviceData):
             return "startup.yaml"
         if self.platform == Platform.MLNX_OS:
             return "full-config"
+        if self.platform == Platform.JUNIPER_JUNOS:
+            # Junos `set` format round-trips through load-configuration
+            # (action="set"), so the stored backup can be re-applied directly.
+            return "config.set"
         if self.platform == Platform.UFM:
             return ""
         raise NotImplementedError(f"No configuration path implemented for platform {self.platform}")

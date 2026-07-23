@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextvars
 import datetime
+import email
 import ipaddress
 import json
 import logging
@@ -31,6 +32,7 @@ from copy import deepcopy
 from io import BytesIO, StringIO
 from typing import Any, cast
 from uuid import uuid4
+from xml.sax.saxutils import escape as xml_escape
 
 import netaddr
 import paramiko
@@ -725,6 +727,8 @@ class NetworkConnection:
             connection = NVOSConnection(device_data.host, site=device_data.site)
         elif device_data.platform == Platform.MLNX_OS:
             connection = MellanoxConnection(device_data.host, site=device_data.site)
+        elif device_data.platform == Platform.JUNIPER_JUNOS:
+            connection = JuniperConnection(device_data.host, site=device_data.site)
         else:
             raise NotImplementedError(f"No handler implemented for platform {device_data.platform}")
         return connection
@@ -2285,3 +2289,413 @@ class MellanoxConnection(NetworkConnection):
         """Load the running configuration for a given device."""
         response = self.execute_enable_command("show running-config")
         return response
+
+
+class JuniperConnection(NetworkConnection):
+    """Juniper Junos device connection over the REST API.
+
+    Junos exposes RPCs over HTTPS (default port 3443). Operational "get" RPCs
+    are issued as GET requests and return JSON when the Accept header asks for
+    it. Configuration changes are POSTed to ``/rpc`` as an XML batch (lock /
+    load / commit / unlock) because Junos requires an XML request body for
+    configuration RPCs.
+
+    Two Junos quirks drive the design:
+    - Junos returns HTTP 200 even when a load or commit fails; the failure
+      only appears as an ``<rpc-error>`` element in the body, so every config
+      response is inspected before it is trusted.
+    - The candidate configuration is global. Uncommitted changes left after an
+      unlock would be committed by the next commit, so the diff path always
+      rolls back before unlocking.
+    """
+
+    # Junos commit-confirmed timeout is expressed in minutes, not seconds.
+    _COMMIT_CONFIRM_ROLLBACK_MINUTES = max(1, COMMIT_CONFIRM_ROLLBACK_SECONDS // 60)
+
+    _JSON_HEADERS = {"Accept": "application/json"}
+    _TEXT_HEADERS = {"Accept": "text/plain"}
+    _XML_POST_HEADERS = {"Content-Type": "application/xml", "Accept": "application/xml"}
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 3443,
+        username: str | None = None,
+        password: str | None = None,
+        site: str | None = None,
+    ) -> None:
+        """Initialize a Juniper Connection."""
+        super().__init__(host, port, username, password, site)
+        retry = Retry(total=5, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        self._session = requests.Session()
+        self._session.mount("https://", adapter=HTTPAdapter(max_retries=retry))
+        self._session.verify = False
+        self._base_url = f"https://{host}:{port}"
+        self._authenticated = False
+
+    # ------------------------------------------------------------------
+    # Transport — HTTP with password rotation.
+    # ------------------------------------------------------------------
+
+    def _make_request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        """Make an HTTP request, rotating passwords on authentication failure."""
+
+        def try_request_with_password(password: str) -> requests.Response:
+            self._session.auth = (self._username, password)
+            rsp = self._session.request(method, url, **kwargs)
+            if rsp.status_code in (401, 403):
+                raise NetworkDeviceException(f"Authentication failed: HTTP {rsp.status_code}")
+            return rsp
+
+        if self._authenticated:
+            rsp = self._session.request(method, url, **kwargs)
+            if rsp.status_code not in (401, 403):
+                return rsp
+            logger.info(
+                "Cached password no longer valid for %s, retrying with available passwords",
+                self._host,
+            )
+            self._authenticated = False
+
+        rsp = self._try_passwords_with_callback(
+            try_request_with_password,
+            (NetworkDeviceException,),
+        )
+        self._authenticated = True
+        return cast(requests.Response, rsp)
+
+    def _rpc(
+        self, rpc_name: str, params: dict[str, Any] | None = None, timeout: int = 60
+    ) -> dict[str, Any]:
+        """Execute an operational RPC via GET and return the parsed JSON body."""
+        url = f"{self._base_url}/rpc/{rpc_name}"
+        try:
+            rsp = self._make_request(
+                "GET", url, params=params, headers=self._JSON_HEADERS, timeout=timeout
+            )
+        except requests.exceptions.Timeout as error:
+            msg = f"Timed out calling RPC {rpc_name} on {self._host}"
+            logger.exception(msg)
+            raise NetworkDeviceException(msg) from error
+        if rsp.status_code != 200:
+            msg = f"RPC {rpc_name} on {self._host} failed: HTTP {rsp.status_code}: {rsp.text}"
+            logger.error(msg)
+            raise NetworkDeviceException(msg)
+        try:
+            return cast(dict[str, Any], rsp.json())
+        except ValueError as error:
+            raise NetworkDeviceException(
+                f"RPC {rpc_name} on {self._host} returned a non-JSON body: {rsp.text[:500]}"
+            ) from error
+
+    def _rpc_text(
+        self, rpc_name: str, params: dict[str, Any] | None = None, timeout: int = 60
+    ) -> str:
+        """Execute an operational RPC via GET and return the plain-text body."""
+        url = f"{self._base_url}/rpc/{rpc_name}"
+        try:
+            rsp = self._make_request(
+                "GET", url, params=params, headers=self._TEXT_HEADERS, timeout=timeout
+            )
+        except requests.exceptions.Timeout as error:
+            msg = f"Timed out calling RPC {rpc_name} on {self._host}"
+            logger.exception(msg)
+            raise NetworkDeviceException(msg) from error
+        if rsp.status_code != 200:
+            raise NetworkDeviceException(
+                f"RPC {rpc_name} on {self._host} failed: HTTP {rsp.status_code}: {rsp.text}"
+            )
+        return rsp.text
+
+    def _post_config_rpcs(self, rpc_xml: str, timeout: int = 120) -> requests.Response:
+        """POST a batch of RPCs as an XML body.
+
+        ``stop-on-error=1`` aborts the batch at the first failing RPC (for
+        example a lock that cannot be acquired) instead of continuing on to the
+        commit. Junos still answers HTTP 200 on a failed commit, so callers must
+        additionally check the body with :meth:`_raise_for_rpc_error`.
+        """
+        url = f"{self._base_url}/rpc"
+        try:
+            rsp = self._make_request(
+                "POST",
+                url,
+                params={"stop-on-error": 1},
+                data=rpc_xml.encode("utf-8"),
+                headers=self._XML_POST_HEADERS,
+                timeout=timeout,
+            )
+        except requests.exceptions.Timeout as error:
+            msg = f"Timed out posting configuration RPCs to {self._host}"
+            logger.exception(msg)
+            raise NetworkDeviceException(msg) from error
+        if rsp.status_code != 200:
+            raise NetworkDeviceException(
+                f"Configuration RPC batch failed on {self._host}: "
+                f"HTTP {rsp.status_code}: {rsp.text}"
+            )
+        return rsp
+
+    @staticmethod
+    def _parse_multipart(rsp: requests.Response) -> list[str]:
+        """Split a multipart/mixed RPC-batch reply into per-RPC output strings."""
+        content_type = rsp.headers.get("Content-Type", "")
+        if "multipart" not in content_type:
+            return [rsp.text]
+        parsed = email.message_from_string(f"Content-Type: {content_type}\r\n\r\n{rsp.text}")
+        outputs: list[str] = []
+        for part in parsed.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            payload = part.get_payload(decode=False)
+            if isinstance(payload, str):
+                outputs.append(payload)
+        return outputs
+
+    @staticmethod
+    def _raise_for_rpc_error(response_text: str) -> None:
+        """Raise ConfigSyntaxException if an RPC-batch reply contains a real error.
+
+        Junos returns HTTP 200 even when a load or commit fails; the failure is
+        reported as an ``<rpc-error>`` / ``<xnm:error>`` element in the body.
+        ``warning`` severities (for example deleting a statement that does not
+        exist) are non-fatal and ignored.
+        """
+        if "<rpc-error>" not in response_text and "xnm:error" not in response_text:
+            return
+        severities = re.findall(r"<error-severity>\s*(.*?)\s*</error-severity>", response_text)
+        if severities and all(sev.strip() == "warning" for sev in severities):
+            return
+        messages = re.findall(r"<message>\s*(.*?)\s*</message>", response_text, flags=re.S)
+        detail = "; ".join(m.strip() for m in messages) or response_text[:500]
+        raise ConfigSyntaxException(f"Junos configuration RPC error: {detail}")
+
+    @staticmethod
+    def _build_load_config_rpc(new_configuration: str) -> str:
+        """Build a load-configuration RPC from a Junos ``set``-format config.
+
+        Junos ``set`` format is inherently additive (a merge). A full replace
+        would require ``load override`` with hierarchical config; until that is
+        added, the approved-diff gate in :meth:`commit_candidate_config` guards
+        against unintended changes.
+        """
+        escaped = xml_escape(new_configuration.strip())
+        return (
+            '<load-configuration action="set" format="text">'
+            f"<configuration-set>{escaped}</configuration-set>"
+            "</load-configuration>"
+        )
+
+    def _commit_rpc(self, commit_confirm: bool) -> str:
+        if commit_confirm:
+            return (
+                "<commit-configuration>"
+                "<confirmed/>"
+                f"<confirm-timeout>{self._COMMIT_CONFIRM_ROLLBACK_MINUTES}</confirm-timeout>"
+                "</commit-configuration>"
+            )
+        return "<commit-configuration/>"
+
+    def _extract_diff(self, rsp: requests.Response) -> str:
+        """Pull the config diff text out of a lock/load/compare RPC-batch reply.
+
+        The ``get-configuration compare`` element is the only part requested in
+        text format; the lock/load/rollback/unlock parts are XML. So the diff is
+        whatever part is not XML.
+        """
+        parts = self._parse_multipart(rsp)
+        diff_parts = [p.strip() for p in parts if p.strip() and not p.lstrip().startswith("<")]
+        return "\n".join(diff_parts).strip()
+
+    # ------------------------------------------------------------------
+    # Read operations.
+    # ------------------------------------------------------------------
+
+    def get_running_configuration(self) -> str:
+        """Return the running configuration in Junos ``set`` format.
+
+        ``set`` format round-trips through load-configuration (action="set"),
+        so the stored backup can be re-applied directly.
+        """
+        config = self._rpc_text("get-configuration", params={"format": "set"})
+        return config.strip() + "\n"
+
+    def get_configuration_text(self) -> str:
+        """Return the running configuration in hierarchical (curly-brace) text."""
+        return self._rpc_text("get-configuration", params={"format": "text"})
+
+    def _software_information(self) -> dict[str, Any]:
+        data = self._rpc("get-software-information")
+        try:
+            return cast(dict[str, Any], data["software-information"][0])
+        except (KeyError, IndexError, TypeError) as error:
+            raise NetworkDeviceException(
+                f"Unexpected get-software-information response from {self._host}: {data}"
+            ) from error
+
+    def get_hostname(self) -> str:
+        """Get the system hostname."""
+        try:
+            return str(self._software_information()["host-name"][0]["data"])
+        except (KeyError, IndexError, TypeError) as error:
+            raise ApplicationError(
+                f"No hostname returned for {self._host}",
+                non_retryable=True,
+            ) from error
+
+    def get_running_image(self) -> str:
+        """Get the running Junos version on the device."""
+        try:
+            return str(self._software_information()["junos-version"][0]["data"])
+        except (KeyError, IndexError, TypeError) as error:
+            raise NetworkDeviceException(
+                f"Unable to determine running image on {self._host}.", non_retryable=True
+            ) from error
+
+    def get_uptime(self) -> int:
+        """Get the device uptime in seconds."""
+        data = self._rpc("get-system-uptime-information")
+        try:
+            uptime = data["system-uptime-information"][0]["uptime-information"][0]["up-time"][0]
+            return int(uptime["attributes"]["junos:seconds"])
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            raise NetworkDeviceException(f"Unable to determine uptime on {self._host}.") from error
+
+    # ------------------------------------------------------------------
+    # Configuration operations.
+    # ------------------------------------------------------------------
+
+    def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
+        """Load the candidate configuration and return the diff versus active."""
+        batch = (
+            "<lock-configuration/>"
+            + self._build_load_config_rpc(new_configuration)
+            + '<get-configuration compare="rollback" rollback="0" format="text"/>'
+            # Discard the candidate so the shared candidate is not left dirty.
+            + '<load-configuration rollback="0"/>'
+            + "<unlock-configuration/>"
+        )
+        try:
+            rsp = self._post_config_rpcs(batch)
+        except requests.HTTPError as exc:
+            raise NetworkDeviceException("Failed to perform candidate diff.") from exc
+        self._raise_for_rpc_error(rsp.text)
+        return self._extract_diff(rsp)
+
+    def commit_candidate_config(
+        self,
+        new_configuration: str,
+        approved_diff: str,
+        partial: bool = False,
+        *,
+        commit_confirm: bool = True,
+    ) -> None:
+        """Load the candidate configuration and commit.
+
+        When commit_confirm is True, commits with a rollback timer and then
+        confirms with a follow-up commit. When False, commits directly (use for
+        changes that cause brief interruption, e.g. an IP change ahead of an
+        upstream VLAN change).
+        """
+        try:
+            diff = self.perform_candidate_diff(new_configuration, partial)
+            if not diff:
+                # Nothing to apply; a previous run may already have committed.
+                return
+            if diff != approved_diff:
+                raise DiffChangedException("Diff has changed since approval, aborting.")
+
+            batch = (
+                "<lock-configuration/>"
+                + self._build_load_config_rpc(new_configuration)
+                + self._commit_rpc(commit_confirm)
+                + "<unlock-configuration/>"
+            )
+            rsp = self._post_config_rpcs(batch)
+            self._raise_for_rpc_error(rsp.text)
+
+            if commit_confirm:
+                # Confirm the pending commit to cancel the rollback timer.
+                self._confirm_commit()
+        except (ConfigSyntaxException, DiffChangedException):
+            raise
+        except requests.HTTPError as exc:
+            raise NetworkDeviceException("Failed to apply candidate configuration.") from exc
+
+    def _confirm_commit(self) -> None:
+        """Confirm a pending commit-confirmed, cancelling its rollback timer."""
+        batch = "<lock-configuration/><commit-configuration/><unlock-configuration/>"
+        rsp = self._post_config_rpcs(batch)
+        self._raise_for_rpc_error(rsp.text)
+
+    def configure_set(self, commands: list[str], *, commit_confirm: bool = False) -> None:
+        """Apply a list of Junos ``set``/``delete`` commands and commit.
+
+        This is the direct-apply path for programmatic edits (e.g. interface
+        updates). It bypasses the approved-diff gate, so callers that need
+        change review should use commit_candidate_config instead.
+        """
+        if not commands:
+            return
+        configuration = "\n".join(commands)
+        batch = (
+            "<lock-configuration/>"
+            + self._build_load_config_rpc(configuration)
+            + self._commit_rpc(commit_confirm)
+            + "<unlock-configuration/>"
+        )
+        rsp = self._post_config_rpcs(batch)
+        self._raise_for_rpc_error(rsp.text)
+        if commit_confirm:
+            self._confirm_commit()
+
+    def set_interface_description(
+        self, interface: str, description: str, *, commit_confirm: bool = False
+    ) -> None:
+        """Set the description on an interface."""
+        self.configure_set(
+            [f'set interfaces {interface} description "{description}"'],
+            commit_confirm=commit_confirm,
+        )
+
+    def update_interface(
+        self,
+        interface: str,
+        *,
+        description: str | None = None,
+        enabled: bool | None = None,
+        mtu: int | None = None,
+        commit_confirm: bool = False,
+    ) -> None:
+        """Update common interface attributes (description, admin state, MTU)."""
+        commands: list[str] = []
+        if description is not None:
+            commands.append(f'set interfaces {interface} description "{description}"')
+        if enabled is not None:
+            # Junos uses the `disable` knob; deleting it re-enables the interface.
+            if enabled:
+                commands.append(f"delete interfaces {interface} disable")
+            else:
+                commands.append(f"set interfaces {interface} disable")
+        if mtu is not None:
+            commands.append(f"set interfaces {interface} mtu {mtu}")
+        self.configure_set(commands, commit_confirm=commit_confirm)
+
+    # ------------------------------------------------------------------
+    # Diagnostic commands — operational RPCs returning JSON.
+    # ------------------------------------------------------------------
+
+    def diag_get_version(self) -> object:
+        return self._rpc("get-software-information")
+
+    def diag_get_interfaces(self) -> object:
+        return self._rpc("get-interface-information", params={"terse": ""})
+
+    def diag_get_lldp_neighbors(self) -> object:
+        return self._rpc("get-lldp-neighbors-information")
+
+    def diag_get_route_table(self) -> object:
+        return self._rpc("get-route-summary-information")
+
+    def diag_get_arp_table(self) -> object:
+        return self._rpc("get-arp-table-information")
