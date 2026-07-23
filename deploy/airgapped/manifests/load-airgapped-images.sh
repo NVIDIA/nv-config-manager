@@ -239,10 +239,11 @@ run_on_node() {
     
     if $USE_SSH; then
         # -n prevents ssh from reading stdin (important when called in a while-read loop)
-        ssh -n $SSH_OPTS "${SSH_USER}@${node_ip}" "$cmd"
+        ssh -n $SSH_OPTS "${SSH_USER}@${node_ip}" "$cmd" || return $?
     else
-        docker exec "$node_name" bash -c "$cmd"
+        docker exec "$node_name" bash -c "$cmd" || return $?
     fi
+    return 0
 }
 
 # Function to copy files to node
@@ -253,10 +254,11 @@ copy_to_node() {
     local dst="$4"
     
     if $USE_SSH; then
-        scp $SSH_OPTS -r "$src" "${SSH_USER}@${node_ip}:${dst}"
+        scp $SSH_OPTS -r "$src" "${SSH_USER}@${node_ip}:${dst}" || return $?
     else
-        docker cp "$src" "${node_name}:${dst}"
+        docker cp "$src" "${node_name}:${dst}" || return $?
     fi
+    return 0
 }
 
 # Function to detect ctr binary path on a node
@@ -274,7 +276,8 @@ detect_ctr_path() {
         elif [ -x /usr/bin/ctr ]; then
             echo /usr/bin/ctr
         fi
-    "
+    " || return $?
+    return 0
 }
 
 # =============================================================================
