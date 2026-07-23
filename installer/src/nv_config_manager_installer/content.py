@@ -58,7 +58,7 @@ def _extract_tarball(tarball: Path, dest: Path) -> None:
                 raise ValueError(f"Archive contains an unsafe path: {member.name}")
             if not (member.isdir() or member.isfile()):
                 raise ValueError(f"Archive contains unsupported entry: {member.name}")
-        tf.extractall(path=dest, members=members, filter="data")
+        tf.extractall(path=dest, members=members)
 
 
 def stage_jobs(config: NVConfigManagerInstallConfig, staging_dir: Path) -> Path:
