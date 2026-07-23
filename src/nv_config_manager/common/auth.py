@@ -952,7 +952,12 @@ def install_identity_probe(
     # imports this module for auth-config access.
     from nv_config_manager.common.metrics import install_spiffe_bundle_metrics
 
-    install_spiffe_bundle_metrics()
+    # Registration failure of an ancillary observability feature must never
+    # abort the primary auth wiring (middleware, /whoami, enforcement).
+    try:
+        install_spiffe_bundle_metrics()
+    except Exception:
+        logger.warning("Failed to register SPIFFE credential health metrics", exc_info=True)
 
     if enforce_auth:
         _install_openapi_auth_schema(
