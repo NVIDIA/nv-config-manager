@@ -26,7 +26,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from configparser import ConfigParser, SectionProxy
 from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import certifi
 import nats
@@ -653,7 +653,13 @@ def pynautobot_client() -> Any:
         kwargs["verify"] = nb_config["ca_cert_path"]
 
     connection = pynautobot.api(**kwargs)
-    connection.http_session.mount("https://", TimeoutHTTPAdapter(timeout=10))
+    for protocol in ("http://", "https://"):
+        existing_adapter = cast(HTTPAdapter, connection.http_session.get_adapter(protocol))
+        retry_policy = existing_adapter.max_retries
+        connection.http_session.mount(
+            protocol,
+            TimeoutHTTPAdapter(timeout=10, max_retries=retry_policy),
+        )
     return connection
 
 
