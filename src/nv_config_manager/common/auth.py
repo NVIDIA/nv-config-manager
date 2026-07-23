@@ -464,7 +464,7 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
 
 
 def _get_jwks_signing_key_lock(jwks_uri: str) -> threading.Lock:
-    """Return the lock that serializes a JWKS cache miss for one URI."""
+    """Return the lock that serializes signing-key resolution for one URI."""
     with _jwks_lock:
         lock = _jwks_signing_key_locks.get(jwks_uri)
         if lock is None:
