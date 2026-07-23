@@ -8,7 +8,11 @@ version when a release tag is promoted.
 
 ## Unreleased
 
-- No unreleased changes have been recorded yet.
+### Fixed
+
+- Fixed a Nautobot uWSGI self-deadlock on `/metrics/` by preloading
+  `django_prometheus.cache.metrics`, and scrape Nautobot via `/metrics/`
+  instead of `/metrics` to avoid recurring 404s.
 
 ## 1.3.0
 
