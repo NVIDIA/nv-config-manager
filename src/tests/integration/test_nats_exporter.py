@@ -70,10 +70,12 @@ EXPORTER_JSZ_ARG = "-jsz=all"
 # -connz/-varz select the connection + server endpoints, -jsz=all emits the
 # JetStream consumer series, and -prefix=nats yields the nats_* metric names.
 EXPORTER_REQUIRED_ARGS = ("-connz", "-varz", EXPORTER_JSZ_ARG, "-prefix=nats")
-# The exporter image, regardless of registry. Pinned upstream to
-# docker.io/natsio/prometheus-nats-exporter, but air-gapped installs legitimately
-# mirror it under another registry (e.g. nvcr.io/...), so match by repo suffix
-# rather than an exact string.
+# The exporter image name (final repository path component), regardless of
+# registry. Pinned upstream to docker.io/natsio/prometheus-nats-exporter, but
+# air-gapped installs legitimately mirror it under another registry
+# (e.g. nvcr.io/nvidian/cfa/...), so match the final path component rather than
+# an exact string or a suffix (a suffix match would wrongly accept
+# "evil-prometheus-nats-exporter").
 EXPORTER_IMAGE_REPO = "prometheus-nats-exporter"
 
 
@@ -225,11 +227,13 @@ def test_nats_deployment_has_exporter_sidecar(nats_deployment: dict) -> None:
 
     problems: list[str] = []
 
-    # Image: match by repo suffix so any registry (incl. air-gapped mirror) passes,
-    # but a wrong image (e.g. a copy-paste of another sidecar) is rejected.
+    # Image: compare the final repository path component so any registry (incl.
+    # an air-gapped mirror) passes, but a wrong image is rejected. Matching a bare
+    # suffix would wrongly accept "evil-prometheus-nats-exporter", so drop any
+    # digest (@sha256:...) and tag (:x.y.z), then take the last path segment.
     image = container.get("image", "")
-    repo = image.rsplit(":", 1)[0]  # strip tag; ignore version for the contract
-    if not repo.endswith(EXPORTER_IMAGE_REPO):
+    image_name = image.split("@", 1)[0].rsplit("/", 1)[-1].rsplit(":", 1)[0]
+    if image_name != EXPORTER_IMAGE_REPO:
         problems.append(
             f"'{EXPORTER_CONTAINER}' image {image!r} is not a '{EXPORTER_IMAGE_REPO}' image"
         )
