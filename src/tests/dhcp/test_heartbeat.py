@@ -1,0 +1,215 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Tests for the config-sync liveness heartbeat.
+
+Covers:
+- The ``check-sync-heartbeat`` CLI subcommand exit codes (fresh / stale / missing).
+- The reconcile loop advancing the heartbeat after a completed attempt,
+  including when a recoverable error occurred.
+- Bounded timeouts around Redis/Kea calls so a hung dependency cannot block
+  heartbeat advancement.
+- "Last successful reconciliation" being tracked separately from loop progress.
+"""
+
+import asyncio
+import os
+import time
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from click.testing import CliRunner
+
+from nv_config_manager.dhcp import cli, heartbeat
+from nv_config_manager.dhcp.cli import cli as cli_group
+from nv_config_manager.dhcp.metrics import DHCP_CACHE_REFRESH_ERRORS
+
+CONFIG = {"Dhcp4": {}}
+
+
+class _StopLoop(BaseException):
+    """Break out of the otherwise-infinite sync loop from a patched sleep."""
+
+
+def _error_count() -> float:
+    return DHCP_CACHE_REFRESH_ERRORS.labels(ip_version="4")._value.get()
+
+
+# --------------------------------------------------------------------------- #
+# heartbeat module primitives
+# --------------------------------------------------------------------------- #
+
+
+def test_touch_heartbeat_creates_and_refreshes(tmp_path) -> None:
+    hb = str(tmp_path / "hb")
+    assert heartbeat.heartbeat_age_seconds(hb) is None
+
+    heartbeat.touch_heartbeat(hb)
+    assert os.path.exists(hb)
+
+    old = time.time() - 1000
+    os.utime(hb, (old, old))
+    heartbeat.touch_heartbeat(hb)
+    # mtime moved back to ~now, so age is small again.
+    assert heartbeat.heartbeat_age_seconds(hb) < 5
+
+
+def test_heartbeat_is_fresh_vs_stale(tmp_path) -> None:
+    hb = str(tmp_path / "hb")
+    heartbeat.touch_heartbeat(hb)
+    assert heartbeat.heartbeat_is_fresh(hb, max_age=60) is True
+
+    old = time.time() - 3600
+    os.utime(hb, (old, old))
+    assert heartbeat.heartbeat_is_fresh(hb, max_age=60) is False
+
+
+def test_record_successful_reconciliation_tracks_timestamp() -> None:
+    heartbeat._last_successful_reconciliation = None
+    assert heartbeat.last_successful_reconciliation() is None
+    heartbeat.record_successful_reconciliation(now=123.0)
+    assert heartbeat.last_successful_reconciliation() == 123.0
+
+
+# --------------------------------------------------------------------------- #
+# check-sync-heartbeat CLI subcommand exit codes
+# --------------------------------------------------------------------------- #
+
+
+def test_check_sync_heartbeat_fresh_exits_zero(tmp_path) -> None:
+    hb = tmp_path / "hb"
+    hb.write_text("")  # mtime == now
+    result = CliRunner().invoke(
+        cli_group,
+        ["check-sync-heartbeat", "--heartbeat-file", str(hb), "--max-age", "60"],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_check_sync_heartbeat_stale_exits_nonzero(tmp_path) -> None:
+    hb = tmp_path / "hb"
+    hb.write_text("")
+    old = time.time() - 3600
+    os.utime(hb, (old, old))
+    result = CliRunner().invoke(
+        cli_group,
+        ["check-sync-heartbeat", "--heartbeat-file", str(hb), "--max-age", "60"],
+    )
+    assert result.exit_code == 1
+    assert "stale" in result.output
+
+
+def test_check_sync_heartbeat_missing_exits_nonzero(tmp_path) -> None:
+    result = CliRunner().invoke(
+        cli_group,
+        [
+            "check-sync-heartbeat",
+            "--heartbeat-file",
+            str(tmp_path / "does-not-exist"),
+            "--max-age",
+            "60",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "missing" in result.output
+
+
+# --------------------------------------------------------------------------- #
+# reconcile loop: heartbeat advancement, error handling, timeouts
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture()
+def sync_env(mocker, tmp_path):
+    """Patch clients/helpers so the sync loop runs one bounded iteration."""
+    heartbeat._last_successful_reconciliation = None
+
+    kea = MagicMock()
+    kea.set_config = AsyncMock()
+    kea.close = AsyncMock()
+
+    redis = MagicMock()
+    redis.close = AsyncMock()
+
+    mocker.patch.object(cli.KeaClient, "from_config", return_value=kea)
+    mocker.patch.object(cli.RedisClient, "from_config", return_value=redis)
+    mocker.patch.object(cli, "inject_lease_db_config", side_effect=lambda config, version: config)
+
+    touch = mocker.patch.object(cli, "touch_heartbeat")
+    record = mocker.patch.object(cli, "record_successful_reconciliation")
+
+    # Break the infinite loop deterministically at the end-of-iteration sleep.
+    mocker.patch.object(cli.asyncio, "sleep", new=AsyncMock(side_effect=_StopLoop()))
+
+    return MagicMock(kea=kea, redis=redis, touch=touch, record=record, hb=str(tmp_path / "hb"))
+
+
+async def test_loop_advances_heartbeat_on_success(sync_env) -> None:
+    # Initial load + one loop load, both returning config unchanged.
+    sync_env.redis.load_kea_config = AsyncMock(side_effect=[CONFIG, CONFIG])
+
+    with pytest.raises(_StopLoop):
+        await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
+
+    # Seed touch + one loop-iteration touch.
+    assert sync_env.touch.call_count == 2
+    # Successful reconciliation recorded for both the initial set and the iteration.
+    assert sync_env.record.call_count == 2
+
+
+async def test_loop_advances_heartbeat_after_recoverable_error(sync_env) -> None:
+    before = _error_count()
+    # Initial load OK; the loop's load raises a recoverable error.
+    sync_env.redis.load_kea_config = AsyncMock(side_effect=[CONFIG, RuntimeError("redis blip")])
+
+    with pytest.raises(_StopLoop):
+        await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
+
+    # Heartbeat still advanced after the failed attempt (seed + loop finally).
+    assert sync_env.touch.call_count == 2
+    # But the failed iteration did NOT count as a successful reconciliation
+    # (only the initial set did) -- the two are tracked separately.
+    assert sync_env.record.call_count == 1
+    # The recoverable error was counted.
+    assert _error_count() == before + 1
+
+
+async def test_hung_dependency_is_bounded_and_heartbeat_advances(sync_env, mocker) -> None:
+    before = _error_count()
+    mocker.patch.object(cli, "REDIS_OP_TIMEOUT_SECONDS", 0.05)
+
+    calls = {"n": 0}
+
+    async def load(ip_version):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return CONFIG
+        # Simulate a Redis call that hangs forever; wait_for must bound it.
+        await asyncio.Event().wait()
+
+    sync_env.redis.load_kea_config = load
+
+    start = time.monotonic()
+    with pytest.raises(_StopLoop):
+        await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
+    elapsed = time.monotonic() - start
+
+    # The hung call was cancelled well within a second, not left to block.
+    assert elapsed < 2.0
+    # Heartbeat advanced despite the hang (seed + loop finally).
+    assert sync_env.touch.call_count == 2
+    # The timeout was surfaced as a recoverable error.
+    assert _error_count() == before + 1
+    # A hung reconcile is not a success.
+    assert sync_env.record.call_count == 1

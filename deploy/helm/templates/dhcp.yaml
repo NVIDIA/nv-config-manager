@@ -190,29 +190,29 @@ spec:
         - name: NV_CONFIG_MANAGER_INI
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathDhcp" . | quote }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
-        # Backstop livenessProbe for the case where the in-loop divergence
-        # check in _sync_kea_configuration_async can't recover (e.g. the
-        # asyncio loop wedges or the kea control socket is unresponsive long
-        # enough that get_config() keeps raising). On failure, kubelet
-        # recycles this container, which restarts the Python process and
-        # runs the unconditional "Run once" set_config() at startup --
-        # heals the deadlock even if the in-loop check is broken.
+        # Self-contained backstop livenessProbe for the case where the reconcile
+        # loop in _sync_kea_configuration_async wedges (e.g. a Redis/Kea call
+        # suspends the asyncio event loop). The loop touches a heartbeat file
+        # after every completed attempt; check-sync-heartbeat fails once that
+        # file goes stale. On failure kubelet recycles this container, which
+        # restarts the Python process and runs the "Run once" set_config() at
+        # startup -- healing the deadlock.
         #
-        # Probes the healthcheck sidecar's endpoint (same pod, same network
-        # namespace, so kubelet reaches port 9090 regardless of which
-        # container serves it -- same pattern as the kea container's probe).
+        # Unlike an HTTP probe against the shared healthcheck sidecar, this
+        # depends only on this container's own event-loop progress. A recoverable
+        # dependency outage (Redis/PostgreSQL/Kea) still advances the heartbeat,
+        # so it does NOT trigger a restart -- only a genuinely stalled loop does.
         #
-        # Thresholds are deliberately looser than the kea/healthcheck/api
-        # probes (failureThreshold * periodSeconds = 300s of failure) so the
-        # in-loop check (~10s recovery) wins under normal conditions and we
-        # only recycle the sidecar if the loop itself is the problem.
+        # Thresholds are deliberately looser than the kea/healthcheck/api probes
+        # (failureThreshold * periodSeconds = 300s of failure) so the in-loop
+        # recovery wins under normal conditions and we only recycle the sidecar
+        # if the loop itself is stuck.
         livenessProbe:
-          httpGet:
-            path: /healthcheck
-            port: 9090
+          exec:
+            command: ["nv-config-manager-dhcp-confgen", "check-sync-heartbeat"]
           initialDelaySeconds: 180
           periodSeconds: 30
-          timeoutSeconds: 5
+          timeoutSeconds: 10
           failureThreshold: 10
         resources:
           {{- toYaml .Values.networkDhcp.resources.confgen | nindent 10 }}

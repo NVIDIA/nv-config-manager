@@ -26,6 +26,13 @@ import click
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
+from nv_config_manager.dhcp.heartbeat import (
+    DEFAULT_HEARTBEAT_FILE,
+    DEFAULT_MAX_AGE_SECONDS,
+    heartbeat_age_seconds,
+    record_successful_reconciliation,
+    touch_heartbeat,
+)
 from nv_config_manager.dhcp.kea import KeaClient, KeaException
 from nv_config_manager.dhcp.kea_dhcp_confgen import generate_config, inject_lease_db_config
 from nv_config_manager.dhcp.metrics import DHCP_CACHE_REFRESH_ERRORS
@@ -34,6 +41,14 @@ from nv_config_manager.dhcp.redis import RedisClient
 
 configure_logging(service="dhcp")
 logger = get_logger(__name__, category=LogCategory.DHCP)
+
+# Bounded timeouts for the reconcile loop's dependency calls so a hung Redis or
+# Kea request can never suspend the event loop indefinitely (which would freeze
+# the heartbeat). On timeout the call raises TimeoutError, which the loop treats
+# as a recoverable error: it is logged/counted but the heartbeat still advances.
+# Overridable via env for operational tuning; read once at import.
+REDIS_OP_TIMEOUT_SECONDS = float(os.environ.get("CONFIG_SYNC_REDIS_TIMEOUT", "10"))
+KEA_OP_TIMEOUT_SECONDS = float(os.environ.get("CONFIG_SYNC_KEA_TIMEOUT", "15"))
 
 
 def _set_config_path(ini_file: str) -> None:
@@ -208,6 +223,15 @@ def refresh_kea_configuration(
     asyncio.run(_refresh_loop_async(ip_version, check, refresh_interval))
 
 
+async def _load_kea_config_with_timeout(
+    redis_client: RedisClient, ip_version: int
+) -> dict[str, Any] | None:
+    """Load the cached Kea config from Redis, bounded so a hung call cannot wedge the loop."""
+    return await asyncio.wait_for(
+        redis_client.load_kea_config(ip_version), timeout=REDIS_OP_TIMEOUT_SECONDS
+    )
+
+
 async def _apply_and_verify_kea_config(
     kea_client: KeaClient,
     config: dict[str, Any],
@@ -221,10 +245,17 @@ async def _apply_and_verify_kea_config(
     configuration that was rolled back or only partially applied surfaces as an
     error rather than being silently trusted. The verified effective hash is
     returned to track for subsequent drift detection.
+
+    Both Kea calls are bounded so a hung control channel cannot freeze the
+    heartbeat (and therefore the exec livenessProbe).
     """
-    applied_hash = await kea_client.set_config(config, version=ip_version)
+    applied_hash = await asyncio.wait_for(
+        kea_client.set_config(config, version=ip_version), timeout=KEA_OP_TIMEOUT_SECONDS
+    )
     try:
-        effective_hash = await kea_client.get_config_hash(version=ip_version)
+        effective_hash = await asyncio.wait_for(
+            kea_client.get_config_hash(version=ip_version), timeout=KEA_OP_TIMEOUT_SECONDS
+        )
     except (KeaException, TimeoutError) as exc:
         # config-set already succeeded, so the desired config is applied and
         # persisted -- only the verification read failed. get_config_hash
@@ -247,6 +278,7 @@ async def _sync_kea_configuration_async(
     ip_version: int,
     refresh_interval: int,
     debug: bool,
+    heartbeat_file: str = DEFAULT_HEARTBEAT_FILE,
 ) -> None:
     """Async implementation of sync configuration."""
     # Connect to the KEA server running in the same pod
@@ -255,13 +287,13 @@ async def _sync_kea_configuration_async(
     redis_client = RedisClient.from_config(ini_config)
 
     try:
-        config = await redis_client.load_kea_config(ip_version)
+        config = await _load_kea_config_with_timeout(redis_client, ip_version)
         while config is None:
             logger.info(
                 f"Waiting for KEA DHCP{ip_version} Configuration to be available in Redis..."
             )
             await asyncio.sleep(1)
-            config = await redis_client.load_kea_config(ip_version)
+            config = await _load_kea_config_with_timeout(redis_client, ip_version)
 
         # Inject Lease DB details after loading from Redis
         # so that secrets are not stored in the Redis cache
@@ -271,6 +303,10 @@ async def _sync_kea_configuration_async(
         # captures a fresh effective hash, which keeps a config-sync restart safe.
         logger.info(f"Setting initial KEA DHCPv{ip_version} Configuration from Redis.")
         expected_hash = await _apply_and_verify_kea_config(kea_client, config, ip_version)
+        record_successful_reconciliation()
+        # Seed the heartbeat immediately so the liveness probe has a fresh
+        # marker before the first monitoring iteration completes.
+        touch_heartbeat(heartbeat_file)
 
         if refresh_interval:
             logger.info(
@@ -280,7 +316,7 @@ async def _sync_kea_configuration_async(
             previous_config = config
             while True:
                 try:
-                    new_config = await redis_client.load_kea_config(ip_version)
+                    new_config = await _load_kea_config_with_timeout(redis_client, ip_version)
                     if new_config is None:
                         logger.info(
                             "No configuration found in Redis, waiting for configuration to be available..."
@@ -294,12 +330,16 @@ async def _sync_kea_configuration_async(
                             kea_client, new_config, ip_version
                         )
                         previous_config = new_config
+                        record_successful_reconciliation()
                     else:
                         # Redis is unchanged, but KEA (e.g. the Kea container) may
                         # have restarted from its bootstrap config while this
                         # sidecar kept running. Compare KEA's effective config hash
                         # against the last applied hash and reapply on drift.
-                        running_hash = await kea_client.get_config_hash(version=ip_version)
+                        running_hash = await asyncio.wait_for(
+                            kea_client.get_config_hash(version=ip_version),
+                            timeout=KEA_OP_TIMEOUT_SECONDS,
+                        )
                         if running_hash != expected_hash:
                             logger.warning(
                                 "KEA running configuration hash (%s) does not match the "
@@ -313,9 +353,24 @@ async def _sync_kea_configuration_async(
                             )
                         elif debug:
                             logger.info("No configuration changes detected.")
+                        # Only a completed reconcile with config present counts
+                        # as a *successful* reconciliation (distinct from the
+                        # loop-progress heartbeat below).
+                        record_successful_reconciliation()
                 except Exception as exc:
+                    # Recoverable dependency errors (Redis/PostgreSQL/Kea,
+                    # including bounded-timeout TimeoutError) are logged and
+                    # counted but MUST NOT stop the heartbeat: the event loop
+                    # is still making progress, so kubelet should not restart us
+                    # just because a dependency is temporarily unreachable.
                     DHCP_CACHE_REFRESH_ERRORS.labels(ip_version=str(ip_version)).inc()
                     logger.error(f"Error refreshing the KEA config: {exc}")
+                finally:
+                    # Heartbeat == event-loop progress. Advances after every
+                    # completed attempt, success or recoverable failure. A
+                    # genuinely wedged iteration never reaches here, so the file
+                    # goes stale and the exec livenessProbe recycles the sidecar.
+                    touch_heartbeat(heartbeat_file)
                 if debug:
                     logger.info(f"Sleeping {refresh_interval}s...")
                 await asyncio.sleep(refresh_interval)
@@ -338,11 +393,20 @@ async def _sync_kea_configuration_async(
     default=0,
     help="interval in seconds at which to run the refresh, if unset, refresh will only be run once",
 )
+@click.option(
+    "--heartbeat-file",
+    default=DEFAULT_HEARTBEAT_FILE,
+    envvar="CONFIG_SYNC_HEARTBEAT_FILE",
+    show_envvar=True,
+    show_default=True,
+    help="path to the liveness heartbeat file touched after each reconcile attempt.",
+)
 @click.option("--debug", is_flag=True, default=False, help="display tracebacks in error output.")
 def sync_kea_configuration(
     ini_file: str,
     ip_version: int,
     refresh_interval: int,
+    heartbeat_file: str,
     debug: bool,
 ) -> None:
     """Sync the Redis configuration to the KEA DHCP Server."""
@@ -350,7 +414,47 @@ def sync_kea_configuration(
     if not debug:
         sys.excepthook = _exception_handler
 
-    asyncio.run(_sync_kea_configuration_async(ip_version, refresh_interval, debug))
+    asyncio.run(_sync_kea_configuration_async(ip_version, refresh_interval, debug, heartbeat_file))
+
+
+@cli.command("check-sync-heartbeat")
+@click.option(
+    "--heartbeat-file",
+    default=DEFAULT_HEARTBEAT_FILE,
+    envvar="CONFIG_SYNC_HEARTBEAT_FILE",
+    show_envvar=True,
+    show_default=True,
+    help="path to the liveness heartbeat file written by sync-kea-configuration.",
+)
+@click.option(
+    "--max-age",
+    "max_age_seconds",
+    type=float,
+    default=DEFAULT_MAX_AGE_SECONDS,
+    envvar="CONFIG_SYNC_HEARTBEAT_MAX_AGE",
+    show_envvar=True,
+    show_default=True,
+    help="maximum allowed heartbeat age in seconds before it is considered stale.",
+)
+def check_sync_heartbeat(heartbeat_file: str, max_age_seconds: float) -> None:
+    """Liveness check for the config-sync loop.
+
+    Exits 0 only when the heartbeat file exists and its age is below the
+    threshold; exits non-zero when the heartbeat is stale or missing. Designed
+    to back an exec livenessProbe so a wedged reconcile loop is recycled while a
+    mere dependency outage (which still advances the heartbeat) is not.
+    """
+    age = heartbeat_age_seconds(heartbeat_file)
+    if age is None:
+        click.echo(f"heartbeat missing: {heartbeat_file}", err=True)
+        sys.exit(1)
+    if age > max_age_seconds:
+        click.echo(
+            f"heartbeat stale: age={age:.1f}s > max-age={max_age_seconds:.1f}s ({heartbeat_file})",
+            err=True,
+        )
+        sys.exit(1)
+    click.echo(f"heartbeat ok: age={age:.1f}s <= max-age={max_age_seconds:.1f}s")
 
 
 def main() -> None:
