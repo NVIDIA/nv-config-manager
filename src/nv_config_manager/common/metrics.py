@@ -45,7 +45,8 @@ JWT-SVID (outbound credential freshness / liveness):
 * ``nv_config_manager_spiffe_jwt_svid_readable`` -- ``1`` if the JWT-SVID file
   could be read and decoded at scrape time, else ``0``.
 * ``nv_config_manager_spiffe_jwt_svid_expiry_timestamp_seconds`` -- unix
-  timestamp of the JWT-SVID ``exp`` claim.  Alert when this approaches now:
+  timestamp of the JWT-SVID ``exp`` claim, labelled by ``trust_domain``
+  (derived from the SPIFFE ID in ``sub``).  Alert when this approaches now:
   a healthy deployment shows a sawtooth well in the future, a dead
   spiffe-helper decays through the current time.
 
@@ -94,6 +95,20 @@ def _extract_jwks_keys(raw: str) -> list[dict[str, Any]]:
         domain_jwks = json.loads(base64.b64decode(encoded_jwks))
         merged.extend(domain_jwks.get("keys", []))
     return merged
+
+
+def _trust_domain_from_sub(sub: str) -> str:
+    """Extract the trust domain from a SPIFFE ID (``spiffe://<domain>/<path>``).
+
+    Returns a low-cardinality label value: the trust domain only, never the
+    full workload path, so the metric stays bounded and does not leak the
+    per-workload identity.  Falls back to ``"unknown"`` for a missing or
+    malformed ``sub``.
+    """
+    if not sub.startswith("spiffe://"):
+        return "unknown"
+    domain = sub[len("spiffe://") :].split("/", 1)[0]
+    return domain or "unknown"
 
 
 def _earliest_cert_expiry(keys: list[dict[str, Any]]) -> float | None:
@@ -179,6 +194,7 @@ class SpiffeCredentialCollector(Collector):
             token = Path(spiffe.jwt_svid_path).read_text().strip()
             claims = pyjwt.decode(token, options={"verify_signature": False})
             exp = claims["exp"]
+            trust_domain = _trust_domain_from_sub(str(claims.get("sub", "")))
         except Exception:
             logger.debug(
                 "SPIFFE JWT-SVID unreadable/undecodable at %s",
@@ -195,8 +211,9 @@ class SpiffeCredentialCollector(Collector):
         expiry = GaugeMetricFamily(
             f"{_SVID_PREFIX}_expiry_timestamp_seconds",
             "Unix timestamp of the current SPIFFE JWT-SVID 'exp' claim.",
+            labels=["trust_domain"],
         )
-        expiry.add_metric([], float(exp))
+        expiry.add_metric([trust_domain], float(exp))
         yield expiry
 
 

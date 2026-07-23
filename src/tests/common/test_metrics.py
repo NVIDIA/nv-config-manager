@@ -65,6 +65,15 @@ def _samples(collector: SpiffeCredentialCollector) -> dict[str, float]:
     return out
 
 
+def _sample_labels(collector: SpiffeCredentialCollector, name: str) -> dict[str, str]:
+    """Return the labels of the (single) sample named ``name``."""
+    for family in collector.collect():
+        for sample in family.samples:
+            if sample.name == name:
+                return dict(sample.labels)
+    raise AssertionError(f"no sample named {name!r}")
+
+
 def _raw_jwks(num_keys: int = 2) -> str:
     keys = [{"kty": "RSA", "kid": f"k{i}", "n": "abc", "e": "AQAB"} for i in range(num_keys)]
     return json.dumps({"keys": keys})
@@ -170,9 +179,9 @@ def test_earliest_cert_expiry_emitted(monkeypatch, tmp_path):
 # ── JWT-SVID (outbound credential freshness) ──────────────────────────────
 
 
-def _write_svid(path, exp: datetime) -> None:
+def _write_svid(path, exp: datetime, sub: str = "spiffe://example.org/ns/x/sa/y") -> None:
     token = pyjwt.encode(
-        {"sub": "spiffe://td/ns/x/sa/y", "exp": int(exp.timestamp())},
+        {"sub": sub, "exp": int(exp.timestamp())},
         "x" * 32,
         algorithm="HS256",
     )
@@ -184,14 +193,32 @@ def test_jwt_svid_expiry_emitted(monkeypatch, tmp_path):
     bundle.write_text(_raw_jwks(num_keys=1))
     svid = tmp_path / "jwt-svid"
     exp = datetime.now(UTC) + timedelta(minutes=30)
-    _write_svid(svid, exp)
+    _write_svid(svid, exp, sub="spiffe://example.org/ns/x/sa/y")
 
     spiffe = SpiffeConfig(jwks_uri=str(bundle), audiences=["spiffe://td"], jwt_svid_path=str(svid))
     _use_spiffe_config(monkeypatch, spiffe)
 
-    samples = _samples(SpiffeCredentialCollector())
+    collector = SpiffeCredentialCollector()
+    samples = _samples(collector)
     assert samples[f"{_SVID}_readable"] == 1.0
     assert samples[f"{_SVID}_expiry_timestamp_seconds"] == pytest.approx(exp.timestamp(), abs=1.0)
+    # trust_domain label carries only the domain, never the workload path.
+    assert _sample_labels(collector, f"{_SVID}_expiry_timestamp_seconds") == {
+        "trust_domain": "example.org"
+    }
+
+
+def test_jwt_svid_trust_domain_unknown_for_malformed_sub(monkeypatch, tmp_path):
+    svid = tmp_path / "jwt-svid"
+    exp = datetime.now(UTC) + timedelta(minutes=30)
+    _write_svid(svid, exp, sub="not-a-spiffe-id")
+    spiffe = SpiffeConfig(
+        jwks_uri="https://spire:8443/keys", audiences=["spiffe://td"], jwt_svid_path=str(svid)
+    )
+    _use_spiffe_config(monkeypatch, spiffe)
+
+    labels = _sample_labels(SpiffeCredentialCollector(), f"{_SVID}_expiry_timestamp_seconds")
+    assert labels == {"trust_domain": "unknown"}
 
 
 def test_jwt_svid_unreadable(monkeypatch, tmp_path):
