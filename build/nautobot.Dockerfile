@@ -46,6 +46,7 @@ COPY nautobot-app-overlays/nautobot_app_overlays/ /opt/nautobot/nautobot-app-ove
 COPY nautobot-nv-config-manager/pyproject.toml nautobot-nv-config-manager/README.md /opt/nautobot/nautobot-nv-config-manager/
 COPY nautobot-nv-config-manager/nv_config_manager/ /opt/nautobot/nautobot-nv-config-manager/nv_config_manager/
 COPY nautobot_config.py /opt/nautobot/nautobot_config.py
+COPY nv_config_manager_wsgi.py /opt/nautobot/nv_config_manager_wsgi.py
 COPY nv_config_manager_jobs /opt/nautobot/jobs/nv_config_manager_jobs
 COPY nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
 
@@ -69,7 +70,7 @@ RUN mkdir -p /opt/nautobot/static \
     /opt/nautobot/media/image-attachments \
     /opt/nautobot/git \
     /opt/nautobot/.cache && \
-    chmod -R a+rX /opt/nautobot/.venv /opt/nautobot/nautobot_config.py /opt/nautobot/nv_config_manager_auth
+    chmod -R a+rX /opt/nautobot/.venv /opt/nautobot/nautobot_config.py /opt/nautobot/nv_config_manager_wsgi.py /opt/nautobot/nv_config_manager_auth
 
 # =============================================================================
 # Runtime stage - NVIDIA distroless Python
@@ -86,6 +87,7 @@ WORKDIR /opt/nautobot
 # Copy virtual environment and application
 COPY --from=builder /opt/nautobot/.venv /opt/nautobot/.venv
 COPY --from=builder /opt/nautobot/nautobot_config.py /opt/nautobot/nautobot_config.py
+COPY --from=builder /opt/nautobot/nv_config_manager_wsgi.py /opt/nautobot/nv_config_manager_wsgi.py
 COPY --from=builder /opt/nautobot/nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
 COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/static /opt/nautobot/static
 COPY --from=builder --chown=1000:1000 /opt/nautobot/media /opt/nautobot/media
