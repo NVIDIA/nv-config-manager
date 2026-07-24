@@ -959,6 +959,14 @@ class TestImagesInHelmValues:
         assert (
             images["redis"]["repository"] == "registry.example.com/nv-config-manager/library/redis"
         )
+        # The optional prometheus-nats-exporter sidecar (nautobotNats.metrics) must
+        # also be rewritten to the mirror; otherwise an air-gapped cluster with
+        # metrics enabled tries to pull it from docker.io and ImagePullBackOffs.
+        assert (
+            images["natsExporter"]["repository"]
+            == "registry.example.com/nv-config-manager/natsio/prometheus-nats-exporter"
+        )
+        assert images["natsExporter"]["tag"] == "0.20.1"
         assert (
             images["temporalServer"]["repository"]
             == "registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal"
