@@ -16,11 +16,13 @@
 
 import asyncio
 import logging
-import os
 import threading
+from configparser import ConfigParser
 from time import monotonic
 
 from prometheus_client import Gauge, Histogram
+
+from nv_config_manager.common.config import load_config
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +42,21 @@ DOWNLOAD_ADMISSION_WAIT_SECONDS = Histogram(
 )
 
 
-def get_positive_int_env(name: str, default: int) -> int:
-    """Read a positive integer environment variable, falling back safely."""
-    value = os.getenv(name)
-    if value is None:
-        return default
+def get_positive_int_config(
+    name: str,
+    default: int,
+    config: ConfigParser | None = None,
+) -> int:
+    """Read a positive integer from the ZTP INI section, falling back safely."""
+    app_config = config if config is not None else load_config()
     try:
-        parsed = int(value)
+        parsed = app_config.getint("ztp", name, fallback=default)
     except ValueError:
-        logger.warning("Invalid %s=%r; using default %d", name, value, default)
+        value = app_config.get("ztp", name, fallback=None)
+        logger.warning("Invalid [ztp] %s=%r; using default %d", name, value, default)
         return default
     if parsed <= 0:
-        logger.warning("Invalid %s=%r; using default %d", name, value, default)
+        logger.warning("Invalid [ztp] %s=%r; using default %d", name, parsed, default)
         return default
     return parsed
 

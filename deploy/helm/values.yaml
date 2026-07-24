@@ -1309,9 +1309,10 @@ networkZtp:
   # ---------------------------------------------------------------------------
   # Download configuration
   # ---------------------------------------------------------------------------
-  # These bounds are per ZTP container. They prevent enough large streams from
-  # being active at once to exhaust the container while retaining good fleet
-  # provisioning throughput. Local size profiles lower the limits below.
+  # These values render into the unified INI's [ztp] section. The bounds are
+  # per ZTP container and prevent enough large streams from being active at
+  # once to exhaust it while retaining good fleet provisioning throughput.
+  # Local size profiles lower the limits below.
   downloads:
     http:
       # Largest read issued to object storage for one HTTP response.

@@ -504,6 +504,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           allowed_groups = {{ $root.Values.networkZtp.gateway.allowedGroups | join "," }}
           {{- end }}
 {{ include "nv-config-manager.networkZtpIniStorageConfig" $root | indent 10 }}
+{{ include "nv-config-manager.networkZtpIniDownloadConfig" $root | indent 10 }}
 {{ include "nv-config-manager.vaultAgent.ztpS3IniConfig" $root | indent 10 }}
 
           {{- end }}

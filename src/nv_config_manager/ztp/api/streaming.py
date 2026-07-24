@@ -27,7 +27,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from nv_config_manager.common.log import LogCategory, escape_log_newlines, get_logger
-from nv_config_manager.ztp.download_control import AsyncDownloadLimiter, get_positive_int_env
+from nv_config_manager.ztp.download_control import AsyncDownloadLimiter, get_positive_int_config
 from nv_config_manager.ztp.storage import (
     ObjectStorageClient,
     ObjectStorageDownload,
@@ -38,9 +38,9 @@ from nv_config_manager.ztp.storage import (
 
 logger = get_logger(__name__, category=LogCategory.ZTP)
 
-HTTP_STREAM_CHUNK_BYTES = get_positive_int_env("ZTP_HTTP_STREAM_CHUNK_BYTES", 64 * 1024 * 1024)
+HTTP_STREAM_CHUNK_BYTES = get_positive_int_config("http_stream_chunk_bytes", 64 * 1024 * 1024)
 HTTP_DOWNLOAD_LIMITER = AsyncDownloadLimiter(
-    get_positive_int_env("ZTP_HTTP_MAX_CONCURRENT_DOWNLOADS", 2),
+    get_positive_int_config("http_max_concurrent_downloads", 2),
     protocol="http",
 )
 

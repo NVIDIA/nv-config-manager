@@ -58,7 +58,7 @@ from nv_config_manager.common.log import (
     escape_log_newlines,
     get_logger,
 )
-from nv_config_manager.ztp.download_control import ThreadDownloadLimiter, get_positive_int_env
+from nv_config_manager.ztp.download_control import ThreadDownloadLimiter, get_positive_int_config
 from nv_config_manager.ztp.nautobot import NautobotClient
 from nv_config_manager.ztp.storage import (
     ObjectStorageClient,
@@ -75,11 +75,11 @@ shutdown_event = threading.Event()
 
 # SFTP clients normally issue small, sequential reads. Keeping one bounded range
 # in memory avoids a full-object buffer while limiting S3 requests for large files.
-SFTP_OBJECT_STORAGE_READ_AHEAD_BYTES = get_positive_int_env(
-    "ZTP_SFTP_READ_AHEAD_BYTES", 16 * 1024 * 1024
+SFTP_OBJECT_STORAGE_READ_AHEAD_BYTES = get_positive_int_config(
+    "sftp_read_ahead_bytes", 16 * 1024 * 1024
 )
 SFTP_DOWNLOAD_LIMITER = ThreadDownloadLimiter(
-    get_positive_int_env("ZTP_SFTP_MAX_CONCURRENT_DOWNLOADS", 8),
+    get_positive_int_config("sftp_max_concurrent_downloads", 8),
     protocol="sftp",
 )
 
@@ -778,7 +778,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8222, level: str = "INFO") -
     # Set paramiko's log level to WARN to reduce noise
     logging.getLogger("paramiko").setLevel(logging.WARNING)
 
-    metrics_port = get_positive_int_env("ZTP_SFTP_METRICS_PORT", 9100)
+    metrics_port = get_positive_int_config("sftp_metrics_port", 9100)
     start_http_server(metrics_port, addr="0.0.0.0")  # nosec: B104
     logger.info("SFTP metrics server listening on 0.0.0.0:%d", metrics_port)
 
