@@ -14,6 +14,7 @@
 # limitations under the License.
 """S3 Proxy Client."""
 
+import inspect
 import os
 from time import monotonic
 from types import TracebackType
@@ -319,8 +320,10 @@ class S3Client(ObjectStorageClient):
             get_kwargs["IfMatch"] = revision
 
         started_at = monotonic()
+        response_body: Any = None
         try:
             response = await self._client.get_object(**get_kwargs)
+            response_body = response.get("Body")
             content_length = self._content_length(response, "GetObject", key)
             if total_length is None:
                 total_length = content_length
@@ -350,6 +353,25 @@ class S3Client(ObjectStorageClient):
                 ) from exc
             raise S3Exception(exc) from exc
         except Exception:
+            if response_body is not None:
+                close_method = getattr(response_body, "aclose", None)
+                if not callable(close_method):
+                    close_method = getattr(response_body, "close", None)
+                if callable(close_method):
+                    try:
+                        close_result = close_method()
+                        if inspect.isawaitable(close_result):
+                            await close_result
+                    except Exception:
+                        logger.exception(
+                            "Failed to close S3 response body after validation failure",
+                            extra=self._s3_log_extra(
+                                operation="GetObject",
+                                key=key,
+                                duration_seconds=monotonic() - started_at,
+                                range_header=range_header,
+                            ),
+                        )
             logger.exception(
                 "S3 GetObject failed before the response body could be streamed",
                 extra=self._s3_log_extra(

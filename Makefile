@@ -801,22 +801,22 @@ docker-build-temporal-multiarch: docker-buildx-setup ## Builds and pushes multi-
 # Service run targets (for local development without k8s)
 # =============================================================================
 run-ztp-api:
-	uv run uvicorn nv_config_manager.ztp.api.main:app --reload --port 8080
+	uv run uvicorn nv_config_manager.ztp.api.main:app --loop asyncio --reload --port 8080
 
 run-dhcp-api:
-	uv run uvicorn nv_config_manager.dhcp.api:app --reload --port 8081
+	uv run uvicorn nv_config_manager.dhcp.api:app --loop asyncio --reload --port 8081
 
 run-temporal-api:
-	uv run uvicorn nv_config_manager.temporal.api.main:app --reload --port 8082
+	uv run uvicorn nv_config_manager.temporal.api.main:app --loop asyncio --reload --port 8082
 
 run-temporal-worker:
 	uv run python -m nv_config_manager.temporal.worker.main
 
 run-render-api:
-	uv run uvicorn nv_config_manager.render.api.main:app --reload --port 8083
+	uv run uvicorn nv_config_manager.render.api.main:app --loop asyncio --reload --port 8083
 
 run-config-store-api:
-	uv run uvicorn nv_config_manager.config_store.api.main:app --reload --port 8084
+	uv run uvicorn nv_config_manager.config_store.api.main:app --loop asyncio --reload --port 8084
 
 # Database migrations
 db-migrate:

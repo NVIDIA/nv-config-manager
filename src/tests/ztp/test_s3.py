@@ -406,6 +406,53 @@ async def test_get_object_range_rejects_changed_revision():
 
 
 @pytest.mark.asyncio
+async def test_get_object_closes_body_when_content_length_is_invalid():
+    """A response body is closed when GetObject metadata cannot be validated."""
+    client = S3Client()
+    client._client_instance = MockBoto3S3Client()
+    body = MagicMock(spec=["close"])
+    client._client.get_object = AsyncMock(
+        return_value={
+            "Body": body,
+            "ContentLength": "invalid",
+        }
+    )
+
+    with pytest.raises(S3Exception, match="invalid ContentLength"):
+        await client.get_object("Cumulus Linux", "5.7.0", "image.bin")
+
+    body.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_get_object_closes_body_when_range_length_is_invalid():
+    """A response body is asynchronously closed when its range length is wrong."""
+    client = S3Client()
+    client._client_instance = MockBoto3S3Client()
+    body = MagicMock(spec=["aclose", "close"])
+    body.aclose = AsyncMock()
+    client._client.get_object = AsyncMock(
+        return_value={
+            "Body": body,
+            "ContentLength": 3,
+        }
+    )
+
+    with pytest.raises(S3Exception, match="returned 3 bytes"):
+        await client.get_object(
+            "Cumulus Linux",
+            "5.7.0",
+            "image.bin",
+            range_header="bytes=2-5",
+            known_total_length=len(MOCK_CONTENT),
+            if_match='"revision-1"',
+        )
+
+    body.aclose.assert_awaited_once_with()
+    body.close.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_checksum():
     client = S3Client()
     client._client_instance = MockBoto3S3Client()

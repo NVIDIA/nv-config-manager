@@ -51,6 +51,7 @@ def main() -> None:
         timeout_keep_alive=75,
         limit_concurrency=1000,
         backlog=2048,
+        loop="asyncio",
     )
 
 

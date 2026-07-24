@@ -315,4 +315,5 @@ if __name__ == "__main__":
         ssl_certfile=os.environ.get("SSL_CERTFILE"),
         ssl_keyfile=os.environ.get("SSL_KEYFILE"),
         log_level=os.environ.get("LOG_LEVEL", "info"),
+        loop="asyncio",
     )

@@ -125,4 +125,5 @@ def main() -> None:
         host="0.0.0.0",
         port=9000,
         log_config=None,
+        loop="asyncio",
     )

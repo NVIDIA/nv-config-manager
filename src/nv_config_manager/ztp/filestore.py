@@ -170,9 +170,10 @@ class FileStoreClient(ObjectStorageClient):
         """Open a file-backed object, seeking to the requested byte range if present."""
 
         def _open_file() -> tuple[BinaryIO, int, Any, str]:
-            if not file_path.exists():
-                raise FileStoreNotFoundException(f"File not found: {file_path}")
-            file_handle = open(file_path, mode="rb")
+            try:
+                file_handle = open(file_path, mode="rb")
+            except FileNotFoundError as exc:
+                raise FileStoreNotFoundException(f"File not found: {file_path}") from exc
             try:
                 stat = os.fstat(file_handle.fileno())
                 total_length = stat.st_size

@@ -18,6 +18,7 @@ import io
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -240,6 +241,20 @@ async def test_get_object_not_found(temp_storage_dir, monkeypatch):
 
     with pytest.raises(FileStoreNotFoundException, match="File not found"):
         await client.get_object("cumulus-linux", "5.9.0", "nonexistent.txt")
+
+
+@pytest.mark.asyncio
+async def test_get_object_deleted_while_opening(temp_storage_dir, monkeypatch):
+    """A file removed immediately before open is still reported as not found."""
+    monkeypatch.setenv("FILE_STORE_PATH", temp_storage_dir)
+    client = FileStoreClient()
+    await client.connect()
+
+    with (
+        patch("builtins.open", side_effect=FileNotFoundError),
+        pytest.raises(FileStoreNotFoundException, match="File not found"),
+    ):
+        await client.get_object("cumulus-linux", "5.9.0", "config.txt")
 
 
 @pytest.mark.asyncio
