@@ -30,6 +30,11 @@ from nv_config_manager.ztp.s3 import (
     S3ExistsException,
     S3NotFoundException,
 )
+from nv_config_manager.ztp.storage import (
+    ObjectStorageByteRange,
+    ObjectStorageDownload,
+    ObjectStorageRangeNotSatisfiableException,
+)
 
 SSO_HEADERS = {"X-Auth-Request-Email": "test@nvidia.com"}
 
@@ -196,7 +201,14 @@ def test_device_v1_firmware(mock_device_data, mock_not_found_data, client):
         mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
         mock_s3_instance.close = AsyncMock(return_value=None)
         mock_s3_instance.get_firmware_object = AsyncMock(
-            return_value=("testfname", mock_streaming_body)
+            return_value=ObjectStorageDownload(
+                filename="testfname",
+                file_handle=mock_streaming_body,
+                content_length=len(mock_content),
+                total_length=len(mock_content),
+                backend="s3",
+                object_key="cumulus-linux/testfname",
+            )
         )
         mock_s3_class.return_value = mock_s3_instance
 
@@ -220,7 +232,14 @@ def test_device_v1_firmware(mock_device_data, mock_not_found_data, client):
         mock_streaming_body2.iter_chunks = async_iter_chunks2
         mock_streaming_body = mock_streaming_body2
         mock_s3_instance.get_firmware_object = AsyncMock(
-            return_value=("testfname", mock_streaming_body)
+            return_value=ObjectStorageDownload(
+                filename="testfname",
+                file_handle=mock_streaming_body,
+                content_length=len(mock_content),
+                total_length=len(mock_content),
+                backend="s3",
+                object_key="cumulus-linux/testfname",
+            )
         )
 
         with patch(
@@ -449,7 +468,14 @@ def test_v1_firmware(client):
     mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
     mock_s3_instance.close = AsyncMock(return_value=None)
     mock_s3_instance.get_firmware_object = AsyncMock(
-        return_value=("testfname", mock_streaming_body)
+        return_value=ObjectStorageDownload(
+            filename="testfname",
+            file_handle=mock_streaming_body,
+            content_length=len(mock_content),
+            total_length=len(mock_content),
+            backend="s3",
+            object_key="arista_eos/testfname",
+        )
     )
     mock_s3_class.return_value = mock_s3_instance
 
@@ -522,7 +548,14 @@ def test_v1_files_get(client):
     mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
     mock_s3_instance.close = AsyncMock(return_value=None)
     mock_s3_instance.get_object = AsyncMock(
-        return_value=("testfname\r\nFORGED", mock_streaming_body)
+        return_value=ObjectStorageDownload(
+            filename="testfname\r\nFORGED",
+            file_handle=mock_streaming_body,
+            content_length=len(mock_content),
+            total_length=len(mock_content),
+            backend="s3",
+            object_key="arista_eos/testfname",
+        )
     )
     mock_s3_class.return_value = mock_s3_instance
 
@@ -539,7 +572,9 @@ def test_v1_files_get(client):
     assert rsp.headers["content-disposition"] == (
         "attachment; filename=\"testfnameFORGED\"; filename*=UTF-8''testfname%0D%0AFORGED"
     )
-    mock_logger.info.assert_called_once_with("Streaming file: %s", "testfname\r\nFORGED")
+    assert rsp.headers["content-length"] == str(len(mock_content))
+    assert rsp.headers["accept-ranges"] == "bytes"
+    assert any(call.args[0] == "Storage stream opened" for call in mock_logger.info.call_args_list)
 
     # Object not found
     mock_s3_instance.get_object = AsyncMock(side_effect=S3NotFoundException())
@@ -549,6 +584,73 @@ def test_v1_files_get(client):
     ):
         rsp = client.get("/v1/files/arista_eos/4.29.3M/image.bin", headers=SSO_HEADERS)
         assert rsp.status_code == 404
+
+
+def test_v1_files_get_range(client):
+    """A single range is forwarded to storage and returned as a 206 response."""
+    mock_content = b"3456"
+    mock_streaming_body = MagicMock()
+
+    async def async_iter_chunks(chunk_size):
+        yield mock_content
+
+    mock_streaming_body.iter_chunks = async_iter_chunks
+    mock_s3_instance = MagicMock()
+    mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
+    mock_s3_instance.close = AsyncMock(return_value=None)
+    mock_s3_instance.get_object = AsyncMock(
+        return_value=ObjectStorageDownload(
+            filename="image.bin",
+            file_handle=mock_streaming_body,
+            content_length=len(mock_content),
+            total_length=10,
+            backend="s3",
+            object_key="arista_eos/4.29.3M/image.bin",
+            byte_range=ObjectStorageByteRange(start=3, end=6),
+        )
+    )
+
+    with patch(
+        "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
+    ):
+        rsp = client.get(
+            "/v1/files/arista_eos/4.29.3M/image.bin",
+            headers={**SSO_HEADERS, "Range": "bytes=3-6"},
+        )
+
+    assert rsp.status_code == 206
+    assert rsp.content == mock_content
+    assert rsp.headers["content-length"] == "4"
+    assert rsp.headers["content-range"] == "bytes 3-6/10"
+    assert rsp.headers["accept-ranges"] == "bytes"
+    mock_s3_instance.get_object.assert_awaited_once_with(
+        "arista_eos",
+        "4.29.3M",
+        "image.bin",
+        range_header="bytes=3-6",
+    )
+
+
+def test_v1_files_get_unsatisfiable_range(client):
+    """An unsatisfiable storage range becomes a standards-compliant HTTP 416."""
+    mock_s3_instance = MagicMock()
+    mock_s3_instance.connect = AsyncMock(return_value=mock_s3_instance)
+    mock_s3_instance.close = AsyncMock(return_value=None)
+    mock_s3_instance.get_object = AsyncMock(
+        side_effect=ObjectStorageRangeNotSatisfiableException(total_length=10)
+    )
+
+    with patch(
+        "nv_config_manager.ztp.api.files_v1.get_storage_client", return_value=mock_s3_instance
+    ):
+        rsp = client.get(
+            "/v1/files/arista_eos/4.29.3M/image.bin",
+            headers={**SSO_HEADERS, "Range": "bytes=10-"},
+        )
+
+    assert rsp.status_code == 416
+    assert rsp.headers["accept-ranges"] == "bytes"
+    assert rsp.headers["content-range"] == "bytes */10"
 
 
 def test_v1_files_checksum(client):

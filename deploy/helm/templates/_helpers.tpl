@@ -1346,6 +1346,20 @@ s3_region = {{ $s3.region }}
 {{ end -}}
 {{- end -}}
 
+{{/*
+Network ZTP download settings rendered into the main INI.
+*/}}
+{{- define "nv-config-manager.networkZtpIniDownloadConfig" -}}
+{{- $downloads := .Values.networkZtp.downloads | default dict -}}
+{{- $http := $downloads.http | default dict -}}
+{{- $sftp := $downloads.sftp | default dict -}}
+http_stream_chunk_bytes = {{ $http.chunkSizeBytes | default 67108864 | int }}
+http_max_concurrent_downloads = {{ $http.maxConcurrentDownloads | default 16 | int }}
+sftp_read_ahead_bytes = {{ $sftp.readAheadBytes | default 16777216 | int }}
+sftp_max_concurrent_downloads = {{ $sftp.maxConcurrentDownloads | default 32 | int }}
+sftp_metrics_port = {{ $sftp.metricsPort | default 9100 | int }}
+{{- end -}}
+
 {{- define "nv-config-manager.networkZtpExistingSecretIniConfig" -}}
 {{- if eq (include "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" .) "true" -}}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}

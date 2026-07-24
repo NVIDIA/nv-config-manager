@@ -15,6 +15,7 @@
 import argparse
 import asyncio
 import errno
+import inspect
 import io
 import logging
 import os
@@ -22,7 +23,9 @@ import signal
 import socket
 import threading
 import time
+from collections.abc import Callable
 from typing import Any, cast
+from uuid import uuid4
 
 import paramiko
 from paramiko import (
@@ -45,21 +48,40 @@ from paramiko.sftp import (
     SFTP_PERMISSION_DENIED,
 )
 from paramiko.transport import Transport
+from prometheus_client import start_http_server
 
 from nv_config_manager.common.config import get_storage_client
 from nv_config_manager.common.log import (
     EscapingLoggerAdapter,
     LogCategory,
     configure_logging,
+    escape_log_newlines,
     get_logger,
 )
+from nv_config_manager.ztp.download_control import ThreadDownloadLimiter, get_positive_int_config
 from nv_config_manager.ztp.nautobot import NautobotClient
-from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
+from nv_config_manager.ztp.storage import (
+    ObjectStorageClient,
+    ObjectStorageDownload,
+    ObjectStorageException,
+    ObjectStorageNotFoundException,
+    record_storage_download,
+)
 
 logger = get_logger(__name__, category=LogCategory.ZTP)
 
 # Global flag to control server shutdown
 shutdown_event = threading.Event()
+
+# SFTP clients normally issue small, sequential reads. Keeping one bounded range
+# in memory avoids a full-object buffer while limiting S3 requests for large files.
+SFTP_OBJECT_STORAGE_READ_AHEAD_BYTES = get_positive_int_config(
+    "sftp_read_ahead_bytes", 16 * 1024 * 1024
+)
+SFTP_DOWNLOAD_LIMITER = ThreadDownloadLimiter(
+    get_positive_int_config("sftp_max_concurrent_downloads", 8),
+    protocol="sftp",
+)
 
 
 def is_localhost(addr: tuple[str, int]) -> bool:
@@ -99,11 +121,219 @@ class ZTPServer(ServerInterface):
         return cast(int, OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED)
 
 
+class ObjectStorageRangeReader:
+    """Serve offset reads from object storage using one bounded range cache."""
+
+    def __init__(
+        self,
+        *,
+        storage_client: ObjectStorageClient,
+        event_loop: asyncio.AbstractEventLoop,
+        platform: str,
+        version: str,
+        filename: str,
+        content_length: int,
+        logger: logging.Logger | logging.LoggerAdapter,
+        etag: str | None = None,
+        read_ahead_bytes: int = SFTP_OBJECT_STORAGE_READ_AHEAD_BYTES,
+        release_download_permit: Callable[[], None] | None = None,
+    ) -> None:
+        if content_length < 0:
+            raise ValueError("content_length must not be negative")
+        if read_ahead_bytes <= 0:
+            raise ValueError("read_ahead_bytes must be positive")
+
+        self._storage_client = storage_client
+        self._event_loop = event_loop
+        self._platform = platform
+        self._version = version
+        self._filename = filename
+        self._content_length = content_length
+        self._etag = etag
+        self._logger = logger
+        self._read_ahead_bytes = read_ahead_bytes
+        self._cache_start = 0
+        self._cache = b""
+        self._closed = False
+        self._failed = False
+        self._started_at = time.monotonic()
+        self._transfer_id = uuid4().hex
+        self._bytes_fetched = 0
+        self._bytes_served = 0
+        self._download: ObjectStorageDownload | None = None
+        self._release_download_permit = release_download_permit
+
+    def read(self, offset: int, length: int) -> bytes:
+        """Return the requested bytes, fetching a bounded S3 range when needed."""
+        if self._closed:
+            raise OSError(errno.EBADF, "Object storage reader is closed")
+        if length <= 0 or offset >= self._content_length:
+            return b""
+        if offset < 0:
+            raise OSError(errno.EINVAL, "SFTP offset must not be negative")
+
+        requested_length = min(length, self._read_ahead_bytes)
+        requested_end = min(offset + requested_length, self._content_length)
+        cache_end = self._cache_start + len(self._cache)
+        if not (self._cache_start <= offset and requested_end <= cache_end):
+            self._load_cache(offset, requested_end)
+
+        start = offset - self._cache_start
+        result = self._cache[start : start + (requested_end - offset)]
+        self._bytes_served += len(result)
+        return result
+
+    def close(self) -> None:
+        """Close the storage session and record the final transfer outcome."""
+        if self._closed:
+            return
+        self._closed = True
+        duration_seconds = time.monotonic() - self._started_at
+
+        if self._bytes_fetched and not self._failed:
+            outcome = "completed" if self._bytes_served >= self._content_length else "partial"
+            record_storage_download(
+                backend=self._backend,
+                protocol="sftp",
+                outcome=outcome,
+                bytes_received=self._bytes_fetched,
+                duration_seconds=duration_seconds,
+            )
+            self._logger.info(
+                "SFTP storage download completed",
+                extra={
+                    **self._log_fields(),
+                    "outcome": outcome,
+                    "content_length": self._content_length,
+                    "bytes_fetched": self._bytes_fetched,
+                    "bytes_served": self._bytes_served,
+                    "duration_seconds": duration_seconds,
+                    "bytes_per_second": (
+                        self._bytes_served / duration_seconds if duration_seconds else 0
+                    ),
+                },
+            )
+
+        try:
+            self._event_loop.run_until_complete(self._storage_client.close())
+        except Exception:
+            self._logger.exception("Failed to close SFTP object storage client")
+        finally:
+            if self._release_download_permit is not None:
+                self._release_download_permit()
+                self._release_download_permit = None
+
+    @property
+    def _backend(self) -> str:
+        return self._download.backend if self._download is not None else "unknown"
+
+    def _log_fields(self) -> dict[str, Any]:
+        download = self._download
+        return {
+            "transfer_id": self._transfer_id,
+            "storage_backend": self._backend,
+            "storage_key": escape_log_newlines(
+                download.object_key if download is not None else self._object_key
+            ),
+            "storage_endpoint": (
+                escape_log_newlines(download.endpoint)
+                if download is not None and download.endpoint
+                else None
+            ),
+            "s3_request_id": (
+                escape_log_newlines(download.request_id)
+                if download is not None and download.request_id
+                else None
+            ),
+        }
+
+    @property
+    def _object_key(self) -> str:
+        return f"{self._platform}/{self._version}/{self._filename}"
+
+    def _load_cache(self, offset: int, requested_end: int) -> None:
+        cache_end = min(max(requested_end, offset + self._read_ahead_bytes), self._content_length)
+        expected_length = cache_end - offset
+        try:
+            content = self._event_loop.run_until_complete(
+                self._read_range(offset, cache_end - 1, expected_length)
+            )
+        except Exception as exc:
+            self._record_failure(exc)
+            raise
+        self._cache_start = offset
+        self._cache = content
+
+    async def _read_range(self, start: int, end: int, expected_length: int) -> bytes:
+        download = await self._storage_client.get_object(
+            self._platform,
+            self._version,
+            self._filename,
+            range_header=f"bytes={start}-{end}",
+            known_total_length=self._content_length,
+            if_match=self._etag,
+        )
+        try:
+            chunks: list[bytes] = []
+            bytes_read = 0
+            while bytes_read < expected_length:
+                read_result = download.file_handle.read(expected_length - bytes_read)
+                chunk = cast(
+                    bytes,
+                    await read_result if inspect.isawaitable(read_result) else read_result,
+                )
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                bytes_read += len(chunk)
+            content = b"".join(chunks)
+            if len(content) != expected_length or download.content_length != expected_length:
+                raise ObjectStorageException(
+                    "Storage response did not satisfy requested range "
+                    f"{start}-{end}: received {len(content)} bytes, expected {expected_length}"
+                )
+            self._download = download
+            self._bytes_fetched += len(content)
+            return content
+        finally:
+            close = getattr(download.file_handle, "close", None)
+            if callable(close):
+                close_result = close()
+                if inspect.isawaitable(close_result):
+                    await close_result
+
+    def _record_failure(self, exc: Exception) -> None:
+        if self._failed:
+            return
+        self._failed = True
+        duration_seconds = time.monotonic() - self._started_at
+        record_storage_download(
+            backend=self._backend,
+            protocol="sftp",
+            outcome="failed",
+            bytes_received=self._bytes_fetched,
+            duration_seconds=duration_seconds,
+        )
+        self._logger.exception(
+            "SFTP storage download failed",
+            extra={
+                **self._log_fields(),
+                "content_length": self._content_length,
+                "bytes_fetched": self._bytes_fetched,
+                "bytes_served": self._bytes_served,
+                "duration_seconds": duration_seconds,
+                "error_type": type(exc).__name__,
+                "error": escape_log_newlines(exc),
+            },
+        )
+
+
 class ZTPSFTPHandle(SFTPHandle):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize a new SFTP file handle."""
         super().__init__(*args)
         self.readfile: io.StringIO | io.BytesIO | None = None
+        self.range_reader: ObjectStorageRangeReader | None = None
         self.logger: logging.Logger | logging.LoggerAdapter = logger
         self.filename: str = ""
 
@@ -117,6 +347,8 @@ class ZTPSFTPHandle(SFTPHandle):
         try:
             if self.readfile:
                 self.readfile.close()
+            if self.range_reader:
+                self.range_reader.close()
 
         except Exception as e:
             self.logger.error("Error closing file handle: %s", e)
@@ -131,17 +363,24 @@ class ZTPSFTPHandle(SFTPHandle):
             self.filename or "unknown",
         )
         try:
+            if self.range_reader is not None:
+                data = self.range_reader.read(offset, length)
+                self.logger.debug("Read %d bytes successfully", len(data))
+                return data
             if self.readfile is None:
                 return SFTPServer.convert_errno(errno.ENOENT)
             self.readfile.seek(offset)
-            data = self.readfile.read(length)
-            if isinstance(data, str):
-                data = data.encode("utf-8")
-            self.logger.debug("Read %d bytes successfully", len(data))
-            return data
+            file_data = self.readfile.read(length)
+            if isinstance(file_data, str):
+                file_data = file_data.encode("utf-8")
+            self.logger.debug("Read %d bytes successfully", len(file_data))
+            return file_data
         except OSError as e:
             self.logger.error("Error reading from file: %s", e)
             return SFTPServer.convert_errno(e.errno or errno.EIO)
+        except Exception as exc:
+            self.logger.exception("Error reading from object storage: %s", exc)
+            return SFTP_FAILURE
 
 
 class ZTPSFTPServer(SFTPServerInterface):
@@ -172,10 +411,6 @@ class ZTPSFTPServer(SFTPServerInterface):
         path_parts = path.split("/")
         if path_parts[1] == "device":
             content = self._load_ztp_file(path_parts[2], path_parts[3])
-            self._path_cache[path] = content
-            return content
-        if path_parts[1] == "file":
-            content = self._load_s3_file(path_parts[2], path_parts[3], path_parts[4])
             self._path_cache[path] = content
             return content
         if path_parts[1] == "healthcheck":
@@ -220,44 +455,90 @@ class ZTPSFTPServer(SFTPServerInterface):
         # Convert string content to bytes
         return io.BytesIO(file_content.encode("utf-8"))
 
-    def _load_s3_file(self, platform: str, version: str, filename: str) -> io.BytesIO:
-        """Load a ZTP configuration file from S3."""
+    def _open_s3_file(
+        self, platform: str, version: str, filename: str, flags: int
+    ) -> ZTPSFTPHandle:
+        """Open a range-backed object-storage handle without buffering the object."""
         self.logger.info(
-            "Loading file from S3: %s/%s/%s for %s",
+            "Opening range-backed object storage file: %s/%s/%s for %s",
             platform,
             version,
             filename,
             self._client_addr,
         )
         storage_client = get_storage_client()
+        admission_wait_seconds = SFTP_DOWNLOAD_LIMITER.acquire()
         try:
-            # Define async function to fetch from S3
-            async def get_s3_object() -> bytes:
-                async with storage_client:
-                    _, body = await storage_client.get_object(platform, version, filename)
-                    # Read the entire content (aioboto3 StreamingBody.read() is async)
-                    content = await body.read()
-                    return cast(bytes, content)
-
-            # Use the session's event loop
-            content = self._event_loop.run_until_complete(get_s3_object())
-            # Return the bytes
-            return io.BytesIO(content)
+            self._event_loop.run_until_complete(storage_client.connect())
+            metadata = self._event_loop.run_until_complete(
+                storage_client.get_object_metadata(platform, version, filename)
+            )
+            content_length = metadata.get("size")
+            if not isinstance(content_length, int) or content_length < 0:
+                raise ObjectStorageException(
+                    f"Object metadata returned invalid size for {platform}/{version}/{filename}"
+                )
+            etag = metadata.get("etag")
+            if etag is not None and not isinstance(etag, str):
+                raise ObjectStorageException(
+                    f"Object metadata returned invalid ETag for {platform}/{version}/{filename}"
+                )
         except ObjectStorageNotFoundException as exc:
+            try:
+                self._event_loop.run_until_complete(storage_client.close())
+            finally:
+                SFTP_DOWNLOAD_LIMITER.release()
             raise FileNotFoundError(
-                f"File not found in S3: {platform}/{version}/{filename}"
+                f"File not found in object storage: {platform}/{version}/{filename}"
             ) from exc
+        except Exception:
+            try:
+                self._event_loop.run_until_complete(storage_client.close())
+            finally:
+                SFTP_DOWNLOAD_LIMITER.release()
+            raise
 
-    def finish_subsystem(self) -> None:  # type: ignore[override]
-        """Clean up resources when the SFTP subsystem is finished."""
+        try:
+            reader = ObjectStorageRangeReader(
+                storage_client=storage_client,
+                event_loop=self._event_loop,
+                platform=platform,
+                version=version,
+                filename=filename,
+                content_length=content_length,
+                etag=etag,
+                logger=self.logger,
+                release_download_permit=SFTP_DOWNLOAD_LIMITER.release,
+            )
+            fobj = ZTPSFTPHandle(flags)
+            fobj.set_logger(self.logger)
+            fobj.filename = filename
+            fobj.range_reader = reader
+            self.logger.info(
+                "SFTP storage download admitted",
+                extra={
+                    "storage_key": escape_log_newlines(f"{platform}/{version}/{filename}"),
+                    "admission_wait_seconds": admission_wait_seconds,
+                    "active_downloads": SFTP_DOWNLOAD_LIMITER.active,
+                    "read_ahead_bytes": SFTP_OBJECT_STORAGE_READ_AHEAD_BYTES,
+                },
+            )
+            self.logger.debug("Created range-backed SFTP handle for file: %s", fobj.filename)
+            return fobj
+        except Exception:
+            try:
+                self._event_loop.run_until_complete(storage_client.close())
+            finally:
+                SFTP_DOWNLOAD_LIMITER.release()
+            raise
+
+    def close_session(self) -> None:
+        """Clear session resources after Paramiko has closed outstanding handles."""
         self.logger.debug("Clearing path cache and closing event loop")
         self._path_cache.clear()
 
-        # Close the event loop to free resources
         if self._event_loop and not self._event_loop.is_closed():
             self._event_loop.close()
-
-        super().finish_subsystem()  # type: ignore[misc, ty:unresolved-attribute]
 
     def _mock_stat(self, path: str) -> SFTPAttributes | int:
         """Return mock file attributes for the given path."""
@@ -380,6 +661,14 @@ class ZTPSFTPServer(SFTPServerInterface):
         """Open a file handle for the given path with the specified flags."""
         self.logger.debug("open request: %s, flags: %s", path, flags)
         try:
+            path_parts = path.split("/")
+            if len(path_parts) >= 5 and path_parts[1] == "file":
+                return self._open_s3_file(
+                    path_parts[2],
+                    path_parts[3],
+                    path_parts[4],
+                    flags,
+                )
             file = self._load_path(path)
             self.logger.debug("Successfully loaded file for path: %s", path)
         except Exception as exc:
@@ -406,6 +695,18 @@ class ZTPSFTPServer(SFTPServerInterface):
             return SFTP_FAILURE
 
 
+class ZTPSFTPSubsystemHandler(SFTPServer):
+    """Close per-session resources after Paramiko closes all SFTP handles."""
+
+    def finish_subsystem(self) -> None:
+        """Preserve the event loop until outstanding range-backed handles are closed."""
+        try:
+            super().finish_subsystem()
+        finally:
+            server = cast(ZTPSFTPServer, self.server)
+            server.close_session()
+
+
 def handle_connection(
     conn: socket.socket, addr: tuple[str, int], host_key: paramiko.RSAKey
 ) -> None:
@@ -424,7 +725,7 @@ def handle_connection(
 
         # Set up the SFTP subsystem handler
         transport.set_subsystem_handler(
-            "sftp", paramiko.SFTPServer, ZTPSFTPServer, client_addr=addr[0]
+            "sftp", ZTPSFTPSubsystemHandler, ZTPSFTPServer, client_addr=addr[0]
         )
 
         # Create server and start it
@@ -476,6 +777,10 @@ def start_server(host: str = "0.0.0.0", port: int = 8222, level: str = "INFO") -
 
     # Set paramiko's log level to WARN to reduce noise
     logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+    metrics_port = get_positive_int_config("sftp_metrics_port", 9100)
+    start_http_server(metrics_port, addr="0.0.0.0")  # nosec: B104
+    logger.info("SFTP metrics server listening on 0.0.0.0:%d", metrics_port)
 
     # Generate host key once at startup (RSA key generation is CPU-intensive)
     logger.info("Generating RSA host key...")

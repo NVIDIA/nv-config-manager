@@ -42,6 +42,7 @@ def main() -> None:
         port=9000,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )
 
 
