@@ -172,7 +172,8 @@ class ObjectStorageRangeReader:
         if offset < 0:
             raise OSError(errno.EINVAL, "SFTP offset must not be negative")
 
-        requested_end = min(offset + length, self._content_length)
+        requested_length = min(length, self._read_ahead_bytes)
+        requested_end = min(offset + requested_length, self._content_length)
         cache_end = self._cache_start + len(self._cache)
         if not (self._cache_start <= offset and requested_end <= cache_end):
             self._load_cache(offset, requested_end)
@@ -531,16 +532,13 @@ class ZTPSFTPServer(SFTPServerInterface):
                 SFTP_DOWNLOAD_LIMITER.release()
             raise
 
-    def finish_subsystem(self) -> None:  # type: ignore[override]
-        """Clean up resources when the SFTP subsystem is finished."""
+    def close_session(self) -> None:
+        """Clear session resources after Paramiko has closed outstanding handles."""
         self.logger.debug("Clearing path cache and closing event loop")
         self._path_cache.clear()
 
-        # Close the event loop to free resources
         if self._event_loop and not self._event_loop.is_closed():
             self._event_loop.close()
-
-        super().finish_subsystem()  # type: ignore[misc, ty:unresolved-attribute]
 
     def _mock_stat(self, path: str) -> SFTPAttributes | int:
         """Return mock file attributes for the given path."""
@@ -697,6 +695,18 @@ class ZTPSFTPServer(SFTPServerInterface):
             return SFTP_FAILURE
 
 
+class ZTPSFTPSubsystemHandler(SFTPServer):
+    """Close per-session resources after Paramiko closes all SFTP handles."""
+
+    def finish_subsystem(self) -> None:
+        """Preserve the event loop until outstanding range-backed handles are closed."""
+        try:
+            super().finish_subsystem()
+        finally:
+            server = cast(ZTPSFTPServer, self.server)
+            server.close_session()
+
+
 def handle_connection(
     conn: socket.socket, addr: tuple[str, int], host_key: paramiko.RSAKey
 ) -> None:
@@ -715,7 +725,7 @@ def handle_connection(
 
         # Set up the SFTP subsystem handler
         transport.set_subsystem_handler(
-            "sftp", paramiko.SFTPServer, ZTPSFTPServer, client_addr=addr[0]
+            "sftp", ZTPSFTPSubsystemHandler, ZTPSFTPServer, client_addr=addr[0]
         )
 
         # Create server and start it

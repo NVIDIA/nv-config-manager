@@ -272,12 +272,16 @@ class S3Client(ObjectStorageClient):
         """Open an S3 object and capture the metadata needed to stream it safely."""
         byte_range: ObjectStorageByteRange | None = None
         total_length = known_total_length
+        revision = if_match
 
         if range_header is not None and total_length is None:
             metadata_started_at = monotonic()
             try:
                 metadata = await self._client.head_object(Bucket=self.bucket, Key=key)
                 total_length = self._content_length(metadata, "HeadObject", key)
+                if revision is None:
+                    metadata_etag = metadata.get("ETag")
+                    revision = str(metadata_etag) if metadata_etag is not None else None
             except ClientError as exc:
                 logger.exception(
                     "S3 HeadObject for range request failed",
@@ -311,8 +315,8 @@ class S3Client(ObjectStorageClient):
         get_kwargs: dict[str, str] = {"Bucket": self.bucket, "Key": key}
         if byte_range is not None:
             get_kwargs["Range"] = f"bytes={byte_range.start}-{byte_range.end}"
-        if if_match is not None:
-            get_kwargs["IfMatch"] = if_match
+        if revision is not None:
+            get_kwargs["IfMatch"] = revision
 
         started_at = monotonic()
         try:
@@ -384,7 +388,7 @@ class S3Client(ObjectStorageClient):
             byte_range=byte_range,
             request_id=request_id,
             endpoint=self._endpoint,
-            etag=response.get("ETag"),
+            etag=response.get("ETag", revision),
         )
 
     async def get_firmware_object(

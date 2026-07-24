@@ -36,6 +36,7 @@ DOWNLOAD_ADMISSION_WAIT_SECONDS = Histogram(
     "Time downloads wait for object-storage admission by protocol.",
     labelnames=("protocol",),
     namespace="nv_config_manager",
+    subsystem="ztp",
 )
 
 

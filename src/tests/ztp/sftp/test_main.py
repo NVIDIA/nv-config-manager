@@ -25,6 +25,7 @@ from nv_config_manager.ztp.sftp.main import (
     ZTPServer,
     ZTPSFTPHandle,
     ZTPSFTPServer,
+    ZTPSFTPSubsystemHandler,
     handle_connection,
     shutdown_event,
     start_server,
@@ -177,6 +178,47 @@ def test_object_storage_range_reader_fetches_bounded_ranges(sftp_server):
     storage_client.close.assert_awaited_once()
 
 
+def test_object_storage_range_reader_bounds_oversized_requests(sftp_server):
+    """A client cannot make one SFTP read exceed the configured cache bound."""
+    storage_client = MagicMock()
+    storage_client.close = AsyncMock()
+    body = MagicMock()
+    body.read = AsyncMock(return_value=b"abcd")
+    storage_client.get_object = AsyncMock(
+        return_value=ObjectStorageDownload(
+            filename="firmware.bin",
+            file_handle=body,
+            content_length=4,
+            total_length=100,
+            backend="s3",
+            object_key="cisco/1.0/firmware.bin",
+        )
+    )
+    reader = ObjectStorageRangeReader(
+        storage_client=storage_client,
+        event_loop=sftp_server._event_loop,
+        platform="cisco",
+        version="1.0",
+        filename="firmware.bin",
+        content_length=100,
+        logger=MagicMock(),
+        read_ahead_bytes=4,
+    )
+
+    assert reader.read(0, 100) == b"abcd"
+    storage_client.get_object.assert_awaited_once_with(
+        "cisco",
+        "1.0",
+        "firmware.bin",
+        range_header="bytes=0-3",
+        known_total_length=100,
+        if_match=None,
+    )
+    body.read.assert_awaited_once_with(4)
+
+    reader.close()
+
+
 def test_object_storage_range_reader_releases_its_download_permit_once(sftp_server):
     """A download permit is held for the SFTP handle's full lifetime."""
     storage_client = MagicMock()
@@ -196,6 +238,54 @@ def test_object_storage_range_reader_releases_its_download_permit_once(sftp_serv
     reader.close()
     reader.close()
 
+    storage_client.close.assert_awaited_once()
+    release_download_permit.assert_called_once()
+
+
+def test_subsystem_closes_handles_before_session_event_loop(sftp_server):
+    """Paramiko must close range readers while their session loop is still usable."""
+    events: list[str] = []
+    storage_client = MagicMock()
+    storage_client.close = AsyncMock()
+    release_download_permit = MagicMock()
+    reader = ObjectStorageRangeReader(
+        storage_client=storage_client,
+        event_loop=sftp_server._event_loop,
+        platform="cisco",
+        version="1.0",
+        filename="firmware.bin",
+        content_length=10,
+        logger=MagicMock(),
+        release_download_permit=release_download_permit,
+    )
+    handle = ZTPSFTPHandle(0)
+    handle.range_reader = reader
+    handler = object.__new__(ZTPSFTPSubsystemHandler)
+    handler.server = sftp_server
+
+    def close_outstanding_handles(_handler: ZTPSFTPSubsystemHandler) -> None:
+        events.append("handles")
+        assert not sftp_server._event_loop.is_closed()
+        handle.close()
+
+    original_close_session = sftp_server.close_session
+
+    def close_session() -> None:
+        events.append("session")
+        original_close_session()
+
+    with (
+        patch(
+            "nv_config_manager.ztp.sftp.main.SFTPServer.finish_subsystem",
+            autospec=True,
+            side_effect=close_outstanding_handles,
+        ),
+        patch.object(sftp_server, "close_session", side_effect=close_session),
+    ):
+        handler.finish_subsystem()
+
+    assert events == ["handles", "session"]
+    assert sftp_server._event_loop.is_closed()
     storage_client.close.assert_awaited_once()
     release_download_permit.assert_called_once()
 
@@ -324,6 +414,12 @@ def test_handle_connection(mock_transport):
 
     # Verify transport was set up and started
     mock_transport_instance.add_server_key.assert_called_once_with(mock_host_key)
+    mock_transport_instance.set_subsystem_handler.assert_called_once_with(
+        "sftp",
+        ZTPSFTPSubsystemHandler,
+        ZTPSFTPServer,
+        client_addr=mock_addr[0],
+    )
     mock_transport_instance.start_server.assert_called_once()
     mock_transport_instance.close.assert_called_once()
 
