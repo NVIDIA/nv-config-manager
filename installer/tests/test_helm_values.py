@@ -21,8 +21,9 @@ from pathlib import Path
 
 import yaml
 
-from nv_config_manager_installer.helm_values import generate_helm_values
+from nv_config_manager_installer.helm_values import _GLOBAL_IMAGE_DEFAULTS, generate_helm_values
 from nv_config_manager_installer.schema import (
+    NV_CONFIG_MANAGER_IMAGE_KEYS,
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
@@ -1013,6 +1014,38 @@ class TestImagesInHelmValues:
         assert values.get("grafana", {}).get("enabled") is not True
         assert values.get("loki", {}).get("enabled") is not True
         assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager"
+
+    def test_all_global_images_registered_for_registry_override(self):
+        """Every chart global.images key must be in the installer's override tables.
+
+        The installer rewrites global.images.<key>.repository to the configured /
+        mirror registry only for keys it knows about — NV_CONFIG_MANAGER_IMAGE_KEYS
+        (project images) plus _GLOBAL_IMAGE_DEFAULTS (third-party). A global.images
+        entry the chart ships but the installer doesn't register is left at its
+        docker.io default, so a registry/air-gapped install ImagePullBackOffs on it
+        (exactly the gap that left the prometheus-nats-exporter sidecar unmirrored).
+
+        Asserts the two sides stay in lockstep so adding a chart image without
+        registering it (or vice-versa) fails here instead of at deploy time.
+        """
+        chart_values = Path(__file__).resolve().parents[2] / "deploy" / "helm" / "values.yaml"
+        data = yaml.safe_load(chart_values.read_text())
+        chart_keys = set(data["global"]["images"])
+
+        registered = {key for key, _ in NV_CONFIG_MANAGER_IMAGE_KEYS} | set(_GLOBAL_IMAGE_DEFAULTS)
+
+        missing = chart_keys - registered
+        assert not missing, (
+            "global.images key(s) in deploy/helm/values.yaml are not registered in the "
+            "installer override tables (NV_CONFIG_MANAGER_IMAGE_KEYS / _GLOBAL_IMAGE_DEFAULTS), "
+            f"so registry/air-gapped installs won't rewrite their repository: {sorted(missing)}"
+        )
+
+        stale = registered - chart_keys
+        assert not stale, (
+            "installer override tables reference global.images key(s) that no longer exist in "
+            f"deploy/helm/values.yaml (remove them to keep the tables honest): {sorted(stale)}"
+        )
 
 
 class TestMonitoringHelmValues:
