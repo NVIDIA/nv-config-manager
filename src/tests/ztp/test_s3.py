@@ -26,6 +26,7 @@ from nv_config_manager.ztp.s3 import (
     S3ExistsException,
     S3NotFoundException,
 )
+from nv_config_manager.ztp.storage import ObjectStorageChangedException
 
 MOCK_CONTENT = b"testcontent"
 
@@ -131,7 +132,10 @@ async def test_get_firmware_object():
     client._client_instance = MockBoto3S3Client()
 
     client._client.get_object = AsyncMock(
-        return_value={"Body": StreamingBody(io.BytesIO(MOCK_CONTENT), len(MOCK_CONTENT))}
+        return_value={
+            "Body": StreamingBody(io.BytesIO(MOCK_CONTENT), len(MOCK_CONTENT)),
+            "ContentLength": len(MOCK_CONTENT),
+        }
     )
     client._client.list_objects = AsyncMock(
         return_value={
@@ -252,7 +256,10 @@ async def test_get_object():
     client._client_instance = MockBoto3S3Client()
 
     client._client.get_object = AsyncMock(
-        return_value={"Body": StreamingBody(io.BytesIO(MOCK_CONTENT), len(MOCK_CONTENT))}
+        return_value={
+            "Body": StreamingBody(io.BytesIO(MOCK_CONTENT), len(MOCK_CONTENT)),
+            "ContentLength": len(MOCK_CONTENT),
+        }
     )
 
     fname, obj = await client.get_object("Cumulus Linux", "5.7.0", "image.bin")
@@ -266,6 +273,94 @@ async def test_get_object():
         S3NotFoundException, match="Did not find Cumulus Linux/5.7.0/image.bin in S3."
     ):
         await client.get_object("Cumulus Linux", "5.7.0", "image.bin")
+
+
+@pytest.mark.asyncio
+async def test_get_object_range():
+    """A requested HTTP range is validated and passed through to S3."""
+    client = S3Client()
+    client._client_instance = MockBoto3S3Client()
+    client._client.head_object = AsyncMock(return_value={"ContentLength": len(MOCK_CONTENT)})
+    client._client.get_object = AsyncMock(
+        return_value={
+            "Body": StreamingBody(io.BytesIO(MOCK_CONTENT[2:6]), len(MOCK_CONTENT[2:6])),
+            "ContentLength": len(MOCK_CONTENT[2:6]),
+        }
+    )
+
+    download = await client.get_object(
+        "Cumulus Linux",
+        "5.7.0",
+        "image.bin",
+        range_header="bytes=2-5",
+    )
+
+    assert download.content_length == 4
+    assert download.total_length == len(MOCK_CONTENT)
+    assert download.byte_range is not None
+    assert download.byte_range.start == 2
+    assert download.byte_range.end == 5
+    client._client.get_object.assert_awaited_once_with(
+        Bucket="ngc-network-firmware-images",
+        Key="Cumulus Linux/5.7.0/image.bin",
+        Range="bytes=2-5",
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_object_range_uses_known_revision_without_another_head():
+    """SFTP range reads reuse open metadata and pin every GET to its ETag."""
+    client = S3Client()
+    client._client_instance = MockBoto3S3Client()
+    client._client.head_object = AsyncMock()
+    client._client.get_object = AsyncMock(
+        return_value={
+            "Body": StreamingBody(io.BytesIO(MOCK_CONTENT[2:6]), 4),
+            "ContentLength": 4,
+            "ETag": '"revision-1"',
+        }
+    )
+
+    download = await client.get_object(
+        "Cumulus Linux",
+        "5.7.0",
+        "image.bin",
+        range_header="bytes=2-5",
+        known_total_length=len(MOCK_CONTENT),
+        if_match='"revision-1"',
+    )
+
+    client._client.head_object.assert_not_awaited()
+    client._client.get_object.assert_awaited_once_with(
+        Bucket="ngc-network-firmware-images",
+        Key="Cumulus Linux/5.7.0/image.bin",
+        Range="bytes=2-5",
+        IfMatch='"revision-1"',
+    )
+    assert download.etag == '"revision-1"'
+
+
+@pytest.mark.asyncio
+async def test_get_object_range_rejects_changed_revision():
+    """An S3 precondition failure cannot splice two object revisions together."""
+    client = S3Client()
+    client._client_instance = MockBoto3S3Client()
+    client._client.get_object = AsyncMock(
+        side_effect=ClientError(
+            {"Error": {"Code": "PreconditionFailed"}},
+            "GetObject",
+        )
+    )
+
+    with pytest.raises(ObjectStorageChangedException, match="changed while"):
+        await client.get_object(
+            "Cumulus Linux",
+            "5.7.0",
+            "image.bin",
+            range_header="bytes=2-5",
+            known_total_length=len(MOCK_CONTENT),
+            if_match='"revision-1"',
+        )
 
 
 @pytest.mark.asyncio

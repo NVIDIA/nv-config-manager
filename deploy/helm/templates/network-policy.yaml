@@ -51,6 +51,8 @@ spec:
         - protocol: TCP
           port: 9090
         - protocol: TCP
+          port: {{ (.Values.networkZtp.downloads.sftp.metricsPort | default 9100) }}
+        - protocol: TCP
           port: {{ .Values.networkDhcp.kea.storkAgentPort }}
         - protocol: TCP
           port: 9187  # CNPG metrics exporter

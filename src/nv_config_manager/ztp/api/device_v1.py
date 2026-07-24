@@ -125,6 +125,7 @@ async def load_firmware(device_uuid: str, request: Request) -> StreamingResponse
             storage_client.get_firmware_object,
             device_data.platform,
             device_data.version,
+            request=request,
         )
     except ObjectStorageNotFoundException as exc:
         raise HTTPException(status_code=404, detail="Firmware image not found in S3.") from exc

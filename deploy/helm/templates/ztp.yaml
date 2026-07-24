@@ -5,6 +5,9 @@
 {{- $ztpFileStorage := eq .Values.networkZtp.storage.type "file" }}
 {{- $ztpSpiffeJwt := and .Values.spiffe.enabled (eq (.Values.spiffe.authMode | default "jwt") "jwt") }}
 {{- $ztpVaultAgentJwt := and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") }}
+{{- $downloads := .Values.networkZtp.downloads | default dict }}
+{{- $httpDownloads := $downloads.http | default dict }}
+{{- $sftpDownloads := $downloads.sftp | default dict }}
 ---
 # Network ZTP Deployment
 apiVersion: apps/v1
@@ -69,6 +72,10 @@ spec:
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         - name: ACCEPT_REQUEST_HEADERS
           value: "true"
+        - name: ZTP_HTTP_STREAM_CHUNK_BYTES
+          value: {{ $httpDownloads.chunkSizeBytes | default 67108864 | int | quote }}
+        - name: ZTP_HTTP_MAX_CONCURRENT_DOWNLOADS
+          value: {{ $httpDownloads.maxConcurrentDownloads | default 16 | int | quote }}
         {{- include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
         {{- if .Values.observability.enabled }}
         {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-ztp") | nindent 8 }}
@@ -109,6 +116,10 @@ spec:
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
+        - name: ZTP_HTTP_STREAM_CHUNK_BYTES
+          value: {{ $httpDownloads.chunkSizeBytes | default 67108864 | int | quote }}
+        - name: ZTP_HTTP_MAX_CONCURRENT_DOWNLOADS
+          value: {{ $httpDownloads.maxConcurrentDownloads | default 16 | int | quote }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         {{- include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
         {{- if .Values.observability.enabled }}
@@ -149,11 +160,19 @@ spec:
           value: {{ include "nv-config-manager.vaultAgent.configManagerIniPathApp" . | quote }}
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
+        - name: ZTP_SFTP_READ_AHEAD_BYTES
+          value: {{ $sftpDownloads.readAheadBytes | default 16777216 | int | quote }}
+        - name: ZTP_SFTP_MAX_CONCURRENT_DOWNLOADS
+          value: {{ $sftpDownloads.maxConcurrentDownloads | default 32 | int | quote }}
+        - name: ZTP_SFTP_METRICS_PORT
+          value: {{ $sftpDownloads.metricsPort | default 9100 | int | quote }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         {{- include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
         ports:
         - containerPort: 2222
           name: sftp
+        - containerPort: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+          name: sftp-metrics
         resources:
           {{- toYaml .Values.networkZtp.resources.sftp | nindent 10 }}
         {{- if or $ztpConfigVolume $ztpFileStorage }}
@@ -233,6 +252,10 @@ spec:
     targetPort: 9000
     protocol: TCP
     name: http
+  - port: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+    targetPort: sftp-metrics
+    protocol: TCP
+    name: sftp-metrics
   selector:
     app: {{ $ztpName }}
 ---

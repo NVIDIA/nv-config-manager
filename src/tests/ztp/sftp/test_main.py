@@ -16,15 +16,12 @@ import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from paramiko import (
-    AUTH_SUCCESSFUL,
-    OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED,
-    OPEN_SUCCEEDED,
-    SFTP_OK,
-    SFTPAttributes,
-)
+from paramiko import SFTPAttributes
+from paramiko.common import AUTH_SUCCESSFUL, OPEN_FAILED_ADMINISTRATIVELY_PROHIBITED, OPEN_SUCCEEDED
+from paramiko.sftp import SFTP_OK
 
 from nv_config_manager.ztp.sftp.main import (
+    ObjectStorageRangeReader,
     ZTPServer,
     ZTPSFTPHandle,
     ZTPSFTPServer,
@@ -32,6 +29,7 @@ from nv_config_manager.ztp.sftp.main import (
     shutdown_event,
     start_server,
 )
+from nv_config_manager.ztp.storage import ObjectStorageDownload
 
 
 @pytest.fixture
@@ -115,42 +113,146 @@ def test_load_ztp_file(mock_nb_client, sftp_server, mock_device_data):
     assert result.getvalue() == b"test config"
 
 
+def test_object_storage_range_reader_fetches_bounded_ranges(sftp_server):
+    """SFTP reads only fetch the configured range cache, not the full object."""
+    storage_client = MagicMock()
+    storage_client.close = AsyncMock()
+    body_one = MagicMock()
+    body_one.read = AsyncMock(side_effect=[b"ab", b"cd"])
+    body_two = MagicMock()
+    body_two.read = AsyncMock(side_effect=[b"ef", b"gh"])
+    storage_client.get_object = AsyncMock(
+        side_effect=[
+            ObjectStorageDownload(
+                filename="firmware.bin",
+                file_handle=body_one,
+                content_length=4,
+                total_length=10,
+                backend="s3",
+                object_key="cisco/1.0/firmware.bin",
+            ),
+            ObjectStorageDownload(
+                filename="firmware.bin",
+                file_handle=body_two,
+                content_length=4,
+                total_length=10,
+                backend="s3",
+                object_key="cisco/1.0/firmware.bin",
+            ),
+        ]
+    )
+    reader = ObjectStorageRangeReader(
+        storage_client=storage_client,
+        event_loop=sftp_server._event_loop,
+        platform="cisco",
+        version="1.0",
+        filename="firmware.bin",
+        content_length=10,
+        etag='"revision-1"',
+        logger=MagicMock(),
+        read_ahead_bytes=4,
+    )
+
+    assert reader.read(0, 2) == b"ab"
+    assert reader.read(2, 2) == b"cd"
+    assert reader.read(4, 2) == b"ef"
+    assert reader.read(10, 2) == b""
+    assert storage_client.get_object.await_count == 2
+    assert storage_client.get_object.await_args_list[0].kwargs == {
+        "range_header": "bytes=0-3",
+        "known_total_length": 10,
+        "if_match": '"revision-1"',
+    }
+    assert storage_client.get_object.await_args_list[1].kwargs == {
+        "range_header": "bytes=4-7",
+        "known_total_length": 10,
+        "if_match": '"revision-1"',
+    }
+    body_one.close.assert_called_once()
+    body_two.close.assert_called_once()
+    assert body_one.read.await_args_list[0].args == (4,)
+    assert body_one.read.await_args_list[1].args == (2,)
+
+    reader.close()
+    storage_client.close.assert_awaited_once()
+
+
+def test_object_storage_range_reader_releases_its_download_permit_once(sftp_server):
+    """A download permit is held for the SFTP handle's full lifetime."""
+    storage_client = MagicMock()
+    storage_client.close = AsyncMock()
+    release_download_permit = MagicMock()
+    reader = ObjectStorageRangeReader(
+        storage_client=storage_client,
+        event_loop=sftp_server._event_loop,
+        platform="cisco",
+        version="1.0",
+        filename="firmware.bin",
+        content_length=10,
+        logger=MagicMock(),
+        release_download_permit=release_download_permit,
+    )
+
+    reader.close()
+    reader.close()
+
+    storage_client.close.assert_awaited_once()
+    release_download_permit.assert_called_once()
+
+
+def test_object_storage_range_reader_supports_synchronous_file_handles(sftp_server):
+    """PVC-backed synchronous range handles are bounded and closed after each read."""
+    storage_client = MagicMock()
+    storage_client.close = AsyncMock()
+    body = io.BytesIO(b"abcd-and-unrequested-data")
+    storage_client.get_object = AsyncMock(
+        return_value=ObjectStorageDownload(
+            filename="firmware.bin",
+            file_handle=body,
+            content_length=4,
+            total_length=10,
+            backend="filestore",
+            object_key="cisco/1.0/firmware.bin",
+            etag="file-revision",
+        )
+    )
+    reader = ObjectStorageRangeReader(
+        storage_client=storage_client,
+        event_loop=sftp_server._event_loop,
+        platform="cisco",
+        version="1.0",
+        filename="firmware.bin",
+        content_length=10,
+        etag="file-revision",
+        logger=MagicMock(),
+        read_ahead_bytes=4,
+    )
+
+    assert reader.read(0, 2) == b"ab"
+    assert body.closed
+    reader.close()
+
+
 @patch("nv_config_manager.ztp.sftp.main.get_storage_client")
-def test_load_s3_file(mock_s3_client, sftp_server):
-    """Test loading file from S3."""
-    # Create a mock StreamingBody with async read
-    mock_streaming_body = MagicMock()
-    mock_streaming_body.read = AsyncMock(return_value=b"s3 content")
+def test_open_s3_file_creates_range_backed_handle(mock_s3_client, sftp_server):
+    """Opening an S3 file must fetch metadata only until the first SFTP read."""
+    storage_client = MagicMock()
+    storage_client.connect = AsyncMock()
+    storage_client.close = AsyncMock()
+    storage_client.get_object_metadata = AsyncMock(
+        return_value={"size": 1024, "etag": '"revision-1"'}
+    )
+    storage_client.get_object = AsyncMock()
+    mock_s3_client.return_value = storage_client
 
-    # Mock the async context manager and get_object method
-    mock_s3_instance = MagicMock()
-    mock_s3_instance.__aenter__ = AsyncMock(return_value=mock_s3_instance)
-    mock_s3_instance.__aexit__ = AsyncMock(return_value=None)
-    mock_s3_instance.get_object = AsyncMock(return_value=("config.txt", mock_streaming_body))
-    mock_s3_client.return_value = mock_s3_instance
+    result = sftp_server.open("/file/cisco/1.0/firmware.bin", 0, None)
 
-    result = sftp_server._load_s3_file("cisco", "1.0", "config.txt")
-    assert isinstance(result, io.BytesIO)
-    assert result.getvalue() == b"s3 content"
-
-
-@patch("nv_config_manager.ztp.sftp.main.get_storage_client")
-def test_load_s3_file_binary(mock_s3_client, sftp_server):
-    """Test loading binary file from S3."""
-    # Create a mock StreamingBody with binary content and async read
-    mock_streaming_body = MagicMock()
-    mock_streaming_body.read = AsyncMock(return_value=b"\x00\x01\x02\x03\x04\x05")
-
-    # Mock the async context manager and get_object method
-    mock_s3_instance = MagicMock()
-    mock_s3_instance.__aenter__ = AsyncMock(return_value=mock_s3_instance)
-    mock_s3_instance.__aexit__ = AsyncMock(return_value=None)
-    mock_s3_instance.get_object = AsyncMock(return_value=("firmware.bin", mock_streaming_body))
-    mock_s3_client.return_value = mock_s3_instance
-
-    result = sftp_server._load_s3_file("cisco", "1.0", "firmware.bin")
-    assert isinstance(result, io.BytesIO)
-    assert result.getvalue() == b"\x00\x01\x02\x03\x04\x05"
+    assert isinstance(result, ZTPSFTPHandle)
+    assert result.range_reader is not None
+    assert result.range_reader._etag == '"revision-1"'
+    storage_client.get_object.assert_not_awaited()
+    result.close()
+    storage_client.close.assert_awaited_once()
 
 
 def test_load_path(sftp_server):
@@ -227,8 +329,9 @@ def test_handle_connection(mock_transport):
 
 
 @pytest.mark.timeout(0)  # override default timeout, sftp startup takes a bit
+@patch("nv_config_manager.ztp.sftp.main.start_http_server")
 @patch("nv_config_manager.ztp.sftp.main.socket.socket")
-def test_start_server(mock_socket):
+def test_start_server(mock_socket, mock_start_http_server):
     """Test server startup."""
     # Mock socket instance
     mock_socket_instance = MagicMock()
@@ -242,3 +345,4 @@ def test_start_server(mock_socket):
     mock_socket_instance.bind.assert_called_once_with(("127.0.0.1", 2222))
     mock_socket_instance.listen.assert_called_once_with(10)
     mock_socket_instance.close.assert_called_once()
+    mock_start_http_server.assert_called_once_with(9100, addr="0.0.0.0")

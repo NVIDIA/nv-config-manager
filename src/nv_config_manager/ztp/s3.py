@@ -15,6 +15,7 @@
 """S3 Proxy Client."""
 
 import os
+from time import monotonic
 from types import TracebackType
 from typing import Any, BinaryIO, Self
 
@@ -23,13 +24,21 @@ from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from nv_config_manager.common.log import LogCategory, escape_log_newlines, get_logger
 from nv_config_manager.ztp.storage import (
+    ObjectStorageByteRange,
+    ObjectStorageChangedException,
     ObjectStorageClient,
+    ObjectStorageDownload,
     ObjectStorageException,
     ObjectStorageExistsException,
     ObjectStorageNotAuthorizedException,
     ObjectStorageNotFoundException,
+    ObjectStorageRangeNotSatisfiableException,
+    parse_http_range,
 )
+
+logger = get_logger(__name__, category=LogCategory.ZTP)
 
 
 class S3Exception(ObjectStorageException):
@@ -125,6 +134,53 @@ class S3Client(ObjectStorageClient):
             raise RuntimeError("S3Client not connected. Use 'async with' or call connect() first.")
         return self._client_instance
 
+    @property
+    def _endpoint(self) -> str:
+        """Return the configured endpoint in a form suitable for diagnostics."""
+        if self.custom_endpoint:
+            return self.custom_endpoint
+        if self.region:
+            return f"s3.{self.region}.amazonaws.com"
+        return "s3.amazonaws.com"
+
+    @staticmethod
+    def _content_length(response: dict[str, Any], operation: str, key: str) -> int:
+        """Extract and validate an S3 response content length."""
+        content_length = response.get("ContentLength")
+        if not isinstance(content_length, int) or content_length < 0:
+            raise S3Exception(
+                f"{operation} for {key} returned an invalid ContentLength: {content_length!r}"
+            )
+        return content_length
+
+    @staticmethod
+    def _request_id(response: dict[str, Any]) -> str | None:
+        """Return the S3 request ID when S3 included one in its response metadata."""
+        metadata = response.get("ResponseMetadata", {})
+        request_id = metadata.get("RequestId") if isinstance(metadata, dict) else None
+        return str(request_id) if request_id is not None else None
+
+    def _s3_log_extra(
+        self,
+        *,
+        operation: str,
+        key: str,
+        duration_seconds: float,
+        request_id: str | None = None,
+        range_header: str | None = None,
+    ) -> dict[str, Any]:
+        """Build safe, consistent fields for S3 diagnostic logs."""
+        return {
+            "storage_backend": "s3",
+            "storage_operation": operation,
+            "storage_key": escape_log_newlines(key),
+            "storage_bucket": escape_log_newlines(self.bucket),
+            "storage_endpoint": escape_log_newlines(self._endpoint),
+            "s3_request_id": escape_log_newlines(request_id) if request_id else None,
+            "range_header": escape_log_newlines(range_header) if range_header else None,
+            "duration_seconds": duration_seconds,
+        }
+
     async def connect(self) -> Self:
         """Connect to S3 and initialize the client session."""
         client_kwargs: dict[str, Any] = {}
@@ -204,11 +260,139 @@ class S3Client(ObjectStorageClient):
             raise S3Exception(f"Found multiple files in path {prefix} tagged as firmware.")
         return keys[0]
 
-    async def get_firmware_object(self, platform: str, image: str) -> tuple[str, Any]:
+    async def _get_object_download(
+        self,
+        key: str,
+        filename: str,
+        *,
+        range_header: str | None,
+        known_total_length: int | None = None,
+        if_match: str | None = None,
+    ) -> ObjectStorageDownload:
+        """Open an S3 object and capture the metadata needed to stream it safely."""
+        byte_range: ObjectStorageByteRange | None = None
+        total_length = known_total_length
+
+        if range_header is not None and total_length is None:
+            metadata_started_at = monotonic()
+            try:
+                metadata = await self._client.head_object(Bucket=self.bucket, Key=key)
+                total_length = self._content_length(metadata, "HeadObject", key)
+            except ClientError as exc:
+                logger.exception(
+                    "S3 HeadObject for range request failed",
+                    extra=self._s3_log_extra(
+                        operation="HeadObject",
+                        key=key,
+                        duration_seconds=monotonic() - metadata_started_at,
+                        range_header=range_header,
+                    ),
+                )
+                code = str(exc.response.get("Error", {}).get("Code", ""))
+                if code in {"404", "NoSuchKey"}:
+                    raise S3NotFoundException(f"Did not find {key} in S3.") from exc
+                raise S3Exception(exc) from exc
+            else:
+                logger.info(
+                    "S3 HeadObject for range request completed",
+                    extra=self._s3_log_extra(
+                        operation="HeadObject",
+                        key=key,
+                        duration_seconds=monotonic() - metadata_started_at,
+                        request_id=self._request_id(metadata),
+                        range_header=range_header,
+                    ),
+                )
+        if range_header is not None:
+            if total_length is None:
+                raise S3Exception(f"Could not determine the size of {key}")
+            byte_range = parse_http_range(range_header, total_length)
+
+        get_kwargs: dict[str, str] = {"Bucket": self.bucket, "Key": key}
+        if byte_range is not None:
+            get_kwargs["Range"] = f"bytes={byte_range.start}-{byte_range.end}"
+        if if_match is not None:
+            get_kwargs["IfMatch"] = if_match
+
+        started_at = monotonic()
+        try:
+            response = await self._client.get_object(**get_kwargs)
+            content_length = self._content_length(response, "GetObject", key)
+            if total_length is None:
+                total_length = content_length
+            if byte_range is not None and content_length != byte_range.length:
+                raise S3Exception(
+                    f"GetObject for {key} returned {content_length} bytes for "
+                    f"requested range {byte_range.start}-{byte_range.end}"
+                )
+        except ClientError as exc:
+            logger.exception(
+                "S3 GetObject failed before the response body could be streamed",
+                extra=self._s3_log_extra(
+                    operation="GetObject",
+                    key=key,
+                    duration_seconds=monotonic() - started_at,
+                    range_header=range_header,
+                ),
+            )
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code in {"404", "NoSuchKey"}:
+                raise S3NotFoundException(f"Did not find {key} in S3.") from exc
+            if code in {"416", "InvalidRange"} and total_length is not None:
+                raise ObjectStorageRangeNotSatisfiableException(total_length) from exc
+            if code in {"412", "PreconditionFailed"}:
+                raise ObjectStorageChangedException(
+                    f"{key} changed while it was being downloaded"
+                ) from exc
+            raise S3Exception(exc) from exc
+        except Exception:
+            logger.exception(
+                "S3 GetObject failed before the response body could be streamed",
+                extra=self._s3_log_extra(
+                    operation="GetObject",
+                    key=key,
+                    duration_seconds=monotonic() - started_at,
+                    range_header=range_header,
+                ),
+            )
+            raise
+
+        request_id = self._request_id(response)
+        logger.info(
+            "S3 GetObject opened response body",
+            extra={
+                **self._s3_log_extra(
+                    operation="GetObject",
+                    key=key,
+                    duration_seconds=monotonic() - started_at,
+                    request_id=request_id,
+                    range_header=range_header,
+                ),
+                "content_length": content_length,
+                "total_length": total_length,
+                "range_start": byte_range.start if byte_range else None,
+                "range_end": byte_range.end if byte_range else None,
+            },
+        )
+        return ObjectStorageDownload(
+            filename=filename,
+            file_handle=response["Body"],
+            content_length=content_length,
+            total_length=total_length,
+            backend="s3",
+            object_key=key,
+            byte_range=byte_range,
+            request_id=request_id,
+            endpoint=self._endpoint,
+            etag=response.get("ETag"),
+        )
+
+    async def get_firmware_object(
+        self, platform: str, image: str, *, range_header: str | None = None
+    ) -> ObjectStorageDownload:
         """Return the object and checksum for the given device."""
         key, fname = await self._get_firmware_key(platform, image)
-        obj = await self._client.get_object(Bucket=self.bucket, Key=key)
-        return fname, obj["Body"]
+        return await self._get_object_download(key, fname, range_header=range_header)
 
     async def get_firmware_checksum(self, platform: str, image: str) -> str:
         """Get the checksum for the image."""
@@ -216,16 +400,25 @@ class S3Client(ObjectStorageClient):
         rsp = await self._client.head_object(Bucket=self.bucket, Key=key)
         return str(rsp.get("Metadata", {}).get("sha256-checksum", ""))
 
-    async def get_object(self, platform: str, version: str, filename: str) -> tuple[str, Any]:
+    async def get_object(
+        self,
+        platform: str,
+        version: str,
+        filename: str,
+        *,
+        range_header: str | None = None,
+        known_total_length: int | None = None,
+        if_match: str | None = None,
+    ) -> ObjectStorageDownload:
         """Get an arbitrary file stored under a given platform/version."""
         key = f"{platform}/{version}/{filename}"
-        try:
-            obj = await self._client.get_object(Bucket=self.bucket, Key=key)
-            return filename, obj["Body"]
-        except ClientError as exc:
-            if exc.response["Error"]["Code"] == "NoSuchKey":
-                raise S3NotFoundException(f"Did not find {key} in S3.") from exc
-            raise S3Exception(exc) from exc
+        return await self._get_object_download(
+            key,
+            filename,
+            range_header=range_header,
+            known_total_length=known_total_length,
+            if_match=if_match,
+        )
 
     async def get_checksum(self, platform: str, version: str, filename: str) -> str:
         """Get an arbitrary file checksum stored under a given platform/version."""
@@ -243,18 +436,38 @@ class S3Client(ObjectStorageClient):
     ) -> dict[str, Any]:
         """Get object metadata without downloading the file content."""
         key = f"{platform}/{version}/{filename}"
+        started_at = monotonic()
         try:
             rsp = await self._client.head_object(Bucket=self.bucket, Key=key)
-            return {
+            result = {
                 "size": rsp.get("ContentLength"),
                 "last_modified": rsp.get("LastModified"),
                 "metadata": rsp.get("Metadata", {}),
                 "etag": rsp.get("ETag"),
             }
         except ClientError as exc:
+            logger.exception(
+                "S3 HeadObject failed",
+                extra=self._s3_log_extra(
+                    operation="HeadObject",
+                    key=key,
+                    duration_seconds=monotonic() - started_at,
+                ),
+            )
             if exc.response["Error"]["Code"] in ["404", "NoSuchKey"]:
                 raise S3NotFoundException(f"Did not find {key} in S3.") from exc
             raise S3Exception(exc) from exc
+        else:
+            logger.info(
+                "S3 HeadObject completed",
+                extra=self._s3_log_extra(
+                    operation="HeadObject",
+                    key=key,
+                    duration_seconds=monotonic() - started_at,
+                    request_id=self._request_id(rsp),
+                ),
+            )
+        return result
 
     async def list_object_keys(self, platform: str, version: str) -> list[dict[str, Any]]:
         """List objects within the given platform and version directory."""

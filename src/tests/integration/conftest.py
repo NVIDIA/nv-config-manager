@@ -623,6 +623,63 @@ def _find_ztp_pod(namespace: str) -> str | None:
 
 
 @pytest.fixture(scope="session")
+def kind_filestore_deployment(config_manager_namespace: str) -> None:
+    """Require an ephemeral Kind ZTP deployment backed by writable file storage."""
+    try:
+        context_result = subprocess.run(
+            ["kubectl", "config", "current-context"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError:
+        pytest.skip("Could not determine the Kubernetes context")
+
+    context = context_result.stdout.strip()
+    if not context.startswith("kind-"):
+        pytest.skip(f"FileStore mutation test requires a Kind context, got {context!r}")
+
+    pod_name = _find_ztp_pod(config_manager_namespace)
+    if pod_name is None:
+        pytest.skip("Could not find the ZTP pod")
+
+    try:
+        pod_result = subprocess.run(
+            [
+                "kubectl",
+                "get",
+                "pod",
+                pod_name,
+                "-n",
+                config_manager_namespace,
+                "-o",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        pod = json.loads(pod_result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        pytest.skip("Could not inspect the ZTP pod storage configuration")
+
+    http_api = next(
+        (
+            container
+            for container in pod.get("spec", {}).get("containers", [])
+            if container.get("name") == "http-api"
+        ),
+        None,
+    )
+    writable_file_store = http_api is not None and any(
+        mount.get("name") == "os-images" and not mount.get("readOnly", False)
+        for mount in http_api.get("volumeMounts", [])
+    )
+    if not writable_file_store:
+        pytest.skip("ZTP is not configured with a writable FileStore")
+
+
+@pytest.fixture(scope="session")
 def sftp_port_forward(config_manager_namespace: str) -> Generator[tuple[str, int] | None]:
     """Set up a dedicated port-forward for the SFTP server.
 

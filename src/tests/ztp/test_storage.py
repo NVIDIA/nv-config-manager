@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Unit tests for storage factory."""
+"""Unit tests for storage factory and byte-range parsing."""
 
 import pytest
 
@@ -22,6 +22,11 @@ from nv_config_manager.common.config import (
 )
 from nv_config_manager.ztp.filestore import FileStoreClient
 from nv_config_manager.ztp.s3 import S3Client
+from nv_config_manager.ztp.storage import (
+    ObjectStorageByteRange,
+    ObjectStorageRangeNotSatisfiableException,
+    parse_http_range,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -175,3 +180,34 @@ def test_get_storage_client_file_storage_from_ini(monkeypatch, tmp_path):
 
     assert isinstance(client, FileStoreClient)
     assert client.base_path == storage_path
+
+
+@pytest.mark.parametrize(
+    ("range_header", "total_length", "expected"),
+    [
+        (None, 10, None),
+        ("bytes=2-5", 10, ObjectStorageByteRange(start=2, end=5)),
+        ("bytes=2-", 10, ObjectStorageByteRange(start=2, end=9)),
+        ("bytes=-4", 10, ObjectStorageByteRange(start=6, end=9)),
+        ("bytes=8-99", 10, ObjectStorageByteRange(start=8, end=9)),
+    ],
+)
+def test_parse_http_range(
+    range_header: str | None,
+    total_length: int,
+    expected: ObjectStorageByteRange | None,
+) -> None:
+    """Single HTTP byte ranges resolve to their inclusive bounds."""
+    assert parse_http_range(range_header, total_length) == expected
+
+
+@pytest.mark.parametrize(
+    "range_header",
+    ["bytes=", "bytes=10-", "bytes=5-2", "bytes=-0", "items=0-1", "bytes=0-1,2-3"],
+)
+def test_parse_http_range_rejects_unsatisfiable_or_multi_ranges(range_header: str) -> None:
+    """Invalid and multi-range requests are consistently mapped to HTTP 416 upstream."""
+    with pytest.raises(ObjectStorageRangeNotSatisfiableException) as exc_info:
+        parse_http_range(range_header, 10)
+
+    assert exc_info.value.total_length == 10

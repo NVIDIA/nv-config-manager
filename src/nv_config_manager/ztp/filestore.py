@@ -22,11 +22,14 @@ from types import TracebackType
 from typing import Any, BinaryIO, Self
 
 from nv_config_manager.ztp.storage import (
+    ObjectStorageChangedException,
     ObjectStorageClient,
+    ObjectStorageDownload,
     ObjectStorageException,
     ObjectStorageExistsException,
     ObjectStorageNotAuthorizedException,
     ObjectStorageNotFoundException,
+    parse_http_range,
 )
 
 
@@ -47,6 +50,11 @@ class FileStoreNotAuthorizedException(ObjectStorageNotAuthorizedException):
 
 
 _PATH_TRAVERSAL_MSG = "Path traversal detected: resolved path escapes base directory"
+
+
+def _file_revision(stat: os.stat_result) -> str:
+    """Build a revision token that detects replacement or modification of a file."""
+    return f"{stat.st_dev}:{stat.st_ino}:{stat.st_mtime_ns}:{stat.st_size}"
 
 
 class FileStoreClient(ObjectStorageClient):
@@ -149,7 +157,57 @@ class FileStoreClient(ObjectStorageClient):
             raise FileStoreException(_PATH_TRAVERSAL_MSG)
         return file_path
 
-    async def get_firmware_object(self, platform: str, image: str) -> tuple[str, Any]:
+    async def _open_download(
+        self,
+        file_path: Path,
+        filename: str,
+        object_key: str,
+        *,
+        range_header: str | None,
+        known_total_length: int | None = None,
+        if_match: str | None = None,
+    ) -> ObjectStorageDownload:
+        """Open a file-backed object, seeking to the requested byte range if present."""
+
+        def _open_file() -> tuple[BinaryIO, int, Any, str]:
+            if not file_path.exists():
+                raise FileStoreNotFoundException(f"File not found: {file_path}")
+            file_handle = open(file_path, mode="rb")
+            try:
+                stat = os.fstat(file_handle.fileno())
+                total_length = stat.st_size
+                revision = _file_revision(stat)
+                if known_total_length is not None and total_length != known_total_length:
+                    raise ObjectStorageChangedException(
+                        f"{object_key} changed while it was being downloaded"
+                    )
+                if if_match is not None and revision != if_match:
+                    raise ObjectStorageChangedException(
+                        f"{object_key} changed while it was being downloaded"
+                    )
+                byte_range = parse_http_range(range_header, total_length)
+                if byte_range is not None:
+                    file_handle.seek(byte_range.start)
+                return file_handle, total_length, byte_range, revision
+            except BaseException:
+                file_handle.close()
+                raise
+
+        file_handle, total_length, byte_range, revision = await asyncio.to_thread(_open_file)
+        return ObjectStorageDownload(
+            filename=filename,
+            file_handle=file_handle,
+            content_length=byte_range.length if byte_range is not None else total_length,
+            total_length=total_length,
+            backend="filestore",
+            object_key=object_key,
+            byte_range=byte_range,
+            etag=revision,
+        )
+
+    async def get_firmware_object(
+        self, platform: str, image: str, *, range_header: str | None = None
+    ) -> ObjectStorageDownload:
         """Return the filename and file handle for the given device firmware.
 
         Args:
@@ -162,30 +220,41 @@ class FileStoreClient(ObjectStorageClient):
         # Build full path
         file_path = self.base_path / image_info["path"]
 
-        def _open_file() -> BinaryIO:
-            if not file_path.exists():
-                raise FileStoreNotFoundException(f"Firmware image file not found: {file_path}")
-            return open(file_path, mode="rb")
-
-        file_handle = await asyncio.to_thread(_open_file)
-        return str(image_info["filename"]), file_handle
+        try:
+            return await self._open_download(
+                file_path,
+                str(image_info["filename"]),
+                str(image_info["path"]),
+                range_header=range_header,
+            )
+        except FileStoreNotFoundException as exc:
+            raise FileStoreNotFoundException(f"Firmware image file not found: {file_path}") from exc
 
     async def get_firmware_checksum(self, platform: str, image: str) -> str:
         """Get the checksum for the firmware image from manifest."""
         image_info = self._get_image_from_manifest(platform, image)
         return str(image_info["sha256"])
 
-    async def get_object(self, platform: str, version: str, filename: str) -> tuple[str, Any]:
+    async def get_object(
+        self,
+        platform: str,
+        version: str,
+        filename: str,
+        *,
+        range_header: str | None = None,
+        known_total_length: int | None = None,
+        if_match: str | None = None,
+    ) -> ObjectStorageDownload:
         """Get an arbitrary file stored under a given platform/version."""
         file_path = self._get_file_path(platform, version, filename)
-
-        def _open_file() -> BinaryIO:
-            if not file_path.exists():
-                raise FileStoreNotFoundException(f"File not found: {file_path}")
-            return open(file_path, mode="rb")
-
-        file_handle = await asyncio.to_thread(_open_file)
-        return filename, file_handle
+        return await self._open_download(
+            file_path,
+            filename,
+            f"{platform}/{version}/{filename}",
+            range_header=range_header,
+            known_total_length=known_total_length,
+            if_match=if_match,
+        )
 
     async def get_checksum(self, platform: str, version: str, filename: str) -> str:
         """Get checksum for a file from manifest."""
@@ -222,7 +291,7 @@ class FileStoreClient(ObjectStorageClient):
             "size": stat.st_size,
             "last_modified": stat.st_mtime,
             "metadata": {"sha256-checksum": checksum} if checksum else {},
-            "etag": None,  # File storage doesn't have ETags
+            "etag": _file_revision(stat),
         }
 
     async def list_object_keys(self, platform: str, version: str) -> list[dict[str, Any]]:

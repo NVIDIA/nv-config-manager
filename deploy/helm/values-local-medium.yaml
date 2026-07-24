@@ -165,6 +165,14 @@ ui:
 # -----------------------------------------------------------------------------
 networkZtp:
   replicas: 1
+  downloads:
+    http:
+      chunkSizeBytes: 67108864 # 64 MiB
+      maxConcurrentDownloads: 8
+    sftp:
+      readAheadBytes: 16777216 # 16 MiB
+      maxConcurrentDownloads: 16
+      metricsPort: 9100
   nodeSelector: null
   affinity: null
 

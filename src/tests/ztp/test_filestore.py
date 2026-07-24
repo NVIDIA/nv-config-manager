@@ -27,6 +27,7 @@ from nv_config_manager.ztp.filestore import (
     FileStoreExistsException,
     FileStoreNotFoundException,
 )
+from nv_config_manager.ztp.storage import ObjectStorageChangedException
 
 MOCK_CONTENT = b"testcontent"
 MOCK_MANIFEST = {
@@ -242,6 +243,32 @@ async def test_get_object_not_found(temp_storage_dir, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_object_range(temp_storage_dir, monkeypatch):
+    """File storage seeks to the requested byte range and reports its exact length."""
+    monkeypatch.setenv("FILE_STORE_PATH", temp_storage_dir)
+    client = FileStoreClient()
+    await client.connect()
+
+    test_file_path = Path(temp_storage_dir) / "cumulus-linux/5.9.0/config.txt"
+    test_file_path.write_bytes(b"0123456789")
+
+    download = await client.get_object(
+        "cumulus-linux",
+        "5.9.0",
+        "config.txt",
+        range_header="bytes=3-6",
+    )
+
+    assert download.content_length == 4
+    assert download.total_length == 10
+    assert download.byte_range is not None
+    assert download.byte_range.start == 3
+    assert download.byte_range.end == 6
+    assert download.file_handle.read(download.content_length) == b"3456"
+    download.file_handle.close()
+
+
+@pytest.mark.asyncio
 async def test_get_checksum_success(temp_storage_dir, monkeypatch):
     """Test successful checksum retrieval for firmware image."""
     monkeypatch.setenv("FILE_STORE_PATH", temp_storage_dir)
@@ -280,7 +307,29 @@ async def test_get_object_metadata_success(temp_storage_dir, monkeypatch):
     assert metadata["size"] == len(MOCK_CONTENT)
     assert "last_modified" in metadata
     assert metadata["metadata"]["sha256-checksum"] == "abc123def456"
-    assert metadata["etag"] is None
+    assert isinstance(metadata["etag"], str)
+
+
+@pytest.mark.asyncio
+async def test_get_object_range_rejects_changed_revision(temp_storage_dir, monkeypatch):
+    """Multi-range FileStore downloads fail if the backing file changes."""
+    monkeypatch.setenv("FILE_STORE_PATH", temp_storage_dir)
+    client = FileStoreClient()
+    await client.connect()
+
+    metadata = await client.get_object_metadata("cumulus-linux", "5.9.0", "cumulus.bin")
+    file_path = Path(temp_storage_dir) / "cumulus-linux/5.9.0/cumulus.bin"
+    file_path.write_bytes(b"replacement")
+
+    with pytest.raises(ObjectStorageChangedException, match="changed while"):
+        await client.get_object(
+            "cumulus-linux",
+            "5.9.0",
+            "cumulus.bin",
+            range_header="bytes=0-3",
+            known_total_length=metadata["size"],
+            if_match=metadata["etag"],
+        )
 
 
 @pytest.mark.asyncio
