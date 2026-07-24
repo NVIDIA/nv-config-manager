@@ -67,9 +67,10 @@ EXPORTER_CONTAINER = "prom-exporter"
 EXPORTER_PORT = "prom-metrics"
 EXPORTER_JSZ_ARG = "-jsz=all"
 # Every arg the sidecar must carry for the metrics KEDA/PromQL rely on:
-# -connz/-varz select the connection + server endpoints, -jsz=all emits the
-# JetStream consumer series, and -prefix=nats yields the nats_* metric names.
-EXPORTER_REQUIRED_ARGS = ("-connz", "-varz", EXPORTER_JSZ_ARG, "-prefix=nats")
+# -varz selects the server endpoint, -jsz=all emits the JetStream consumer
+# series, and -prefix=nats yields the nats_* metric names. (-connz is
+# intentionally omitted from the sidecar — see templates/nautobot.yaml.)
+EXPORTER_REQUIRED_ARGS = ("-varz", EXPORTER_JSZ_ARG, "-prefix=nats")
 # The exporter image name (final repository path component), regardless of
 # registry. Pinned upstream to docker.io/natsio/prometheus-nats-exporter, but
 # air-gapped installs legitimately mirror it under another registry
