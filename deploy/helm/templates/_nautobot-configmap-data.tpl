@@ -121,6 +121,16 @@ uwsgi.ini: |
   
   ; The WSGI module to load
   module = nautobot.core.wsgi:application
+
+  ; Preload django-prometheus cache metrics before any request.
+  ; Without this, the first /metrics/ scrape can self-deadlock: Nautobot's
+  ; metrics collector registers while holding Prometheus's non-reentrant
+  ; registry lock, then touches Django's cache, which lazily imports
+  ; django_prometheus.cache.metrics and tries to re-acquire the same lock.
+  ; Concurrent GraphQL init then blocks on the Python import lock, making
+  ; GraphQL appear responsible. Intermittent because each uWSGI worker
+  ; initializes independently.
+  import = django_prometheus.cache.metrics
   
   ; Listen queue size
   listen = {{ .Values.nautobot.server.uwsgi.listen }}

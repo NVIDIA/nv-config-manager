@@ -14,7 +14,7 @@
 # limitations under the License.
 """V1 Device API Endpoints."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from nv_config_manager.common.config import get_storage_client
@@ -31,7 +31,7 @@ router = APIRouter(
 
 
 @router.get("/{platform}/{version}", response_class=StreamingResponse)
-async def load_firmware(platform: str, version: str) -> StreamingResponse:
+async def load_firmware(platform: str, version: str, request: Request) -> StreamingResponse:
     """Load the firmware by platform and version.
 
     Note: For large firmware files, use curl or direct browser download instead of
@@ -40,7 +40,11 @@ async def load_firmware(platform: str, version: str) -> StreamingResponse:
     storage_client = get_storage_client()
     try:
         return await create_object_storage_streaming_response(
-            storage_client, storage_client.get_firmware_object, platform, version
+            storage_client,
+            storage_client.get_firmware_object,
+            platform,
+            version,
+            request=request,
         )
     except ObjectStorageNotFoundException as exc:
         raise HTTPException(status_code=404, detail="Firmware image not found in S3.") from exc

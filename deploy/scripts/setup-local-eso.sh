@@ -43,11 +43,32 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $*"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $*"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
-log_step() { echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; echo -e "${CYAN}Step: $*${NC}"; echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $*"
+    return 0
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $*"
+    return 0
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*"
+    return 0
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+    return 0
+}
+
+log_step() {
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}Step: $*${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    return 0
+}
 
 NAMESPACE="${NAMESPACE:-nv-config-manager-dev}"
 OPENBAO_NAMESPACE="openbao"
@@ -80,6 +101,7 @@ check_openbao() {
     fi
     
     log_success "OpenBao is running"
+    return 0
 }
 
 check_eso() {
@@ -101,6 +123,7 @@ check_eso() {
     else
         log_success "External Secrets Operator is running"
     fi
+    return 0
 }
 
 # =============================================================================
@@ -112,6 +135,7 @@ setup_namespace() {
     
     kubectl create namespace "$NAMESPACE" 2>/dev/null || log_info "Namespace already exists"
     log_success "Namespace $NAMESPACE ready"
+    return 0
 }
 
 create_token_secret() {
@@ -124,6 +148,7 @@ create_token_secret() {
         -n "$NAMESPACE" 2>/dev/null || log_info "Token secret already exists"
     
     log_success "Token secret ready"
+    return 0
 }
 
 enable_kv_engines() {
@@ -140,6 +165,7 @@ enable_kv_engines() {
         log_info "secrets KV engine already enabled"
     
     log_success "KV engines ready"
+    return 0
 }
 
 generate_test_secrets() {
@@ -154,7 +180,8 @@ generate_test_secrets() {
         local path="$1"
         shift
         kubectl -n "$OPENBAO_NAMESPACE" exec "$OPENBAO_POD" -- \
-            env BAO_TOKEN="$token" bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1
+            env BAO_TOKEN="$token" bao kv put "nv-config-manager/${path}" "$@" >/dev/null 2>&1 || return $?
+        return 0
     }
     
     # Nautobot
@@ -227,6 +254,7 @@ generate_test_secrets() {
     log_info "  ✓ nautobot-app"
     
     log_success "All test secrets created"
+    return 0
 }
 
 deploy_chart() {
@@ -239,6 +267,7 @@ deploy_chart() {
         --wait --timeout 120s
     
     log_success "Chart deployed"
+    return 0
 }
 
 verify_eso() {
@@ -291,16 +320,17 @@ verify_eso() {
 
 main() {
     local do_deploy=false
+    local argument
     
     # Parse arguments
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
+    for argument in "$@"; do
+        case "$argument" in
             --deploy|-d)
                 do_deploy=true
-                shift
                 ;;
             *)
-                shift
+                log_error "Unknown argument: $argument"
+                return 2
                 ;;
         esac
     done
@@ -345,7 +375,7 @@ main() {
         log_info "Or run with --deploy to deploy automatically:"
         echo "  ./scripts/setup-local-eso.sh --deploy"
     fi
-    
+    return 0
 }
 
 main "$@"

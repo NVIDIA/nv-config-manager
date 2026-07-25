@@ -2,6 +2,8 @@
 #
 {{- $dhcpName := include "nv-config-manager.componentName" (dict "root" . "component" "dhcp") }}
 {{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
+{{- $ztpDownloads := (.Values.networkZtp.downloads | default dict) }}
+{{- $ztpSftpDownloads := ($ztpDownloads.sftp | default dict) }}
 # =============================================================================
 # Network Policy - Namespace Isolation
 # =============================================================================
@@ -50,6 +52,8 @@ spec:
           port: 9000
         - protocol: TCP
           port: 9090
+        - protocol: TCP
+          port: {{ ($ztpSftpDownloads.metricsPort | default 9100) }}
         - protocol: TCP
           port: {{ .Values.networkDhcp.kea.storkAgentPort }}
         - protocol: TCP

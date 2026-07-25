@@ -1311,6 +1311,26 @@ networkZtp:
     # before it is closed. Shorter than the total timeout to detect stalled
     # uploads promptly.
     idleTimeout: 300s
+  # ---------------------------------------------------------------------------
+  # Download configuration
+  # ---------------------------------------------------------------------------
+  # These values render into the unified INI's [ztp] section. The bounds are
+  # per ZTP container and prevent enough large streams from being active at
+  # once to exhaust it while retaining good fleet provisioning throughput.
+  # Local size profiles lower the limits below.
+  downloads:
+    http:
+      # Largest read issued to object storage for one HTTP response.
+      chunkSizeBytes: 67108864 # 64 MiB
+      # Includes requests waiting on a slow device; held for response lifetime.
+      maxConcurrentDownloads: 16
+    sftp:
+      # One bounded read-ahead cache is held per active SFTP file handle.
+      readAheadBytes: 16777216 # 16 MiB
+      # Held from SFTP open until the remote client closes the handle.
+      maxConcurrentDownloads: 32
+      # Dedicated Prometheus endpoint for metrics emitted by the SFTP process.
+      metricsPort: 9100
   # Deployment configuration
   replicas: 3
   # Resources per container type

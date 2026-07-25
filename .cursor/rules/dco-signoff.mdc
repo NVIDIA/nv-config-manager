@@ -1,0 +1,11 @@
+---
+description: Require Developer Certificate of Origin sign-off on commits
+alwaysApply: true
+---
+
+# DCO Sign-Off
+
+- Create every commit with `git commit --signoff` (or `git commit -s`).
+- The `Signed-off-by` trailer must match the commit author.
+- Before pushing, verify each new commit contains the trailer.
+- Never fabricate a sign-off for another contributor.

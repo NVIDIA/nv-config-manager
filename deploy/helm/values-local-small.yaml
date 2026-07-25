@@ -133,6 +133,14 @@ renderService:
 # -----------------------------------------------------------------------------
 networkZtp:
   replicas: 1
+  downloads:
+    http:
+      chunkSizeBytes: 16777216 # 16 MiB
+      maxConcurrentDownloads: 2
+    sftp:
+      readAheadBytes: 16777216 # 16 MiB
+      maxConcurrentDownloads: 8
+      metricsPort: 9100
   resources:
     http:
       requests:
