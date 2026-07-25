@@ -59,7 +59,7 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $*"
+    echo -e "${RED}[ERROR]${NC} $*" >&2
     return 0
 }
 
@@ -327,6 +327,10 @@ main() {
         case "$argument" in
             --deploy|-d)
                 do_deploy=true
+                ;;
+            *)
+                log_error "Unknown argument: $argument"
+                return 2
                 ;;
         esac
     done

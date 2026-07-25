@@ -322,6 +322,7 @@ def main() -> None:
         port=args.port,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )
 
 

@@ -1,0 +1,152 @@
+---
+# =============================================================================
+# Untrusted PR build (test-env promote flow, stage 1 of 2)
+# =============================================================================
+# Builds the service images from a copy-pr-bot pull-request/<n> ref of the
+# mirror and hands them to the protected promote pipeline as job artifacts.
+#
+# SECURITY MODEL: this pipeline executes untrusted PR code (vetted only by
+# copy-pr-bot's trustee/"/ok to test" gate), so it must run WITHOUT secrets:
+#   - it only runs on pull-request/* refs, which are unprotected, so GitLab
+#     withholds all Protected variables (registry tokens, push tokens, ...)
+#   - it never logs in to a registry and never pushes; images are written to
+#     local tarballs via DOCKER_BUILD_OUTPUT and uploaded as job artifacts
+#   - it is created only by a deliberate trigger (the promote pipeline's API
+#     call, or a manual run) - mirror pushes never start it (see the
+#     workflow rules in common.yml)
+# The protected promote pipeline (promote-test-envs.yml) downloads the
+# artifacts, retags, pushes, and captures digests with credentials that this
+# pipeline never sees.
+#
+# amd64 only: the shared test envs deploy amd64, matching the existing
+# deploy-to-test flow's ${CI_COMMIT_SHORT_SHA}-amd64 convention.
+# =============================================================================
+
+.pr-build-rules: &pr-build-rules
+  - if: $CI_COMMIT_BRANCH =~ /^pull-request\// && ($CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
+    when: always
+  - when: never
+
+# One job per image: bounds each artifact's size, parallelizes the builds and
+# uploads, and lets the promote side download by job id.
+pr-build-image:
+  stage: build
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  needs: []
+  image: $NVCM_CI_IMAGE_DOCKER
+  services:
+    - name: $NVCM_CI_IMAGE_DOCKER_DIND
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+  rules: *pr-build-rules
+  parallel:
+    matrix:
+      - NVCM_PR_TARGET: nv-config-manager
+        NVCM_PR_IMAGE: nv-config-manager
+      - NVCM_PR_TARGET: kea
+        NVCM_PR_IMAGE: nv-config-manager-kea
+      - NVCM_PR_TARGET: kea-admin
+        NVCM_PR_IMAGE: nv-config-manager-kea-admin
+      - NVCM_PR_TARGET: ui
+        NVCM_PR_IMAGE: nv-config-manager-ui
+      - NVCM_PR_TARGET: nb
+        NVCM_PR_IMAGE: nv-config-manager-nautobot
+      - NVCM_PR_TARGET: nats-ready
+        NVCM_PR_IMAGE: nv-config-manager-nats-ready
+      - NVCM_PR_TARGET: temporal-server
+        NVCM_PR_IMAGE: nv-config-manager-temporal
+      - NVCM_PR_TARGET: temporal-bootstrap
+        NVCM_PR_IMAGE: nv-config-manager-temporal-bootstrap
+      - NVCM_PR_TARGET: temporal-ui
+        NVCM_PR_IMAGE: nv-config-manager-temporal-ui
+  before_script:
+    - apk add -q make bash git curl coreutils
+    - docker info
+    # Fail fast if the PR moved or closed while this pipeline was queued.
+    - bash .gitlab/ci/scripts/pr_ref_guard.sh
+    # TEMPLATE_ENGINE_VERSION derivation matches .docker-build-native-template
+    # (build.yml), minus the registry login that template performs.
+    - git fetch --tags --force
+    - |
+      latest_release_tag="$(git tag --list | grep -E '^[v]?[0-9]+\.[0-9]+\.[0-9]+(-rc\.?[0-9]+)?$' | sort -V | tail -n 1)"
+      if [ -z "$latest_release_tag" ]; then
+        echo "No release tag found for TEMPLATE_ENGINE_VERSION"
+        exit 1
+      fi
+      template_engine_base="${latest_release_tag#v}"
+      template_engine_base="${template_engine_base/-rc./rc}"
+      template_engine_base="${template_engine_base/-rc/rc}"
+      export TEMPLATE_ENGINE_VERSION="${template_engine_base}+g${CI_COMMIT_SHORT_SHA}"
+      echo "Template engine version: ${TEMPLATE_ENGINE_VERSION}"
+  script:
+    - mkdir -p images
+    - make docker-buildx-setup-native
+    - >
+      make docker-build-single-${NVCM_PR_TARGET}
+      PLATFORM=linux/amd64
+      VERSION=${CI_COMMIT_SHORT_SHA}
+      REGISTRY=pr-local
+      TEMPLATE_ENGINE_VERSION="${TEMPLATE_ENGINE_VERSION}"
+      DOCKER_BUILD_OUTPUT="--output type=docker,dest=${CI_PROJECT_DIR}/images/${NVCM_PR_IMAGE}.tar"
+    # Artifact zip barely compresses image tars; pre-gzip is the effective
+    # compression (docker load reads .tar.gz directly).
+    - gzip -1 "images/${NVCM_PR_IMAGE}.tar"
+    # Re-check before uploading: the build can take long enough for the PR
+    # to move; don't publish artifacts for a SHA that is no longer HEAD.
+    - bash .gitlab/ci/scripts/pr_ref_guard.sh
+  artifacts:
+    paths:
+      - images/
+    expire_in: 3 days
+
+# Package the Helm chart here, in the SAME secret-free context as the images.
+# Chart packaging is the step that runs untrusted chart processing (notably
+# `helm dependency build`, which fetches subcharts from PR-controlled Chart.yaml
+# URLs), so it must NOT run in the credentialed promote pipeline. Promote only
+# downloads this .tgz, validates its render, and publishes it - never rebuilds
+# from PR source.
+pr-build-chart:
+  stage: build
+  # Restricted, isolated runners for untrusted PR builds (no privileged access
+  # to the internal DCA fleet). Protected promote jobs stay on the dca runners.
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  needs: []
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules: *pr-build-rules
+  before_script:
+    - apk add -q bash git curl helm yq
+    - bash .gitlab/ci/scripts/pr_ref_guard.sh
+  script:
+    # Stamp the immutable promote version, derived deterministically from the
+    # ref + SHA. The promote pipeline computes the SAME value from GitLab's
+    # trusted PR metadata and locates this chart by its expected filename, so
+    # it never has to trust anything this untrusted job records.
+    - |
+      pr_num="${CI_COMMIT_REF_NAME#pull-request/}"
+      short_sha="$(printf '%s' "$CI_COMMIT_SHA" | cut -c1-8)"
+      promote_version="0.0.0-pr${pr_num}.${short_sha}"
+      echo "Packaging chart version ${promote_version}"
+      yq -i ".version = \"${promote_version}\" | .appVersion = \"${promote_version}\"" deploy/helm/Chart.yaml
+
+    - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    - helm repo add grafana https://grafana.github.io/helm-charts
+    - helm repo update
+    - helm dependency build deploy/helm
+    - mkdir -p chart
+    - helm package deploy/helm --destination chart
+    # Re-check HEAD before uploading, as with the image builds.
+    - bash .gitlab/ci/scripts/pr_ref_guard.sh
+  artifacts:
+    paths:
+      - chart/
+    expire_in: 3 days
