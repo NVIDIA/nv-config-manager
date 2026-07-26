@@ -38,6 +38,10 @@ from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.NATS)
 
+# Defined here rather than in common.config because that module imports this
+# package; common.config re-exports it as the public name.
+DEFAULT_NATS_API_PREFIX = "$JS.API"
+
 
 class NatsClient:
     """Base client for NATS JetStream."""
@@ -53,6 +57,7 @@ class NatsClient:
         creds_path: str | None = None,
         default_stream_name: str = "nv-config-manager",
         default_stream_subjects: list[str] | None = None,
+        api_prefix: str = DEFAULT_NATS_API_PREFIX,
     ) -> None:
         """Initialize the NATS client.
 
@@ -64,6 +69,10 @@ class NatsClient:
             user: Username for password auth
             password: Password for password auth
             creds_path: Path to credentials file for JWT auth
+            default_stream_name: Stream backing this client
+            default_stream_subjects: Subjects to create the stream with when local
+            api_prefix: JetStream API prefix. Use the exporting account's rewritten
+                prefix when the stream is imported from another NATS account.
         """
         self.server = server
         self.queue = queue
@@ -74,6 +83,7 @@ class NatsClient:
         self.creds_path = creds_path
         self.default_stream_name = default_stream_name
         self.default_stream_subjects = default_stream_subjects or ["nv-config-manager.>"]
+        self.api_prefix = api_prefix
 
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.load_verify_locations(certifi.where())
@@ -109,6 +119,7 @@ class NatsClient:
             creds_path=nats_config.get("creds_path"),
             default_stream_name=nats_config.get("config_manager_stream", "nv-config-manager"),
             default_stream_subjects=stream_subjects,
+            api_prefix=nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
         )
 
     async def _disconnected_cb(self) -> None:
@@ -172,7 +183,7 @@ class NatsClient:
         if not self.conn:
             return
 
-        jetstream = self.conn.jetstream()
+        jetstream = self.conn.jetstream(prefix=self.api_prefix)
         try:
             self.stream_info = await jetstream.stream_info(self.default_stream_name)
         except nats.js.errors.NotFoundError:
@@ -209,7 +220,7 @@ class NatsProducer(NatsClient):
         """
         stream_name = stream or self.default_stream_name
         async with await self.connect() as conn:
-            await conn.jetstream().publish(
+            await conn.jetstream(prefix=self.api_prefix).publish(
                 subject=subject, payload=message.encode("utf-8"), stream=stream_name
             )
             logger.debug("Published NATS message on stream %s subject %s", stream_name, subject)
@@ -264,7 +275,7 @@ class NatsConsumer(NatsClient):
     async def main(self) -> None:
         """Main consumer loop."""
         self.conn = await self.connect()
-        jetstream = self.conn.jetstream()
+        jetstream = self.conn.jetstream(prefix=self.api_prefix)
 
         await jetstream.subscribe(
             subject=self.subject,

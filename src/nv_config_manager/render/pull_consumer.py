@@ -33,6 +33,7 @@ from nats.js.errors import FetchTimeoutError
 from prometheus_client import start_http_server
 
 from nv_config_manager.common.config import (
+    DEFAULT_NATS_API_PREFIX,
     LogCategory,
     NATSConnectionManager,
     NautobotConnectionManager,
@@ -63,7 +64,7 @@ class PullConsumer:
         stream: str,
         subject: str,
         queue_suffix: str,
-        api_prefix: str = "$JS.API",
+        api_prefix: str = DEFAULT_NATS_API_PREFIX,
     ) -> None:
         """Initialize the consumer."""
         config = load_config()

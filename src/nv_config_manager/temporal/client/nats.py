@@ -24,6 +24,7 @@ from collections.abc import Awaitable, Callable
 
 from nats.aio.msg import Msg
 
+from nv_config_manager.common.client import DEFAULT_NATS_API_PREFIX
 from nv_config_manager.common.client import (
     NatsClient as BaseNatsClient,
 )
@@ -53,6 +54,7 @@ class NatsClient(BaseNatsClient):
         local = local_str.lower() == "true" if isinstance(local_str, str) else bool(local_str)
 
         super().__init__(
+            api_prefix=nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,
@@ -79,6 +81,7 @@ class NatsProducer(BaseNatsProducer):
         local = local_str.lower() == "true" if isinstance(local_str, str) else bool(local_str)
 
         super().__init__(
+            api_prefix=nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,
@@ -102,8 +105,18 @@ class NatsConsumer(BaseNatsConsumer):
         subject: str,
         queue_suffix: str,
         handler: Callable[[Msg], Awaitable[None]],
+        api_prefix: str | None = None,
     ) -> None:
-        """Initialize the consumer from config."""
+        """Initialize the consumer from config.
+
+        Args:
+            stream: Stream to consume from
+            subject: Subject to consume
+            queue_suffix: Suffix appended to the configured queue prefix
+            handler: Coroutine invoked per message
+            api_prefix: JetStream API prefix for this stream. Defaults to the
+                config-manager account prefix.
+        """
         config = load_config()
         nats_config = config["nats"]
 
@@ -115,6 +128,8 @@ class NatsConsumer(BaseNatsConsumer):
             subject=subject,
             queue_suffix=queue_suffix,
             handler=handler,
+            api_prefix=api_prefix
+            or nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,
