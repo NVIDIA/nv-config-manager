@@ -39,6 +39,7 @@ from requests.adapters import HTTPAdapter
 # CLIENT IMPORTS
 # =============================================================================
 from nv_config_manager.common.client import (
+    DEFAULT_NATS_API_PREFIX,
     ConfigStoreClient,
     DHCPClient,
     NatsClient,
@@ -133,7 +134,6 @@ DEFAULT_CONFIG_MANAGER_DEVICE_CHANGE_SUBJECT = "nv-config-manager.devicechange"
 DEFAULT_CONFIG_MANAGER_ARCHIVE_SUBJECT = "nv-config-manager.workflow.result"
 DEFAULT_NAUTOBOT_NATS_STREAM = "nautobot"
 DEFAULT_NAUTOBOT_NATS_SUBJECT = "nautobot"
-DEFAULT_NATS_API_PREFIX = "$JS.API"
 
 
 def _nats_section(config: ConfigParser | None = None) -> SectionProxy:

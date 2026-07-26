@@ -22,7 +22,11 @@ from typing import Any
 
 from nats.aio.msg import Msg
 
-from nv_config_manager.common.config import load_config, nats_archive_config
+from nv_config_manager.common.config import (
+    load_config,
+    nats_archive_api_prefix,
+    nats_archive_config,
+)
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.temporal.api.workflow_v1 import WorkflowDetailResponse, get_client
 from nv_config_manager.temporal.client.nats import NatsConsumer
@@ -213,6 +217,7 @@ def main() -> None:
         subject=subject,
         queue_suffix="archive",
         handler=handle_archive_msg,
+        api_prefix=nats_archive_api_prefix(),
     )
     consumer.run()
 
