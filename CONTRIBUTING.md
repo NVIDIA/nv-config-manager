@@ -5,6 +5,7 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 ## Table of Contents
 
 - [Developer Certificate of Origin (DCO)](#developer-certificate-of-origin-dco)
+- [Cryptographically Signing Commits](#cryptographically-signing-commits)
 - [Getting Started](#getting-started)
 - [How to Contribute](#how-to-contribute)
 - [Pull Request Process](#pull-request-process)
@@ -17,7 +18,7 @@ NVIDIA Config Manager requires the Developer Certificate of Origin (DCO) process
 
 The DCO is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit the code they are contributing to the project. Here is the full text of the [DCO](https://developercertificate.org/):
 
-```
+```text
 Developer Certificate of Origin
 Version 1.1
 
@@ -57,7 +58,7 @@ By making a contribution to this project, I certify that:
 
 To sign off your commits, add a `Signed-off-by` line to your commit messages:
 
-```
+```text
 This is my commit message
 
 Signed-off-by: Your Name <your.email@example.com>
@@ -82,6 +83,59 @@ git rebase --signoff HEAD~<number_of_commits>
 ```
 
 **Note:** Your sign-off must use your real name (no pseudonyms or anonymous contributions) and must match the author information in your Git configuration.
+
+## Cryptographically Signing Commits
+
+Trustees who want copy-pr-bot to automatically sync their ready pull requests
+must configure OpenPGP, SSH, or X.509/S/MIME signing so GitHub can verify every
+commit. Other contributors may cryptographically sign their commits, but doing
+so does not remove the maintainer-approval step.
+
+A `Verified` signature does not grant trustee status or authorize CI by itself.
+Copy-pr-bot automatically syncs ready pull requests from configured trustees
+when every commit is `Verified`. Pull requests from other contributors, and
+draft pull requests, require an authorized maintainer to approve the current
+commit with:
+
+```text
+/ok to test <sha>
+```
+
+Approval applies only to that exact commit. After the pull request is updated,
+an authorized maintainer must approve the new commit before CI can use it.
+
+GitHub documents how to configure each supported
+[commit-signing method](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
+Trustees should follow the internal setup guidance for their chosen method.
+Once configured, `commit.gpgsign=true` signs new commits automatically.
+
+The pre-commit hook recognizes all three supported formats, but signing checks
+are opt-in. The hook remains silent unless repository-local
+`commit.gpgsign=true`, `user.signingkey`, or `gpg.format` settings indicate that
+signing is being used. Contributors who do not rely on trustee auto-sync are
+therefore not asked to configure a signing key. When opted in, the check reports
+incomplete local setup without blocking the commit. It cannot determine whether
+GitHub recognizes the key, so confirm the `Verified` status after pushing.
+
+Verify a new commit locally and confirm that GitHub displays `Verified` after it is
+pushed:
+
+```bash
+git log --show-signature -1
+```
+
+To re-sign every commit on an existing pull-request branch, first make sure the
+branch is clean, then run:
+
+```bash
+git fetch origin
+base="$(git merge-base origin/main HEAD)"
+git rebase --exec 'git commit --amend --no-edit -S' "$base"
+git push --force-with-lease
+```
+
+This rewrites commit IDs. Coordinate with anyone else using the branch before
+force-pushing it.
 
 ## Getting Started
 
@@ -108,11 +162,15 @@ git rebase --signoff HEAD~<number_of_commits>
    ```
    This installs:
 
-   - `pre-commit`, which auto-formats staged Python files outside ignored/generated
-     directories with `ruff format` and verifies SPDX license headers in supported
-     source files.
+   - `pre-commit`, which checks opted-in commit signing, auto-formats staged
+     Python files outside ignored/generated directories with `ruff format`, and
+     verifies SPDX license headers in supported source files.
    - `commit-msg`, which rejects commit messages missing a DCO
      `Signed-off-by: Name <email>` trailer.
+
+   The installer reports signing readiness only when repository-local signing
+   settings are present. Trustees who rely on automatic sync should follow the
+   internal setup guidance for a GitHub-supported signing method.
 
 5. **Create a branch** for your changes:
    ```bash
@@ -139,7 +197,7 @@ git rebase --signoff HEAD~<number_of_commits>
 1. Ensure your code follows the project's coding standards
 2. Write or update tests as needed
 3. Update documentation if applicable
-4. Sign off all commits (see DCO section above)
+4. Sign off all commits as described above
 5. Submit a pull request
 
 ## Pull Request Process
