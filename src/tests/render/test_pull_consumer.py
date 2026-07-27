@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nats.aio.msg import Msg
+from nats.js.errors import NotFoundError, ServiceUnavailableError
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from nv_config_manager.render.pull_consumer import (
@@ -414,7 +415,7 @@ async def test_ensure_consumer_exists_new_consumer(custom_ini, mock_jetstream):
     consumer.jetstream = mock_jetstream
 
     # Mock consumer_info to raise exception (consumer doesn't exist)
-    mock_jetstream.consumer_info.side_effect = Exception("consumer not found")
+    mock_jetstream.consumer_info.side_effect = NotFoundError
 
     await consumer._ensure_consumer_exists()
 
@@ -442,6 +443,71 @@ async def test_ensure_consumer_exists_existing_consumer(custom_ini, mock_jetstre
     # Should call consumer_info but NOT add_consumer
     mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
     mock_jetstream.add_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_consumer_exists_transient_error_does_not_create(custom_ini, mock_jetstream):
+    """A non-NotFound error must not be mistaken for an absent consumer."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+
+    mock_jetstream.consumer_info.side_effect = TimeoutError("transient")
+
+    with pytest.raises(TimeoutError):
+        await consumer._ensure_consumer_exists()
+
+    mock_jetstream.add_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_consumer_exists_imported_stream_names_owner(custom_ini, mock_jetstream):
+    """Consumer creation is not exported across accounts, so the error explains why."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="nautobot",
+        subject="nautobot",
+        queue_suffix="nautobot",
+        api_prefix="$JS.CEREBRO.API",
+    )
+    consumer.jetstream = mock_jetstream
+
+    mock_jetstream.consumer_info.side_effect = NotFoundError
+    mock_jetstream.add_consumer.side_effect = ServiceUnavailableError
+
+    with pytest.raises(RuntimeError, match=r"\$JS\.CEREBRO\.API"):
+        await consumer._ensure_consumer_exists()
+
+
+@pytest.mark.asyncio
+async def test_consumer_cycle_binds_stream_explicitly(
+    custom_ini, mock_jetstream, mock_pull_subscription
+):
+    """Naming the stream avoids a $JS.API.STREAM.NAMES lookup, which is not exported
+    across NATS account boundaries."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="nautobot",
+        subject="nautobot",
+        queue_suffix="nautobot",
+        api_prefix="$JS.CEREBRO.API",
+    )
+    consumer.jetstream = mock_jetstream
+    mock_jetstream.pull_subscribe.return_value = mock_pull_subscription
+    consumer.nats_conn = MagicMock()
+    consumer.nats_conn.is_closed = False
+    # Skip the message loop; this asserts only how the subscription is bound.
+    consumer.running = False
+
+    await consumer._run_consumer_cycle()
+
+    mock_jetstream.pull_subscribe.assert_awaited_once_with(
+        subject="nautobot", durable=consumer.queue, stream="nautobot"
+    )
 
 
 @pytest.mark.asyncio

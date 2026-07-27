@@ -29,7 +29,7 @@ from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.js import JetStreamContext
 from nats.js.api import ConsumerConfig, DeliverPolicy
-from nats.js.errors import FetchTimeoutError
+from nats.js.errors import FetchTimeoutError, NotFoundError, ServiceUnavailableError
 from prometheus_client import start_http_server
 
 from nv_config_manager.common.config import (
@@ -82,6 +82,9 @@ class PullConsumer:
         # Flow control settings
         self.idle_wait = 1.0  # Wait time when no messages available
         self.error_backoff = 2.0  # Wait time after errors
+        # Consecutive cycles that failed before a subscription could be established
+        self._consecutive_failures = 0
+        self.max_consecutive_failures = 3
         # Heartbeat interval for consumer health detection
         # Must be < FetchMaxWait/2 (default FetchMaxWait=5s, so heartbeat must be < 2.5s)
         self.heartbeat_interval = 1.0
@@ -203,7 +206,21 @@ class PullConsumer:
                 break
             except Exception as e:
                 # Any exception bubbling up from fetch indicates we need to recreate
-                self.logger.warning("Consumer %s cycle failed, recreating: %s", self.queue, str(e))
+                self._consecutive_failures += 1
+                # A consumer that never reaches a subscription keeps this process alive
+                # while consuming nothing, so escalate instead of retrying at warning
+                # level indefinitely.
+                log = (
+                    self.logger.error
+                    if self._consecutive_failures >= self.max_consecutive_failures
+                    else self.logger.warning
+                )
+                log(
+                    "Consumer %s cycle failed (%d consecutive), recreating: %s",
+                    self.queue,
+                    self._consecutive_failures,
+                    str(e),
+                )
                 await asyncio.sleep(self.error_backoff)
 
         self.running = False
@@ -216,11 +233,14 @@ class PullConsumer:
         if self.jetstream is None:
             raise RuntimeError("JetStream context is None")
 
+        # Pass the stream explicitly; omitting it makes nats-py resolve the name via
+        # $JS.API.STREAM.NAMES, which is not exported across NATS account boundaries.
         pull_subscription = await self.jetstream.pull_subscribe(
-            subject=self.subject, durable=self.queue
+            subject=self.subject, durable=self.queue, stream=self.stream
         )
 
         self.logger.info("Pull subscription created for consumer %s", self.queue)
+        self._consecutive_failures = 0
 
         try:
             # Message processing loop
@@ -272,16 +292,24 @@ class PullConsumer:
 
             self.logger.info("Creating/ensuring consumer exists: %s", self.queue)
 
-            # Try to get existing consumer info first
+            # Only a genuinely absent consumer should trigger creation. Treating any
+            # failure as absence turns transient errors into spurious create attempts.
             try:
                 await self.jetstream.consumer_info(self.stream, self.queue)
                 self.logger.info("Consumer %s already exists", self.queue)
-            except Exception:
-                # Consumer doesn't exist, create it
-                await self.jetstream.add_consumer(
-                    stream=self.stream,
-                    config=config,
-                )
+            except NotFoundError:
+                try:
+                    await self.jetstream.add_consumer(
+                        stream=self.stream,
+                        config=config,
+                    )
+                except ServiceUnavailableError as e:
+                    raise RuntimeError(
+                        f"Consumer {self.queue} is absent from stream {self.stream} and cannot be "
+                        f"created through API prefix {self.api_prefix}. A stream imported from "
+                        f"another NATS account does not export consumer creation, so the owning "
+                        f"account must provision this consumer."
+                    ) from e
                 self.logger.info("Consumer %s created successfully", self.queue)
 
         except Exception as e:
