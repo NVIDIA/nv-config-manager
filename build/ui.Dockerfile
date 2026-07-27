@@ -1,34 +1,13 @@
 # NVIDIA Config Manager UI - Next.js Application
 #
 # Uses NVIDIA distroless Node.js image for minimal attack surface.
-# Multi-stage build: deps/builder stages use Ubuntu, runtime uses distroless.
+# Multi-stage build: deps/builder stages use the official Node.js image,
+# runtime uses NVIDIA distroless.
 
 # =============================================================================
 # Dependencies stage - install npm packages
 # =============================================================================
-FROM nvcr.io/nvidia/base/ubuntu:noble-20260217 AS deps
-
-ARG APT_MIRROR=""
-ARG APT_MIRROR_GPG_KEY_URL=""
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install Node.js 24.x
-COPY --from=scripts configure-apt-mirror.sh /tmp/configure-apt-mirror.sh
-RUN set -eux; \
-    /tmp/configure-apt-mirror.sh "$APT_MIRROR" "$APT_MIRROR_GPG_KEY_URL" ubuntu && \
-    apt-get update && apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+FROM docker.io/library/node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS deps
 
 WORKDIR /app
 
@@ -75,4 +54,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["server.js"]
+CMD ["node", "server.js"]
