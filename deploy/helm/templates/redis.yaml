@@ -41,7 +41,13 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ $redisName }}
       app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- if .Values.externalServices.redis.persistence.enabled }}
+  # A ReadWriteOnce PVC cannot be mounted by old and new pods on different nodes.
+  strategy:
+    type: Recreate
+  {{- else }}
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
+  {{- end }}
   template:
     metadata:
       labels:
