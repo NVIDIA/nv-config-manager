@@ -27,7 +27,7 @@ config_manager_stream = nv-config-manager
 config_manager_api_prefix = $JS.API
 archive_stream = nv-config-manager
 archive_subject = nv-config-manager.workflow.result
-archive_api_prefix = $JS.CEREBRO.API
+archive_api_prefix = $JS.CUSTOM.API
 """
 
 
@@ -50,7 +50,7 @@ def test_consumer_defaults_to_config_manager_prefix(custom_ini):
 def test_consumer_accepts_explicit_prefix(custom_ini):
     """An explicit prefix overrides the config-manager account default."""
     custom_ini(ARCHIVE_NATS_CONFIG)
-    assert _consumer(api_prefix="$JS.CEREBRO.API").api_prefix == "$JS.CEREBRO.API"
+    assert _consumer(api_prefix="$JS.CUSTOM.API").api_prefix == "$JS.CUSTOM.API"
 
 
 def test_archive_main_wires_archive_api_prefix(custom_ini):
@@ -67,4 +67,4 @@ def test_archive_main_wires_archive_api_prefix(custom_ini):
 
         main()
 
-    assert mock_consumer.call_args.kwargs["api_prefix"] == "$JS.CEREBRO.API"
+    assert mock_consumer.call_args.kwargs["api_prefix"] == "$JS.CUSTOM.API"

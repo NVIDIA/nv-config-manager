@@ -47,7 +47,7 @@ def create_test_mocks():
         "device_change_api_prefix": "$JS.API",
         "device_change_subject": "nv-config-manager.devicechange",
         "nautobot_stream": "nautobot",
-        "nautobot_api_prefix": "$JS.CEREBRO.API",
+        "nautobot_api_prefix": "$JS.CUSTOM.API",
         "nautobot_subjects": "nautobot",
         "nautobot_subject": "nautobot",
     }
@@ -101,7 +101,7 @@ class TestConsumerList:
         assert consumer["num_pending"] == 10
         assert consumer["num_ack_pending"] == 1
         assert consumer["num_delivered"] == 100
-        mock_conn.jetstream.assert_any_call(prefix="$JS.CEREBRO.API")
+        mock_conn.jetstream.assert_any_call(prefix="$JS.CUSTOM.API")
         mock_conn.jetstream.assert_any_call(prefix="$JS.API")
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
@@ -238,7 +238,7 @@ class TestResetConsumer:
         response = client.delete("/v1/admin/consumers/nautobot/reset")
 
         assert response.status_code == 200
-        mock_conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
+        mock_conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
         data = response.json()
         assert data["consumer_name"] == "test-queue-nautobot"
         assert data["stream"] == "nautobot"
@@ -391,7 +391,7 @@ class TestConsumerConfigs:
             "device_change_api_prefix": "$JS.API",
             "device_change_subject": "nv-config-manager.devicechange",
             "nautobot_stream": "nautobot",
-            "nautobot_api_prefix": "$JS.CEREBRO.API",
+            "nautobot_api_prefix": "$JS.CUSTOM.API",
             "nautobot_subjects": "nautobot",
             "nautobot_subject": "nautobot",
         }
@@ -410,7 +410,7 @@ class TestConsumerConfigs:
         assert nautobot_config["durable_name"] == "test-queue-nautobot"
         assert nautobot_config["stream"] == "nautobot"
         assert nautobot_config["subject"] == "nautobot"
-        assert nautobot_config["api_prefix"] == "$JS.CEREBRO.API"
+        assert nautobot_config["api_prefix"] == "$JS.CUSTOM.API"
 
         # Check device config
         device_config = configs["device"]

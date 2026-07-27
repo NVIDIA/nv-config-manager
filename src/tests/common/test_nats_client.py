@@ -43,8 +43,8 @@ def test_client_defaults_to_standard_api_prefix():
 
 def test_from_config_reads_config_manager_api_prefix():
     """from_config picks up the config-manager account prefix."""
-    client = NatsClient.from_config(_config(config_manager_api_prefix="$JS.CEREBRO.API"))
-    assert client.api_prefix == "$JS.CEREBRO.API"
+    client = NatsClient.from_config(_config(config_manager_api_prefix="$JS.CUSTOM.API"))
+    assert client.api_prefix == "$JS.CUSTOM.API"
 
 
 def test_from_config_without_prefix_falls_back_to_default():
@@ -55,13 +55,13 @@ def test_from_config_without_prefix_falls_back_to_default():
 @pytest.mark.asyncio
 async def test_ensure_stream_uses_configured_api_prefix():
     """Stream lookups go through the account's rewritten API prefix."""
-    client = NatsClient(server=TEST_SERVER, api_prefix="$JS.CEREBRO.API")
+    client = NatsClient(server=TEST_SERVER, api_prefix="$JS.CUSTOM.API")
     client.conn = MagicMock()
     client.conn.jetstream.return_value.stream_info = AsyncMock()
 
     await client._ensure_stream()
 
-    client.conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
+    client.conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_consumer_subscribes_with_configured_api_prefix():
         queue_suffix="archive",
         handler=AsyncMock(),
         server=TEST_SERVER,
-        api_prefix="$JS.CEREBRO.API",
+        api_prefix="$JS.CUSTOM.API",
     )
     conn = MagicMock()
     conn.is_closed = True
@@ -82,4 +82,4 @@ async def test_consumer_subscribes_with_configured_api_prefix():
     with patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn):
         await consumer.main()
 
-    conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
+    conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")

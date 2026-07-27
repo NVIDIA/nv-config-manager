@@ -508,7 +508,7 @@ externalServices:
     streams:
       configManager:
         name: kiwi
-        # JetStream API prefix for Kiwi-owned streams.
+        # JetStream API prefix for config-manager-owned streams.
         apiPrefix: "$JS.API"
         subjects:
           - kiwi.nautobotchange
@@ -519,8 +519,8 @@ externalServices:
         archiveSubject: kiwi.workflow.result
       nautobot:
         name: nautobot
-        # Set to "$JS.CEREBRO.API" when the Nautobot stream is imported from
-        # the Cerebro account instead of owned by this NATS account.
+        # Set to a custom prefix (e.g. "$JS.CUSTOM.API") when the Nautobot
+        # stream is imported from another NATS account instead of owned here.
         apiPrefix: "$JS.API"
         subjects:
           - nautobot

@@ -45,7 +45,7 @@ device_change_stream=nv-config-manager
 device_change_api_prefix=$JS.API
 device_change_subject=nv-config-manager.devicechange
 nautobot_stream=nautobot
-nautobot_api_prefix=$JS.CEREBRO.API
+nautobot_api_prefix=$JS.CUSTOM.API
 nautobot_subjects=nautobot
 nautobot_subject=nautobot
 """
@@ -148,7 +148,7 @@ async def test_pull_nautobot_consumer_initialization(custom_ini):
     consumer = PullNautobotConsumer()
     assert consumer.stream == "nautobot"
     assert consumer.subject == "nautobot"
-    assert consumer.api_prefix == "$JS.CEREBRO.API"
+    assert consumer.api_prefix == "$JS.CUSTOM.API"
     assert "nautobot" in consumer.queue
 
 
@@ -226,7 +226,7 @@ async def test_pull_consumer_uses_configured_api_prefix(custom_ini):
         stream="test_stream",
         subject="test_subject",
         queue_suffix="test_queue",
-        api_prefix="$JS.CEREBRO.API",
+        api_prefix="$JS.CUSTOM.API",
     )
     mock_conn = MagicMock()
     mock_conn.is_closed = True
@@ -242,7 +242,7 @@ async def test_pull_consumer_uses_configured_api_prefix(custom_ini):
 
         await consumer.main()
 
-    mock_conn.jetstream.assert_called_once_with(prefix="$JS.CEREBRO.API")
+    mock_conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
 
 
 @pytest.mark.asyncio
