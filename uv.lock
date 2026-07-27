@@ -1476,6 +1476,28 @@ wheels = [
 ]
 
 [[package]]
+name = "junos-eznc"
+version = "2.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "lxml" },
+    { name = "ncclient" },
+    { name = "paramiko" },
+    { name = "pyparsing" },
+    { name = "pyserial" },
+    { name = "pyyaml" },
+    { name = "scp" },
+    { name = "six" },
+    { name = "transitions" },
+    { name = "yamlloader" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/66/aeab71e5844ff25b771c509b19f8c85e0e5d1c34851b52135de3e9609b9c/junos_eznc-2.8.2.tar.gz", hash = "sha256:bb0426e74bce4544405723a9047341ede91b29cd9b61f1be9e633a55c470fffc", size = 186097, upload-time = "2026-06-22T09:18:47.619Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/9c/e60c8fcc16093cc93e5b67d516e628597a3fd124622b3418e88e810f5809/junos_eznc-2.8.2-py2.py3-none-any.whl", hash = "sha256:2e0038910e8bcbc2eeb61f7221127e7cfcfab54a682462076534db56326157ce", size = 217126, upload-time = "2026-06-22T09:18:45.916Z" },
+]
+
+[[package]]
 name = "libpass"
 version = "1.9.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2087,6 +2109,16 @@ nkeys = [
 ]
 
 [[package]]
+name = "ncclient"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "paramiko" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c2/fb/29dbb4987f81d7932d8018079bf3e6d1d5cce320d7c2c90e84d3c7dba40c/ncclient-0.7.0.tar.gz", hash = "sha256:318e8e3e72b1d2a766f3665cabef33436fd25b607da5f15657a199c648a68435", size = 116221, upload-time = "2025-08-25T15:29:24.172Z" }
+
+[[package]]
 name = "netaddr"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2217,6 +2249,7 @@ dependencies = [
     { name = "httpx" },
     { name = "idna" },
     { name = "jinja2" },
+    { name = "junos-eznc" },
     { name = "macaddress" },
     { name = "mako" },
     { name = "mcp" },
@@ -2329,6 +2362,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.2" },
     { name = "idna", specifier = ">=3.15" },
     { name = "jinja2", specifier = ">=3.1.2" },
+    { name = "junos-eznc", specifier = ">=2.8.2" },
     { name = "macaddress", specifier = ">=2.0.2" },
     { name = "mako", specifier = ">=1.3.12" },
     { name = "mcp", specifier = ">=1.8.0" },
@@ -3332,6 +3366,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyparsing"
+version = "3.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
 name = "pyserial"
 version = "3.5"
 source = { registry = "https://pypi.org/simple" }
@@ -4088,6 +4131,18 @@ wheels = [
 ]
 
 [[package]]
+name = "transitions"
+version = "0.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4f/83/9e90f3494057d73c9e6bd8de8488af7c9fa714666ccc2db30fe07d147818/transitions-0.9.3.tar.gz", hash = "sha256:881fb75bb1654ed55d86060bb067f2c716f8e155f57bb73fd444e53713aafec8", size = 1191029, upload-time = "2025-07-02T10:49:03.153Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/05/fea3020e90aa378941ff10de8860fb3b1288313c27efd10fa0c476498f7e/transitions-0.9.3-py2.py3-none-any.whl", hash = "sha256:02463248f2b668d86f66636b1e3c9e8de84d93e22915247f4e1aa9ee1cae28aa", size = 112792, upload-time = "2025-07-02T10:49:01.415Z" },
+]
+
+[[package]]
 name = "ty"
 version = "0.0.32"
 source = { registry = "https://pypi.org/simple" }
@@ -4467,6 +4522,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/79/d9/7cfd5a312760ac4dd8bf0184a6ee9e43c33e47f3dadc303032ce012b8fa3/wrapt-1.17.3-cp314-cp314t-win_amd64.whl", hash = "sha256:73d496de46cd2cdbdbcce4ae4bcdb4afb6a11234a1df9c085249d55166b95116", size = 41334, upload-time = "2025-08-12T05:53:14.178Z" },
     { url = "https://files.pythonhosted.org/packages/46/78/10ad9781128ed2f99dbc474f43283b13fea8ba58723e98844367531c18e9/wrapt-1.17.3-cp314-cp314t-win_arm64.whl", hash = "sha256:f38e60678850c42461d4202739f9bf1e3a737c7ad283638251e79cc49effb6b6", size = 38471, upload-time = "2025-08-12T05:52:57.784Z" },
     { url = "https://files.pythonhosted.org/packages/1f/f6/a933bd70f98e9cf3e08167fc5cd7aaaca49147e48411c0bd5ae701bb2194/wrapt-1.17.3-py3-none-any.whl", hash = "sha256:7171ae35d2c33d326ac19dd8facb1e82e5fd04ef8c6c0e394d7af55a55051c22", size = 23591, upload-time = "2025-08-12T05:53:20.674Z" },
+]
+
+[[package]]
+name = "yamlloader"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/e6/81677e777ca8a3588012f74e215050e3001e39d253076beb1c3306fc9460/yamlloader-1.6.0.tar.gz", hash = "sha256:918232976c9910d079ef74b3266ff9ef674228609aa56e67718b3992940a823f", size = 77622, upload-time = "2025-11-10T15:34:30.228Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/8a/132113ebc0f5ef3e893c4c75b058f70206b80a8a69ba46fbaeb5d409eb32/yamlloader-1.6.0-py3-none-any.whl", hash = "sha256:d9ea9948759732eab65e1dbcea510f1582b9c096aab33c893bf55ae9d58783e8", size = 7804, upload-time = "2025-11-10T15:34:29.04Z" },
 ]
 
 [[package]]

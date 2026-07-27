@@ -14,16 +14,28 @@
 # limitations under the License.
 import json
 from configparser import ConfigParser
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import paramiko
 import pytest
+from jnpr.junos.exception import (
+    CommitError,
+    ConfigLoadError,
+    ConnectAuthError,
+    ProbeError,
+)
+from lxml import etree
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.client.device import (
     ConfigSyntaxException,
     CumulusConnection,
+    DiffChangedException,
+    JuniperConnection,
     MockNetworkConnection,
     NetworkConnection,
+    NetworkDeviceException,
 )
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -302,3 +314,305 @@ def test_from_device_data_returns_cumulus_when_mock_false(mock_load_config):
     mock_load_config.return_value = _mock_config(mock=False)
     conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
     assert isinstance(conn, CumulusConnection)
+
+
+# =============================================================================
+# JuniperConnection (PyEZ / NETCONF)
+# =============================================================================
+
+_JUNIPER_DEVICE = NetworkDeviceData(
+    id="a1b2c3d4-1111-2222-3333-444455556666",
+    name="test-router",
+    role="backbone-router",
+    platform="juniper-junos",
+    site="SITEA",
+    device_type="ptx10002-36qdd",
+    primary_ip4="192.0.2.10",
+    primary_ip6=None,
+)
+
+
+class _FakeConfigCM:
+    """Stand-in for PyEZ's Config context manager wrapping a mock utility."""
+
+    def __init__(self, cu: MagicMock) -> None:
+        self._cu = cu
+
+    def __enter__(self) -> MagicMock:
+        return self._cu
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+def _rpc_error_rsp(message: str, severity: str = "error") -> etree._Element:
+    """Build a minimal Junos <rpc-error> element for PyEZ exception construction."""
+    return etree.fromstring(
+        f"<rpc-error><error-severity>{severity}</error-severity>"
+        f"<error-message>{message}</error-message></rpc-error>"
+    )
+
+
+@pytest.fixture
+def juniper_conn():
+    """A JuniperConnection built with load_config patched (no network at init)."""
+    config = ConfigParser()
+    config.add_section("device")
+    config.set("device", "username", "shooks")
+    config.set("device", "password", "pw")
+    with patch("nv_config_manager.temporal.client.device.load_config", return_value=config):
+        yield JuniperConnection("192.0.2.10", password="pw")
+
+
+@patch("nv_config_manager.temporal.client.device.load_config")
+def test_from_device_data_returns_juniper_when_mock_false(mock_load_config):
+    """Config with mock = false + juniper-junos platform → JuniperConnection on the NETCONF port."""
+    mock_load_config.return_value = _mock_config(mock=False)
+    conn = NetworkConnection.from_device_data(_JUNIPER_DEVICE)
+    assert isinstance(conn, JuniperConnection)
+    assert conn._port == 830
+
+
+def test_get_device_connects_once_and_caches(juniper_conn):
+    """The NETCONF session is opened lazily on first use and reused afterwards."""
+    fake_device = MagicMock()
+    with patch(
+        "nv_config_manager.temporal.client.device.Device", return_value=fake_device
+    ) as mock_device:
+        first = juniper_conn._get_device()
+        second = juniper_conn._get_device()
+    assert first is fake_device
+    assert second is fake_device
+    fake_device.open.assert_called_once()
+    assert mock_device.call_count == 1
+    assert mock_device.call_args.kwargs["port"] == 830
+
+
+def test_connect_rotates_then_raises_on_auth_failure(juniper_conn):
+    """Genuine auth failures exhaust password rotation and raise NetworkDeviceException."""
+    with patch("nv_config_manager.temporal.client.device.Device") as mock_device:
+        mock_device.return_value.open.side_effect = ConnectAuthError(
+            dev=SimpleNamespace(hostname="test-router")
+        )
+        with pytest.raises(NetworkDeviceException):
+            juniper_conn._get_device()
+
+
+def test_connect_raises_clear_error_on_probe_failure(juniper_conn):
+    """A probe (reachability) failure raises immediately with a NETCONF-specific message."""
+    with patch("nv_config_manager.temporal.client.device.Device") as mock_device:
+        mock_device.return_value.open.side_effect = ProbeError(
+            dev=SimpleNamespace(hostname="test-router")
+        )
+        with pytest.raises(NetworkDeviceException, match="NETCONF"):
+            juniper_conn._get_device()
+
+
+def test_rpc_requests_json_and_converts_flag_params(juniper_conn):
+    """_rpc asks for JSON format and turns empty values into boolean flags."""
+    device = MagicMock()
+    device.rpc.get_interface_information.return_value = {"interface-information": []}
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        result = juniper_conn._rpc("get-interface-information", params={"terse": ""})
+    assert result == {"interface-information": []}
+    args, kwargs = device.rpc.get_interface_information.call_args
+    assert args[0] == {"format": "json"}
+    assert kwargs == {"terse": True}
+
+
+def test_get_running_configuration_returns_set_format(juniper_conn):
+    """Backup returns set-format config terminated by a newline."""
+    device = MagicMock()
+    device.rpc.get_config.return_value = SimpleNamespace(text="set system host-name RTR1")
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        config = juniper_conn.get_running_configuration()
+    assert config == "set system host-name RTR1\n"
+    assert device.rpc.get_config.call_args.kwargs["options"]["format"] == "set"
+
+
+def test_get_configuration_text_returns_hierarchical(juniper_conn):
+    """The text getter requests hierarchical (curly-brace) format."""
+    device = MagicMock()
+    device.rpc.get_config.return_value = SimpleNamespace(text="system {\n    host-name RTR1;\n}")
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        text = juniper_conn.get_configuration_text()
+    assert "host-name RTR1" in text
+    assert device.rpc.get_config.call_args.kwargs["options"]["format"] == "text"
+
+
+def test_get_hostname_and_running_image_use_facts(juniper_conn):
+    """Hostname and running image come from PyEZ facts."""
+    device = MagicMock()
+    device.facts = {"hostname": "RTR1", "version": "24.4R2-S3.7-EVO"}
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        assert juniper_conn.get_hostname() == "RTR1"
+        assert juniper_conn.get_running_image() == "24.4R2-S3.7-EVO"
+
+
+def test_get_hostname_raises_when_absent(juniper_conn):
+    """A missing hostname fact raises a non-retryable error."""
+    device = MagicMock()
+    device.facts = {"hostname": None}
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(ApplicationError):
+            juniper_conn.get_hostname()
+
+
+def test_get_uptime_parses_seconds(juniper_conn):
+    """Uptime is parsed from the junos:seconds attribute."""
+    data = {
+        "system-uptime-information": [
+            {"uptime-information": [{"up-time": [{"attributes": {"junos:seconds": "12345"}}]}]}
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        assert juniper_conn.get_uptime() == 12345
+
+
+def test_get_uptime_raises_on_unexpected_shape(juniper_conn):
+    """Uptime raises a clear error when the response shape is unexpected."""
+    with patch.object(juniper_conn, "_rpc", return_value={"unexpected": True}):
+        with pytest.raises(NetworkDeviceException):
+            juniper_conn.get_uptime()
+
+
+def test_perform_candidate_diff_loads_rolls_back_and_returns_diff(juniper_conn):
+    """perform_candidate_diff loads set config, returns the diff, and discards the candidate."""
+    cu = MagicMock()
+    cu.diff.return_value = '[edit interfaces xe-0/0/0]\n+   description "foo";'
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        diff = juniper_conn.perform_candidate_diff('set interfaces xe-0/0/0 description "foo"')
+    assert "description" in diff
+    cu.load.assert_called_once_with('set interfaces xe-0/0/0 description "foo"', format="set")
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
+
+
+def test_perform_candidate_diff_raises_config_syntax_on_load_error(juniper_conn):
+    """A load failure surfaces as ConfigSyntaxException."""
+    cu = MagicMock()
+    cu.load.side_effect = ConfigLoadError(rsp=_rpc_error_rsp("syntax error"))
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(ConfigSyntaxException):
+            juniper_conn.perform_candidate_diff("set nonsense")
+
+
+def test_commit_candidate_config_raises_when_diff_changed(juniper_conn):
+    """A mismatch between the fresh diff and the approved diff aborts before commit."""
+    cu = MagicMock()
+    cu.diff.return_value = "new-diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(DiffChangedException):
+            juniper_conn.commit_candidate_config("config", approved_diff="old-diff")
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
+
+
+def test_commit_candidate_config_noop_when_no_diff(juniper_conn):
+    """When there is nothing to apply, the candidate is discarded and no commit occurs."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.commit_candidate_config("config", approved_diff="")
+    cu.commit.assert_not_called()
+    cu.rollback.assert_called_once()
+
+
+def test_commit_candidate_config_commit_confirm_then_confirms(juniper_conn):
+    """commit_confirm=True commits with a rollback timer then confirms with a plain commit."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.commit_candidate_config("config", approved_diff="diff", commit_confirm=True)
+    # First commit carries the confirm timer; the follow-up confirm commit does not.
+    assert cu.commit.call_count == 2
+    assert "confirm" in cu.commit.call_args_list[0].kwargs
+    assert "confirm" not in cu.commit.call_args_list[1].kwargs
+
+
+def test_commit_candidate_config_direct_commit(juniper_conn):
+    """commit_confirm=False commits directly with no follow-up confirm."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.commit_candidate_config("config", approved_diff="diff", commit_confirm=False)
+    cu.commit.assert_called_once()
+    assert "confirm" not in cu.commit.call_args.kwargs
+
+
+def test_commit_candidate_config_raises_on_commit_error(juniper_conn):
+    """A commit failure surfaces as NetworkDeviceException."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    cu.commit.side_effect = CommitError(rsp=_rpc_error_rsp("commit failed"))
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(NetworkDeviceException):
+            juniper_conn.commit_candidate_config("config", approved_diff="diff")
+
+
+def test_configure_set_noop_on_empty_commands(juniper_conn):
+    """configure_set with no commands opens no config session."""
+    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
+        juniper_conn.configure_set([])
+    mock_config.assert_not_called()
+
+
+def test_configure_set_loads_and_commits(juniper_conn):
+    """configure_set loads the joined commands and commits when there is a diff."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.configure_set(["set a", "set b"])
+    cu.load.assert_called_once_with("set a\nset b", format="set")
+    cu.commit.assert_called_once()
+
+
+def test_set_interface_description_builds_set_command(juniper_conn):
+    """set_interface_description issues the expected set command."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        juniper_conn.set_interface_description("xe-0/0/0", "peering::circuit-1")
+    mock_configure.assert_called_once_with(
+        ['set interfaces xe-0/0/0 description "peering::circuit-1"'],
+        commit_confirm=False,
+    )
+
+
+def test_update_interface_builds_all_commands(juniper_conn):
+    """update_interface builds description, admin-state, and MTU commands."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        juniper_conn.update_interface("xe-0/0/1", description="uplink", enabled=False, mtu=9192)
+    commands = mock_configure.call_args.args[0]
+    assert 'set interfaces xe-0/0/1 description "uplink"' in commands
+    assert "set interfaces xe-0/0/1 disable" in commands
+    assert "set interfaces xe-0/0/1 mtu 9192" in commands
+
+
+def test_update_interface_enable_deletes_disable(juniper_conn):
+    """Enabling an interface deletes the Junos `disable` knob."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        juniper_conn.update_interface("xe-0/0/1", enabled=True)
+    assert mock_configure.call_args.args[0] == ["delete interfaces xe-0/0/1 disable"]

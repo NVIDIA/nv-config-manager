@@ -66,6 +66,7 @@ dependencies = [
     "protobuf>=6.33.5",
     # Network Automation
     "pyeapi>=1.0.2",
+    "junos-eznc>=2.8.2",
     "pynautobot>=2.4.0",
     "netmiko>=4.3.0",
     "macaddress>=2.0.2",
@@ -242,6 +243,7 @@ module = [
     "boto3.*",
     "botocore.*",
     "pyeapi.*",
+    "jnpr.*",
     "py_markdown_table.*",
     "ruamel.*",
     "brotli.*",
