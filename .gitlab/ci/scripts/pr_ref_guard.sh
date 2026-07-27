@@ -31,11 +31,11 @@ mirror_head="$(
     timeout 30s git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${ref}" |
         cut -f1
 )"
-if [ -z "$mirror_head" ]; then
+if [[ -z "$mirror_head" ]]; then
     echo "ERROR: ${ref} no longer exists on the mirror (PR closed or merged?)"
     exit 1
 fi
-if [ "$mirror_head" != "$expected" ]; then
+if [[ "$mirror_head" != "$expected" ]]; then
     echo "ERROR: stale SHA - mirror ${ref} is at ${mirror_head}, expected ${expected}."
     echo "The PR gained commits since this run was scheduled; re-run against the new HEAD."
     exit 1
