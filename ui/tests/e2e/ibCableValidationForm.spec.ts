@@ -166,7 +166,7 @@ test.describe("Infiniband Cable Validation Form", () => {
 
     // Verify initial selections are visible
     await expect(
-      page.getByRole("button").getByText(initialUfmDevice.name)
+      page.getByRole("button", { name: initialUfmDevice.name })
     ).toBeVisible();
 
     // Use a more specific selector for the MLNX device
@@ -176,7 +176,7 @@ test.describe("Infiniband Cable Validation Form", () => {
     ).toBeVisible();
 
     // Change to a new site
-    await page.getByRole("button").getByText(initialSite).click();
+    await page.getByRole("button", { name: initialSite }).click();
     await page.getByRole("dialog").getByText(changedSite).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -188,10 +188,10 @@ test.describe("Infiniband Cable Validation Form", () => {
     // Verify device and device IDs selections are cleared
     // The test name says "device field updates" but we actually test that both device and deviceIds are cleared
     await expect(
-      page.getByRole("button").getByText("Select a Device...")
+      page.getByRole("button", { name: "Select a Device..." })
     ).toBeVisible();
     await expect(
-      page.getByRole("button").getByText("Select Device IDs...")
+      page.getByRole("button", { name: "Select Device IDs..." })
     ).toBeVisible();
 
     // Verify that the device IDs list no longer shows the previously selected value
@@ -227,12 +227,12 @@ test.describe("Infiniband Cable Validation Form", () => {
     );
 
     // Verify the form is pre-populated with URL parameter values
-    await expect(page.getByRole("button").getByText(site)).toBeVisible({
+    await expect(page.getByRole("button", { name: site })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     await expect(
-      page.getByRole("button").getByText(ufmDevice.name)
+      page.getByRole("button", { name: ufmDevice.name })
     ).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
@@ -355,10 +355,13 @@ test.describe("Infiniband Cable Validation Form", () => {
 
     // Check that form elements are disabled during submission
     await expect(
-      page.getByRole("button", { name: site, exact: true })
+      page.getByRole("button", { name: `${site}. Open options`, exact: true })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: ufmDevice.name, exact: true })
+      page.getByRole("button", {
+        name: `${ufmDevice.name}. Open options`,
+        exact: true,
+      })
     ).toBeDisabled();
     // Check for the "Submitting..." button
     await expect(
@@ -410,7 +413,7 @@ test.describe("Infiniband Cable Validation Form", () => {
 
     // Verify initial selections are visible
     await expect(
-      page.getByRole("button").getByText(ufmDevice.name)
+      page.getByRole("button", { name: ufmDevice.name })
     ).toBeVisible();
 
     // Use a more specific selector for the MLNX device
@@ -427,11 +430,11 @@ test.describe("Infiniband Cable Validation Form", () => {
 
     // Verify device and device IDs dropdowns are reset to their default state
     await expect(
-      page.getByRole("button").getByText("Select a Device...")
+      page.getByRole("button", { name: "Select a Device..." })
     ).toBeVisible();
 
     await expect(
-      page.getByRole("button").getByText("Select Device IDs...")
+      page.getByRole("button", { name: "Select Device IDs..." })
     ).toBeVisible();
 
     // Verify that the device IDs list no longer shows the previously selected value
@@ -769,12 +772,12 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     );
 
     // Verify the form is pre-populated with URL parameter values
-    await expect(page.getByRole("button").getByText(initialSite)).toBeVisible({
+    await expect(page.getByRole("button", { name: initialSite })).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
 
     await expect(
-      page.getByRole("button").getByText(initialUfmDevice.name)
+      page.getByRole("button", { name: initialUfmDevice.name })
     ).toBeVisible({
       timeout: TEST_TIMEOUT,
     });
@@ -784,10 +787,7 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
     });
 
     // Change the values manually
-    await page
-      .getByRole("button")
-      .getByText(initialSite, { exact: true })
-      .click();
+    await page.getByRole("button", { name: initialSite }).click();
     await page.getByRole("dialog").getByText(newSite).click();
     // Click outside to close any dropdown that might be open
     await page
@@ -817,12 +817,12 @@ test.describe("Infiniband Cable Validation Form - Error Scenarios", () => {
       .click();
 
     // Verify the form is updated with the new values
-    await expect(
-      page.getByRole("button").getByText(newSite, { exact: true })
-    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByRole("button", { name: newSite })).toBeVisible({
+      timeout: TEST_TIMEOUT,
+    });
 
     await expect(
-      page.getByRole("button").getByText(newUfmDevice.name, { exact: true })
+      page.getByRole("button", { name: newUfmDevice.name })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     await expect(

@@ -44,7 +44,7 @@ const SkeletonDataTable = () => {
   const rows = ["row-1", "row-2", "row-3", "row-4", "row-5"];
 
   return (
-    <Table>
+    <Table aria-hidden="true">
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row}>
@@ -92,7 +92,7 @@ const WorkflowLoadingPage = () => {
                       <Skeleton className="h-6 w-40" />
                     </AccordionTrigger>
                     <AccordionContent>
-                      <Table>
+                      <Table aria-hidden="true">
                         <TableBody>
                           {["metadata", "inputs", "outputs"].map((row) => (
                             <TableRow key={row}>

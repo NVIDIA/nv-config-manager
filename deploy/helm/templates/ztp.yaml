@@ -5,6 +5,8 @@
 {{- $ztpFileStorage := eq .Values.networkZtp.storage.type "file" }}
 {{- $ztpSpiffeJwt := and .Values.spiffe.enabled (eq (.Values.spiffe.authMode | default "jwt") "jwt") }}
 {{- $ztpVaultAgentJwt := and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") }}
+{{- $downloads := .Values.networkZtp.downloads | default dict }}
+{{- $sftpDownloads := $downloads.sftp | default dict }}
 ---
 # Network ZTP Deployment
 apiVersion: apps/v1
@@ -154,6 +156,8 @@ spec:
         ports:
         - containerPort: 2222
           name: sftp
+        - containerPort: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+          name: sftp-metrics
         resources:
           {{- toYaml .Values.networkZtp.resources.sftp | nindent 10 }}
         {{- if or $ztpConfigVolume $ztpFileStorage }}
@@ -233,6 +237,10 @@ spec:
     targetPort: 9000
     protocol: TCP
     name: http
+  - port: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+    targetPort: sftp-metrics
+    protocol: TCP
+    name: sftp-metrics
   selector:
     app: {{ $ztpName }}
 ---

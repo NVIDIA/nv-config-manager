@@ -14,17 +14,25 @@
 #  limitations under the License.
 """Views."""
 
+import logging
+
 from django.conf import settings
-from django.shortcuts import get_object_or_404
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views import View
 from nautobot.core.views import generic
+from nautobot.core.views.mixins import ObjectPermissionRequiredMixin
 from nautobot.dcim.models import Device, Location
 
 from nv_config_manager import filters, forms, models, tables
 from nv_config_manager.utils import (
+    bulk_create_managed_devices,
     generate_config_store_url,
     get_all_descendants,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def generate_config_urls(instance):
@@ -78,12 +86,63 @@ class ConfigManagerDeviceStatusListView(generic.ObjectListView):
         return context
 
 
-class ConfigManagerDeviceStatusAddView(generic.ObjectEditView):
-    """Add view for ConfigManagerDeviceStatus."""
+class ConfigManagerDeviceStatusAddView(ObjectPermissionRequiredMixin, View):
+    """Bulk-add view for ConfigManagerDeviceStatus."""
 
     queryset = models.ConfigManagerDeviceStatus.objects.all()
-    model_form = forms.ConfigManagerDeviceStatusAddForm
     template_name = "nv_config_manager/configmanagerdevicestatus_add.html"
+
+    def get_required_permission(self):
+        """Require permission to add managed devices."""
+        return "nv_config_manager.add_configmanagerdevicestatus"
+
+    def _return_url(self):
+        return reverse("plugins:nv_config_manager:configmanagerdevicestatus_list")
+
+    def _context(self, form):
+        return {
+            "form": form,
+            "return_url": self._return_url(),
+            "editing": False,
+            "obj": None,
+            "obj_type": "Managed Device",
+        }
+
+    def get(self, request):
+        """Render the bulk-add filter form."""
+        form = forms.ConfigManagerDeviceStatusBulkAddForm()
+        return render(request, self.template_name, self._context(form))
+
+    def post(self, request):
+        """Enroll the selected devices into Config Manager."""
+        form = forms.ConfigManagerDeviceStatusBulkAddForm(request.POST)
+        if not form.is_valid():
+            return render(request, self.template_name, self._context(form))
+
+        try:
+            created_count, skipped_count = bulk_create_managed_devices(
+                list(form.get_devices_to_add()),
+                render_enabled=form.cleaned_data.get("render_enabled"),
+                ztp_enabled=form.cleaned_data.get("ztp_enabled"),
+                deploy_enabled=form.cleaned_data.get("deploy_enabled"),
+                backup_enabled=form.cleaned_data.get("backup_enabled"),
+                is_aggregate_managed=form.cleaned_data.get("is_aggregate_managed"),
+                user=request.user,
+                request_id=getattr(request, "id", None),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Bulk managed-device enrollment failed")
+            messages.error(
+                request,
+                "Failed to add managed devices.",
+            )
+            return render(request, self.template_name, self._context(form))
+
+        if created_count:
+            messages.success(request, f"Added {created_count} managed device(s) to Config Manager.")
+        if skipped_count:
+            messages.warning(request, f"Skipped {skipped_count} device(s) that were already managed.")
+        return redirect(self._return_url())
 
 
 class ConfigManagerDeviceStatusEditView(generic.ObjectEditView):

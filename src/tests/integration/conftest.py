@@ -146,6 +146,60 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "identity extraction without RBAC). Default: nv-config-manager."
         ),
     )
+    parser.addoption(
+        "--rbac",
+        action="store_true",
+        default=False,
+        help=(
+            "Enable live group-mapping RBAC tests (test_rbac_group_mapping.py). "
+            "Requires a `make kind-up-sec` deploy with nautobot.rbac.groupMapping "
+            "CONFIGURED (see scripts/rbac-local-test/values-configured.yaml) so the "
+            "group-mapping ConfigMap is mounted and the seeded nvcm-* Keycloak users "
+            "exist. The tests port-forward Keycloak + Nautobot, log users in over the "
+            "REST API to trigger the JWT authenticator, and assert group / "
+            "ObjectPermission reconciliation via nautobot-server nbshell."
+        ),
+    )
+    parser.addoption(
+        "--rbac-release",
+        action="store",
+        default="nv-config-manager",
+        help="Helm release name used to locate the Nautobot pod/service (default: nv-config-manager).",
+    )
+    parser.addoption(
+        "--rbac-keycloak-namespace",
+        action="store",
+        default="keycloak",
+        help="Namespace of the local Keycloak used for token grants (default: keycloak).",
+    )
+    parser.addoption(
+        "--rbac-keycloak-service",
+        action="store",
+        default="keycloak",
+        help="Keycloak Service name to port-forward for token grants (default: keycloak).",
+    )
+    parser.addoption(
+        "--rbac-realm",
+        action="store",
+        default="nv-config-manager",
+        help="Keycloak realm that holds the seeded nvcm-* users (default: nv-config-manager).",
+    )
+    parser.addoption(
+        "--rbac-client-id",
+        action="store",
+        default="nv-config-manager",
+        help=(
+            "OIDC client used for the scripted password grant. The confidential "
+            "`nv-config-manager` client has direct-access-grants enabled and the "
+            "audience mappers the authenticator expects (default: nv-config-manager)."
+        ),
+    )
+    parser.addoption(
+        "--rbac-client-secret",
+        action="store",
+        default="nvcm-local-client-secret",
+        help="Client secret for --rbac-client-id (default: nvcm-local-client-secret).",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -155,6 +209,9 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers", "ci_only: test runs only when --ci is passed or CI env var is set"
+    )
+    config.addinivalue_line(
+        "markers", "rbac: marks tests that require live group-mapping RBAC (opt-in via --rbac)"
     )
 
 
@@ -563,6 +620,63 @@ def _find_ztp_pod(namespace: str) -> str | None:
         pass
 
     return None
+
+
+@pytest.fixture(scope="session")
+def kind_filestore_deployment(config_manager_namespace: str) -> None:
+    """Require an ephemeral Kind ZTP deployment backed by writable file storage."""
+    try:
+        context_result = subprocess.run(
+            ["kubectl", "config", "current-context"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError:
+        pytest.skip("Could not determine the Kubernetes context")
+
+    context = context_result.stdout.strip()
+    if not context.startswith("kind-"):
+        pytest.skip(f"FileStore mutation test requires a Kind context, got {context!r}")
+
+    pod_name = _find_ztp_pod(config_manager_namespace)
+    if pod_name is None:
+        pytest.skip("Could not find the ZTP pod")
+
+    try:
+        pod_result = subprocess.run(
+            [
+                "kubectl",
+                "get",
+                "pod",
+                pod_name,
+                "-n",
+                config_manager_namespace,
+                "-o",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        pod = json.loads(pod_result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        pytest.skip("Could not inspect the ZTP pod storage configuration")
+
+    http_api = next(
+        (
+            container
+            for container in pod.get("spec", {}).get("containers", [])
+            if container.get("name") == "http-api"
+        ),
+        None,
+    )
+    writable_file_store = http_api is not None and any(
+        mount.get("name") == "os-images" and not mount.get("readOnly", False)
+        for mount in http_api.get("volumeMounts", [])
+    )
+    if not writable_file_store:
+        pytest.skip("ZTP is not configured with a writable FileStore")
 
 
 @pytest.fixture(scope="session")
@@ -1027,5 +1141,312 @@ def exec_python_in_spiffe_pod(
 
     def _run(script: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
         return _exec_python_in_pod(spiffe_namespace, spiffe_pod, script, timeout=timeout)
+
+    return _run
+
+
+# =============================================================================
+# Group-mapping RBAC fixtures — enabled with --rbac
+#
+# These drive the live-cluster tests in test_rbac_group_mapping.py. Unlike the
+# SPIFFE suite (which execs probes inside a pod), the RBAC tests act like a real
+# operator: they fetch a JWT from the local Keycloak via password grant, hit the
+# Nautobot REST API to *trigger* the JWT authenticator + rbac sync (reconcile
+# only runs on login), and inspect the resulting Django Group / ObjectPermission
+# state through `nautobot-server nbshell`. It covers the code paths unit tests
+# can't: Nautobot's change-logging signals firing on ObjectPermission.delete()
+# during the revoke path.
+#
+# Requires a deploy in the CONFIGURED state (nautobot.rbac.groupMapping set), so
+# the group-mapping ConfigMap is mounted and the seeded nvcm-* Keycloak users
+# exist. In CI the kind-integration workflow applies values-configured.yaml
+# after `make kind-up-sec`; locally, apply
+# `scripts/rbac-local-test/values-configured.yaml` (helm upgrade --reuse-values)
+# before `pytest --rbac`.
+# =============================================================================
+
+RBAC_NB_SELECTOR_TMPL = (
+    "app.kubernetes.io/name={release}-nautobot,app.kubernetes.io/instance={release}"
+)
+
+
+@pytest.fixture(scope="session")
+def rbac_enabled(request: pytest.FixtureRequest) -> bool:
+    """True when --rbac is passed."""
+    return bool(request.config.getoption("--rbac"))
+
+
+@pytest.fixture(scope="session")
+def rbac_release(request: pytest.FixtureRequest) -> str:
+    """Helm release name, used to locate the Nautobot pod/service by label."""
+    return str(request.config.getoption("--rbac-release"))
+
+
+@pytest.fixture(scope="session")
+def rbac_nautobot_selector(rbac_release: str) -> str:
+    """Label selector matching the Nautobot Deployment/Service/Pod for the release."""
+    return RBAC_NB_SELECTOR_TMPL.format(release=rbac_release)
+
+
+def _rbac_skip_unless_enabled(rbac_enabled: bool) -> None:
+    if not rbac_enabled:
+        pytest.skip("group-mapping RBAC tests require --rbac")
+
+
+@pytest.fixture(scope="session")
+def rbac_nautobot_pod(
+    rbac_enabled: bool,
+    config_manager_namespace: str,
+    rbac_nautobot_selector: str,
+) -> str:
+    """Name of a running Nautobot pod for the release.
+
+    Skips the whole RBAC suite when --rbac is off or no Nautobot pod is found.
+    """
+    _rbac_skip_unless_enabled(rbac_enabled)
+    res = _kubectl_run(
+        "get",
+        "pod",
+        "-n",
+        config_manager_namespace,
+        "-l",
+        rbac_nautobot_selector,
+        "-o",
+        "jsonpath={.items[0].metadata.name}",
+    )
+    pod = res.stdout.strip()
+    if res.returncode != 0 or not pod:
+        pytest.skip(
+            f"No Nautobot pod matching '{rbac_nautobot_selector}' in namespace "
+            f"'{config_manager_namespace}'. Deploy with `make kind-up-sec`."
+        )
+    print(f"\n[rbac] using nautobot pod: {config_manager_namespace}/{pod}")
+    return pod
+
+
+@pytest.fixture(scope="session")
+def rbac_keycloak_url(
+    rbac_enabled: bool,
+    request: pytest.FixtureRequest,
+) -> Generator[str]:
+    """Port-forward the local Keycloak Service and yield its base URL.
+
+    Keycloak is not exposed through the app gateway in the local security stack,
+    so a kubectl port-forward is the reliable way to reach the token endpoint
+    from the test runner.
+    """
+    _rbac_skip_unless_enabled(rbac_enabled)
+    ns = str(request.config.getoption("--rbac-keycloak-namespace"))
+    svc = str(request.config.getoption("--rbac-keycloak-service"))
+    local_port = 18080
+    proc = _start_service_port_forward(ns, svc, local_port, 80)
+    if proc is None:
+        pytest.fail(
+            f"Failed to port-forward Keycloak svc/{svc} in namespace '{ns}'. "
+            "Ensure `make kind-up-sec` completed and Keycloak is running."
+        )
+    try:
+        yield f"http://localhost:{local_port}"
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+        if proc in _port_forward_processes:
+            _port_forward_processes.remove(proc)
+
+
+def _select_service_port(raw: str) -> tuple[int, str]:
+    """Pick the app HTTP(S) port + scheme from kubectl ``name=port ...`` output.
+
+    Prefer a port named ``https``/``http`` over the positional first port: if a
+    metrics (or other) port is ever added ahead of the app port, blindly taking
+    ``.spec.ports[0]`` would point the port-forward at the wrong target. Falls
+    back to the first port when nothing is usefully named, deriving the scheme
+    from 443, and to ``80/http`` when the service reports no ports at all.
+    """
+    pairs: list[tuple[str, int]] = []
+    for tok in raw.split():
+        name, _, port = tok.partition("=")
+        if port.isdigit():
+            pairs.append((name, int(port)))
+    if not pairs:
+        return 80, "http"
+    by_name = dict(pairs)
+    if "https" in by_name:
+        return by_name["https"], "https"
+    if "http" in by_name:
+        port = by_name["http"]
+        return port, ("https" if port == 443 else "http")
+    port = pairs[0][1]
+    return port, ("https" if port == 443 else "http")
+
+
+@pytest.fixture(scope="session")
+def rbac_nautobot_url(
+    rbac_enabled: bool,
+    config_manager_namespace: str,
+    rbac_release: str,
+    rbac_nautobot_selector: str,
+) -> Generator[str]:
+    """Port-forward the Nautobot Service and yield its base URL.
+
+    We hit Nautobot directly (bypassing the gateway) so a raw JWT Bearer token
+    reaches the app's authenticator without the gateway's OIDC redirect getting
+    in the way. The scheme is derived from the chosen Service port (443 → https).
+    """
+    _rbac_skip_unless_enabled(rbac_enabled)
+    svc_res = _kubectl_run(
+        "get",
+        "svc",
+        "-n",
+        config_manager_namespace,
+        "-l",
+        rbac_nautobot_selector,
+        "-o",
+        "jsonpath={.items[0].metadata.name}",
+    )
+    svc = svc_res.stdout.strip() or f"{rbac_release}-nautobot"
+    port_res = _kubectl_run(
+        "get",
+        "svc",
+        "-n",
+        config_manager_namespace,
+        svc,
+        "-o",
+        "jsonpath={range .spec.ports[*]}{.name}={.port} {end}",
+    )
+    remote_port, scheme = _select_service_port(port_res.stdout)
+    local_port = 18443
+    proc = _start_service_port_forward(config_manager_namespace, svc, local_port, remote_port)
+    if proc is None:
+        pytest.fail(
+            f"Failed to port-forward Nautobot svc/{svc} in namespace '{config_manager_namespace}'."
+        )
+    try:
+        yield f"{scheme}://localhost:{local_port}"
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+        if proc in _port_forward_processes:
+            _port_forward_processes.remove(proc)
+
+
+@pytest.fixture(scope="session")
+def rbac_get_token(
+    rbac_enabled: bool,
+    rbac_keycloak_url: str,
+    request: pytest.FixtureRequest,
+) -> Callable[[str], str]:
+    """Return a callable that fetches an access token for a seeded nvcm-* user.
+
+    Uses the OIDC Resource Owner Password grant against the confidential
+    `nv-config-manager` client (seeded users have password == username). The
+    returned token carries the `roles` claim the authenticator maps to Django
+    groups.
+    """
+    _rbac_skip_unless_enabled(rbac_enabled)
+    realm = str(request.config.getoption("--rbac-realm"))
+    client_id = str(request.config.getoption("--rbac-client-id"))
+    client_secret = str(request.config.getoption("--rbac-client-secret"))
+    token_url = f"{rbac_keycloak_url}/realms/{realm}/protocol/openid-connect/token"
+
+    def _get(username: str, password: str | None = None) -> str:
+        resp = requests.post(
+            token_url,
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "password",
+                "scope": "openid",
+                "username": username,
+                "password": password if password is not None else username,
+            },
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            pytest.fail(
+                f"Keycloak token grant for {username!r} failed "
+                f"({resp.status_code}): {resp.text[:300]}"
+            )
+        token = resp.json().get("access_token")
+        if not token:
+            pytest.fail(f"Keycloak returned no access_token for {username!r}: {resp.text[:300]}")
+        return str(token)
+
+    return _get
+
+
+@pytest.fixture(scope="session")
+def rbac_api_login(
+    rbac_get_token: Callable[[str], str],
+    rbac_nautobot_url: str,
+) -> Callable[..., int]:
+    """Return a callable that logs a user in over the Nautobot REST API.
+
+    Fetches the user's JWT then GETs an authenticated endpoint with it, which is
+    what triggers `nv_config_manager_auth.jwt_authentication` + the rbac sync
+    (the sync runs inside `authenticate()`, so it fires regardless of the
+    subsequent authorization outcome). Returns the HTTP status code so tests can
+    assert authorization results.
+
+    The default probe hits a data endpoint (`/api/dcim/devices/`) rather than
+    `/api/users/users/`: a mapped user with `view: all` is *intentionally* not
+    granted `users.user` (privilege-model exclusion), so listing users 403s by
+    design. Pass an explicit `path` to probe a specific endpoint (e.g. to assert
+    that exclusion).
+    """
+
+    def _login(username: str, path: str = "/api/dcim/devices/") -> int:
+        token = rbac_get_token(username)
+        resp = requests.get(
+            f"{rbac_nautobot_url}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+            verify=False,
+            timeout=30,
+        )
+        return resp.status_code
+
+    return _login
+
+
+@pytest.fixture(scope="session")
+def rbac_nbshell(
+    config_manager_namespace: str,
+    rbac_nautobot_pod: str,
+) -> Callable[[str], str]:
+    """Return a callable that runs a Python snippet in the Nautobot Django shell.
+
+    Uses ``nautobot-server shell --command <script>`` (non-interactive) inside
+    the Nautobot pod, giving tests full ORM access to assert Group /
+    ObjectPermission state without the interactive REPL echoing prompts or the
+    Shell-Plus auto-import banner into stdout. Fails the test on a non-zero exit
+    so ORM errors surface loudly.
+    """
+
+    def _run(script: str, timeout: int = 60) -> str:
+        proc = subprocess.run(
+            [
+                "kubectl",
+                "exec",
+                "-i",
+                "-n",
+                config_manager_namespace,
+                rbac_nautobot_pod,
+                "--",
+                "nautobot-server",
+                "shell",
+                "--command",
+                script,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if proc.returncode != 0:
+            pytest.fail(
+                f"nautobot-server shell exec failed (rc={proc.returncode}):\n"
+                f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+            )
+        return proc.stdout
 
     return _run

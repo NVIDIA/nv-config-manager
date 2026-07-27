@@ -276,6 +276,53 @@ jobs:
             grep -nE 'temporal\.api|cors_origins' /tmp/nvcm-helm.yaml || true
             exit 1
           fi
+      - name: Project-owned image pull secrets render
+        run: |
+          set -euo pipefail
+          image_args=()
+          for image_name in nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady temporalServer temporalBootstrap temporalUi; do
+            image_args+=(--set-string "global.images.${image_name}.repository=private.registry.test/${image_name}")
+          done
+          helm template test deploy/helm/ \
+            --values deploy/helm/values-ci.yaml \
+            --set-string 'global.imagePullSecrets[0]=image-pull-secret-test' \
+            "${image_args[@]}" >/tmp/nvcm-private-images.yaml
+          awk '
+            BEGIN { RS = "---"; checked = 0; failed = 0 }
+            {
+              if ($0 !~ /kind: (Pod|Deployment|StatefulSet|DaemonSet|Job|CronJob)/) next
+              if ($0 !~ /image:[[:space:]]*"?private\.registry\.test\//) next
+              checked++
+              kind = "unknown"
+              name = "unknown"
+              line_count = split($0, lines, "\n")
+              in_metadata = 0
+              for (i = 1; i <= line_count; i++) {
+                if (lines[i] ~ /^kind:[[:space:]]+/) {
+                  kind = lines[i]
+                  sub(/^kind:[[:space:]]+/, "", kind)
+                }
+                if (lines[i] == "metadata:") {
+                  in_metadata = 1
+                  continue
+                }
+                if (in_metadata && lines[i] ~ /^  name:[[:space:]]+/) {
+                  name = lines[i]
+                  sub(/^  name:[[:space:]]+/, "", name)
+                  break
+                }
+                if (in_metadata && lines[i] ~ /^[^[:space:]]/) in_metadata = 0
+              }
+              if ($0 !~ /imagePullSecrets:/ || $0 !~ /- name: image-pull-secret-test/) {
+                printf "ERROR: %s/%s uses a project-owned image without imagePullSecrets\n", kind, name
+                failed++
+              }
+            }
+            END {
+              printf "%d workload(s) using project-owned images checked; %d missing imagePullSecrets\n", checked, failed
+              if (checked == 0 || failed != 0) exit 1
+            }
+          ' /tmp/nvcm-private-images.yaml
       - name: Probe SLO customLabels render
         run: |
           # Blackbox Probe samples don't inherit the CR's metadata.labels, so

@@ -8,6 +8,11 @@ NAMESPACE ?= nv-config-manager
 RELEASE_NAME ?= nv-config-manager
 HOSTNAME ?= config-manager.local
 KIND_CLUSTER_NAME ?= nv-config-manager
+# Kind cluster config. CI overrides this with a copy patched to route in-cluster
+# docker.io pulls through a Docker Hub mirror (see
+# scripts/configure-kind-dockerhub-mirror), which keeps the security stack's
+# ~2x-heavier docker.io pulls off the shared runner's anonymous rate limit.
+KIND_CONFIG ?= deploy/kind-config.yaml
 DEPLOY_SIZE ?= small  # Resource sizing: small (24GB Mac) or medium (64GB VM)
 INSTALL_CONFIG ?= deploy/configs/local-superpod.yaml
 KIND_SEC_INSTALL_CONFIG ?= deploy/configs/local-sec.yaml
@@ -499,6 +504,10 @@ PLATFORMS ?= linux/amd64,linux/arm64
 PLATFORM ?= linux/amd64
 # Extra tags can be passed via EXTRA_TAGS, e.g. EXTRA_TAGS="-t repo:tag1 -t repo:tag2"
 EXTRA_TAGS ?=
+# Buildx output for the single-arch targets. Default pushes to $(REGISTRY)
+# (requires docker login). Credential-less builds override with e.g.
+# DOCKER_BUILD_OUTPUT="--output type=docker,dest=/path/image.tar"
+DOCKER_BUILD_OUTPUT ?= --push
 # Set PUSH_LATEST=true to also push :latest tags (only for main branch releases)
 PUSH_LATEST ?=
 LATEST_TAG_nv_config_manager = $(if $(PUSH_LATEST),-t $(REGISTRY)/nv-config-manager:latest,)
@@ -570,9 +579,9 @@ docker-build-single-nv-config-manager: ## Builds and pushes NVIDIA Config Manage
 		$(TEMPLATE_ENGINE_VERSION_ARG) \
 		$(NVCM_NUMPY_BUILD_ARGS) \
 		-f build/nv-config-manager.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-kea
 docker-build-single-kea: ## Builds and pushes KEA image for PLATFORM.
@@ -583,9 +592,9 @@ docker-build-single-kea: ## Builds and pushes KEA image for PLATFORM.
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/kea.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager-kea:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-kea:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-kea-admin
 docker-build-single-kea-admin: ## Builds and pushes KEA Admin image for PLATFORM.
@@ -596,9 +605,9 @@ docker-build-single-kea-admin: ## Builds and pushes KEA Admin image for PLATFORM
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/kea-admin.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		.
-	@echo "✅ nv-config-manager-kea-admin:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-kea-admin:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-ui
 docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
@@ -609,9 +618,9 @@ docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/ui.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		ui/
-	@echo "✅ nv-config-manager-ui:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-ui:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-nb
 docker-build-single-nb: ## Builds and pushes Nautobot image for PLATFORM.
@@ -624,9 +633,9 @@ docker-build-single-nb: ## Builds and pushes Nautobot image for PLATFORM.
 		$(NAUTOBOT_APP_OVERLAYS_VERSION_ARG) \
 		$(NAUTOBOT_NV_CONFIG_MANAGER_VERSION_ARG) \
 		-f build/nautobot.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		components/nautobot/
-	@echo "✅ nv-config-manager-nautobot:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-nautobot:$(VERSION) built/exported ($(REGISTRY))"
 
 .PHONY: docker-build-single-nats-ready
 docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFORM.
@@ -637,17 +646,32 @@ docker-build-single-nats-ready: ## Builds and pushes NATS-ready image for PLATFO
 		$(EXTRA_TAGS) \
 		$(APT_MIRROR_ARGS) \
 		-f build/nats-ready.Dockerfile \
-		--push \
+		$(DOCKER_BUILD_OUTPUT) \
 		components/nats-ready/
-	@echo "✅ nv-config-manager-nats-ready:$(VERSION) pushed to $(REGISTRY)"
+	@echo "✅ nv-config-manager-nats-ready:$(VERSION) built/exported ($(REGISTRY))"
 
+# One buildx invocation per Temporal image so each maps 1:1 to a build target,
+# matching the other docker-build-single-* recipes. This lets the secret-free
+# PR build produce a single tarball per image via DOCKER_BUILD_OUTPUT; the
+# aggregate target below preserves the push-all-three behavior for release/main.
 .PHONY: docker-build-single-temporal
-docker-build-single-temporal: ## Builds and pushes distroless Temporal images for PLATFORM.
-	@echo "🏗️  Building distroless Temporal images for $(PLATFORM)..."
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile --push .
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile --push .
-	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile --push .
-	@echo "✅ Distroless Temporal images pushed to $(REGISTRY)"
+docker-build-single-temporal: docker-build-single-temporal-server docker-build-single-temporal-bootstrap docker-build-single-temporal-ui ## Builds/pushes all distroless Temporal images for PLATFORM.
+	@echo "✅ Distroless Temporal images built for $(PLATFORM)"
+
+.PHONY: docker-build-single-temporal-server
+docker-build-single-temporal-server: ## Builds the distroless Temporal server image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal server image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal:$(VERSION) $(LATEST_TAG_temporal) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target server -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
+
+.PHONY: docker-build-single-temporal-bootstrap
+docker-build-single-temporal-bootstrap: ## Builds the distroless Temporal bootstrap image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal bootstrap image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-bootstrap:$(VERSION) $(LATEST_TAG_temporal_bootstrap) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target bootstrap -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
+
+.PHONY: docker-build-single-temporal-ui
+docker-build-single-temporal-ui: ## Builds the distroless Temporal UI image for PLATFORM.
+	@echo "🏗️  Building distroless Temporal UI image for $(PLATFORM)..."
+	docker buildx build --platform $(PLATFORM) -t $(REGISTRY)/nv-config-manager-temporal-ui:$(VERSION) $(LATEST_TAG_temporal_ui) $(EXTRA_TAGS) $(TEMPORAL_BUILD_ARGS) --target ui -f build/temporal.Dockerfile $(DOCKER_BUILD_OUTPUT) .
 
 # =============================================================================
 # Manifest Merge Targets (for combining arch-specific images)
@@ -777,22 +801,22 @@ docker-build-temporal-multiarch: docker-buildx-setup ## Builds and pushes multi-
 # Service run targets (for local development without k8s)
 # =============================================================================
 run-ztp-api:
-	uv run uvicorn nv_config_manager.ztp.api.main:app --reload --port 8080
+	uv run uvicorn nv_config_manager.ztp.api.main:app --loop asyncio --reload --port 8080
 
 run-dhcp-api:
-	uv run uvicorn nv_config_manager.dhcp.api:app --reload --port 8081
+	uv run uvicorn nv_config_manager.dhcp.api:app --loop asyncio --reload --port 8081
 
 run-temporal-api:
-	uv run uvicorn nv_config_manager.temporal.api.main:app --reload --port 8082
+	uv run uvicorn nv_config_manager.temporal.api.main:app --loop asyncio --reload --port 8082
 
 run-temporal-worker:
 	uv run python -m nv_config_manager.temporal.worker.main
 
 run-render-api:
-	uv run uvicorn nv_config_manager.render.api.main:app --reload --port 8083
+	uv run uvicorn nv_config_manager.render.api.main:app --loop asyncio --reload --port 8083
 
 run-config-store-api:
-	uv run uvicorn nv_config_manager.config_store.api.main:app --reload --port 8084
+	uv run uvicorn nv_config_manager.config_store.api.main:app --loop asyncio --reload --port 8084
 
 # Database migrations
 db-migrate:
@@ -832,7 +856,7 @@ kind-up:
 	@echo "🚀 Deploying NVIDIA Config Manager with installer to Kind (config: $(INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
-		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG) --wait 5m; \
 	fi
 	cd installer && uv run nv-config-manager-installer deploy ../$(INSTALL_CONFIG) \
 		--image-source local \
@@ -856,10 +880,16 @@ kind-up-secure:
 	@echo "🚀 Deploying NVIDIA Config Manager with local security stack and $(KIND_SEC_GATEWAY_CONTROLLER) to Kind (config: $(KIND_SEC_INSTALL_CONFIG))..."
 	@if ! kind get clusters 2>/dev/null | grep -q "^$(KIND_CLUSTER_NAME)$$"; then \
 		echo "Creating Kind cluster: $(KIND_CLUSTER_NAME)"; \
-		kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind-config.yaml --wait 5m; \
+		kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG) --wait 5m; \
 	fi
 	kind export kubeconfig --name $(KIND_CLUSTER_NAME)
-	./scripts/install-security-dependencies \
+	@# ``@``-prefixed so make does not echo the expanded recipe: these commands
+	@# carry --keycloak-admin-password / --oidc-client-secret, and make's default
+	@# command echo would print them verbatim into the (public) CI log. They are
+	@# dev defaults today, but suppressing keeps real creds out of logs if these
+	@# vars are ever overridden. The scripts still print their own progress.
+	@echo "🔐 Installing security dependencies (keycloak / SPIRE / gateway)..."
+	@./scripts/install-security-dependencies \
 		--gateway-controller $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--cluster-name $(KIND_CLUSTER_NAME) \
 		--app-namespace $(KIND_SEC_NAMESPACE) \
@@ -867,8 +897,10 @@ kind-up-secure:
 		--keycloak-hostname $(KIND_SEC_KEYCLOAK_HOSTNAME) \
 		--spiffe-trust-domain $(KIND_SEC_SPIFFE_TRUST_DOMAIN) \
 		--keycloak-admin-password $(KIND_SEC_KEYCLOAK_ADMIN_PASSWORD) \
-		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET)
-	uv run python scripts/render-local-security-config \
+		--oidc-client-secret $(KIND_SEC_OIDC_CLIENT_SECRET) \
+		--helm-timeout $(HELM_TIMEOUT)
+	@echo "🔧 Rendering local security config..."
+	@uv run python scripts/render-local-security-config \
 		--gateway $(KIND_SEC_GATEWAY_CONTROLLER) \
 		--input $(KIND_SEC_INSTALL_CONFIG) \
 		--output $(abspath $(KIND_SEC_RENDERED_CONFIG)) \

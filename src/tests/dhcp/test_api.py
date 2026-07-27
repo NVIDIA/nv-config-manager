@@ -178,10 +178,10 @@ def make_auth_config_with_jwt_provider() -> AuthConfig:
     return AuthConfig(
         jwt_providers=(
             JwtProviderConfig(
-                name="ssa",
-                issuer="https://ssa.example.com",
+                name="service",
+                issuer="https://service-idp.example.com",
                 audiences=["s:nv-config-manager"],
-                jwks_uri="https://ssa.example.com/jwks",
+                jwks_uri="https://service-idp.example.com/jwks",
                 claim_email="sub",
                 claim_user="sub",
                 claim_groups="scopes",
@@ -436,7 +436,7 @@ def test_get_config_accepts_non_oidc_jwt_provider():
 
     token, public_key = make_jwt_token(
         {
-            "iss": "https://ssa.example.com",
+            "iss": "https://service-idp.example.com",
             "aud": "s:nv-config-manager",
             "sub": "service-account",
             "scopes": ["nv-config-manager"],

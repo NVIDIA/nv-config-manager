@@ -106,6 +106,11 @@ use_internal_endpoint = true
 api_service = http://ztp-api.example.local:9000
 use_internal_endpoint = true
 user_domain = ztp.example.com
+http_stream_chunk_bytes = 67108864
+http_max_concurrent_downloads = 16
+sftp_read_ahead_bytes = 16777216
+sftp_max_concurrent_downloads = 32
+sftp_metrics_port = 9100
 
 [temporal]
 grpc_service = temporal-frontend.example.local:7233

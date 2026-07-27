@@ -489,6 +489,7 @@ async def start_workflow(
 ) -> str:
     """Start a workflow with the given input."""
 
+    request.state.audit_workflow_type = workflow_class.__name__
     user, roles = get_user_info(request)
 
     # Check if the user is authorized to execute the workflow
@@ -534,6 +535,7 @@ async def start_workflow(
         task_queue="default-task-queue",
         search_attributes=search_attributes,
     )
+    request.state.audit_workflow_id = handle.id
     try:
         await cache_workflow_input(handle.id, body)
     except Exception:

@@ -183,3 +183,45 @@ def test_logger_adapter_recursively_escapes_collection_arguments(
     assert caplog.messages[-1] == (
         r"nested={'bad\\n\\x1bkey': ['before\\nafter', ('bad\\rvalue',)]}"
     )
+
+
+def test_logger_adapter_merges_per_call_structured_fields(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Structured audit fields are retained alongside the adapter category."""
+    logger = get_logger("test.structured", category="temporal.audit")
+
+    with caplog.at_level(logging.INFO, logger="test.structured"):
+        logger.info("workflow action", extra={"action": "terminate", "actor": "operator"})
+
+    record = caplog.records[-1]
+    assert record.category == "temporal.audit"
+    assert record.action == "terminate"
+    assert record.actor == "operator"
+
+
+def test_configure_logging_replaces_fallback_handler_without_duplicate_output(
+    _restore_logging: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A logger created during imports emits once after root configuration."""
+    logger_name = "test.preconfiguration-fallback"
+    raw_logger = logging.getLogger(logger_name)
+    original_handlers = raw_logger.handlers[:]
+    original_level = raw_logger.level
+
+    try:
+        raw_logger.handlers.clear()
+        log._logging_configured = False
+        logger = get_logger(logger_name, category="temporal.audit")
+
+        assert len(raw_logger.handlers) == 1
+
+        log.configure_logging(service="test-svc")
+        logger.info("unique workflow audit event")
+
+        assert raw_logger.handlers == []
+        assert capsys.readouterr().err.count("unique workflow audit event") == 1
+    finally:
+        raw_logger.handlers[:] = original_handlers
+        raw_logger.setLevel(original_level)

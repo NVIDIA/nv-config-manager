@@ -19,10 +19,12 @@ from configparser import ConfigParser
 from unittest.mock import patch
 
 from nv_config_manager.common.config import (
+    TimeoutHTTPAdapter,
     _read_spiffe_jwt,
     clear_config_cache,
     get_internal_auth_headers,
     load_config,
+    pynautobot_client,
     reload_config,
 )
 
@@ -117,6 +119,27 @@ class TestLoadConfig:
 
         assert second is not first
         assert second["dynamic"]["value"] == "one"
+
+
+class TestPynautobotClient:
+    """Tests for the synchronous Nautobot API client."""
+
+    def test_configures_timeout_and_retries_for_http_and_https(self):
+        config = ConfigParser()
+        config["nautobot"] = {
+            "server": "http://nautobot",
+            "token": "test-token",
+            "retries": "3",
+        }
+
+        with patch("nv_config_manager.common.config.load_config", return_value=config):
+            connection = pynautobot_client()
+
+        for protocol in ("http://", "https://"):
+            adapter = connection.http_session.get_adapter(protocol)
+            assert isinstance(adapter, TimeoutHTTPAdapter)
+            assert adapter.timeout == 10
+            assert adapter.max_retries.total == 3
 
 
 class TestGetInternalAuthHeaders:

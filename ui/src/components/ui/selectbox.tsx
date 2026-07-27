@@ -34,7 +34,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
 
 interface Option {
   value: string;
@@ -91,76 +90,101 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
       onChange?.(multiple ? [] : "");
     };
 
+    const selectedLabels = options
+      .filter((option) =>
+        Array.isArray(value)
+          ? value.includes(option.value)
+          : option.value === value,
+      )
+      .map((option) => option.key);
+    const triggerLabel = selectedLabels.length
+      ? `${selectedLabels.join(", ")}. Open options`
+      : (placeholder ?? "Open options");
+    const hasSelection = Boolean(value && value.length > 0);
+
+    let selectedContent: React.ReactNode;
+    if (hasSelection && multiple) {
+      selectedContent = options
+        .filter(
+          (option) => Array.isArray(value) && value.includes(option.value),
+        )
+        .map((option) => (
+          <span
+            key={option.value}
+            className="inline-flex items-center gap-1 rounded-md border py-0.5 pl-2 pr-1 text-xs font-medium text-foreground transition-colors"
+          >
+            <span aria-hidden="true">{option.key}</span>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`Remove ${option.key}`}
+              onClick={() => handleSelect(option.value)}
+              className="pointer-events-auto flex items-center rounded-sm px-[1px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <XIcon aria-hidden="true" />
+            </button>
+          </span>
+        ));
+    } else if (hasSelection) {
+      selectedContent = (
+        <span aria-hidden="true">
+          {options.find((option) => option.value === value)?.key}
+        </span>
+      );
+    } else {
+      selectedContent = (
+        <span className="mr-auto text-muted-foreground" aria-hidden="true">
+          {placeholder}
+        </span>
+      );
+    }
+
     return (
       <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            disabled={disabled}
-            variant={"outline"}
+        <div
+          className={cn(
+            "relative flex min-h-[36px] h-full w-full cursor-pointer items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm font-medium text-foreground ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground",
+            isOpen && "border-ring",
+            disabled && "pointer-events-none opacity-50",
+            className,
+          )}
+        >
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={triggerLabel}
+              className="absolute inset-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+          </PopoverTrigger>
+          <div
             className={cn(
-              "flex min-h-[36px] cursor-pointer items-center justify-between rounded-md border px-3 py-1 data-[state=open]:border-ring w-full h-full",
-              className,
+              "pointer-events-none relative z-10 items-center gap-1 overflow-hidden text-sm",
+              multiple
+                ? "flex flex-grow flex-wrap "
+                : "inline-flex whitespace-nowrap",
             )}
           >
-            <div
-              className={cn(
-                "items-center gap-1 overflow-hidden text-sm",
-                multiple
-                  ? "flex flex-grow flex-wrap "
-                  : "inline-flex whitespace-nowrap",
-              )}
-            >
-              {value && value.length > 0 ? (
-                multiple ? (
-                  options
-                    .filter(
-                      (option) =>
-                        Array.isArray(value) && value.includes(option.value),
-                    )
-                    ?.map((option) => (
-                      <span
-                        key={option.value}
-                        className="inline-flex items-center gap-1 rounded-md border py-0.5 pl-2 pr-1 text-xs font-medium text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                      >
-                        <span>{option.key}</span>
-                        <span
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleSelect(option.value);
-                          }}
-                          className="flex items-center rounded-sm px-[1px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground"
-                        >
-                          <XIcon />
-                        </span>
-                      </span>
-                    ))
-                ) : (
-                  options.find((opt) => opt.value === value)?.key
-                )
-              ) : (
-                <span className="mr-auto text-muted-foreground">
-                  {placeholder}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center self-stretch pl-1 text-muted-foreground/60 hover:text-foreground [&>div]:flex [&>div]:items-center [&>div]:self-stretch">
-              {value && value.length > 0 ? (
-                <div
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleClear();
-                  }}
-                >
-                  <XIcon className="size-4" />
-                </div>
-              ) : (
-                <div>
-                  <ArrowUpDownIcon className="size-4" />
-                </div>
-              )}
-            </div>
-          </Button>
-        </PopoverTrigger>
+            {selectedContent}
+          </div>
+          <div className="pointer-events-none relative z-10 flex items-center self-stretch pl-1 text-muted-foreground/60 hover:text-foreground">
+            {hasSelection ? (
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label="Clear selection"
+                className="pointer-events-auto flex items-center self-stretch focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={handleClear}
+              >
+                <XIcon className="size-4" aria-hidden="true" />
+              </button>
+            ) : (
+              <div className="flex items-center self-stretch" aria-hidden="true">
+                <ArrowUpDownIcon className="size-4" />
+              </div>
+            )}
+          </div>
+        </div>
         <PopoverContent
           className="w-[var(--radix-popover-trigger-width)] p-0"
           align="start"
@@ -176,12 +200,14 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
                   className="h-9"
                 />
                 {searchTerm && (
-                  <div
+                  <button
+                    type="button"
+                    aria-label="Clear search"
                     className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 text-muted-foreground hover:text-foreground"
                     onClick={() => setSearchTerm("")}
                   >
-                    <XIcon className="size-4" />
-                  </div>
+                    <XIcon className="size-4" aria-hidden="true" />
+                  </button>
                 )}
               </div>
             ) : null}

@@ -18,7 +18,9 @@ These tests verify that the ZTP API correctly serves configuration files
 for ZTP-enabled devices and properly updates device status to Provisioned.
 """
 
+from hashlib import sha256
 from typing import Any
+from uuid import uuid4
 
 import paramiko
 import pytest
@@ -320,6 +322,63 @@ class TestZTPAPI:
             )
 
         print(f"✅ Found {total_count} ZTP-enabled devices")
+
+
+class TestZTPFileStore:
+    """CI-only tests that mutate the ephemeral Kind FileStore."""
+
+    @pytest.mark.ci_only
+    @pytest.mark.timeout(60)
+    def test_upload_and_download_round_trip(
+        self,
+        kind_filestore_deployment: None,
+        ztp_api_url: str,
+        ztp_client: requests.Session,
+    ) -> None:
+        """Upload a dummy file, then verify full and ranged downloads."""
+        transfer_id = uuid4().hex
+        platform = "ci-filestore"
+        version = "round-trip"
+        filename = f"payload-{transfer_id}.bin"
+        seed = f"nv-config-manager FileStore round-trip {transfer_id}\n".encode()
+        payload = (seed * ((256 * 1024 // len(seed)) + 1))[: 256 * 1024]
+        checksum = sha256(payload).hexdigest()
+        object_url = f"{ztp_api_url}/v1/files/{platform}/{version}/{filename}"
+
+        upload_response = ztp_client.post(
+            object_url,
+            params={"checksum": checksum},
+            files={"file": (filename, payload, "application/octet-stream")},
+            headers={"Content-Type": None},
+            timeout=60,
+        )
+        upload_response.raise_for_status()
+        assert upload_response.json() == "OK"
+
+        download_response = ztp_client.get(object_url, timeout=60)
+        download_response.raise_for_status()
+        assert download_response.headers["Accept-Ranges"] == "bytes"
+        assert int(download_response.headers["Content-Length"]) == len(payload)
+        assert download_response.content == payload
+        assert sha256(download_response.content).hexdigest() == checksum
+
+        range_start = 17
+        range_end = len(payload) - 23
+        range_response = ztp_client.get(
+            object_url,
+            headers={"Range": f"bytes={range_start}-{range_end}"},
+            timeout=60,
+        )
+        assert range_response.status_code == 206
+        assert range_response.headers["Content-Range"] == (
+            f"bytes {range_start}-{range_end}/{len(payload)}"
+        )
+        assert int(range_response.headers["Content-Length"]) == range_end - range_start + 1
+        assert range_response.content == payload[range_start : range_end + 1]
+
+        checksum_response = ztp_client.get(f"{object_url}/checksum", timeout=30)
+        checksum_response.raise_for_status()
+        assert checksum_response.json() == {"checksum": checksum}
 
 
 class TestZTPSFTP:

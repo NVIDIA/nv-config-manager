@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from configparser import ConfigParser
+from threading import Lock
 from unittest.mock import MagicMock, patch
 
 import jwt as pyjwt
@@ -30,9 +32,13 @@ from starlette.testclient import TestClient as StarletteClient
 
 import nv_config_manager.common.auth as auth_mod
 from nv_config_manager.common.auth import (
+    JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
     SSOIdentity,
     _derive_jwks_uri,
+    _get_jwks_client,
+    _get_signing_key_from_jwks,
     _jwks_clients,
+    _jwks_signing_key_locks,
     _spiffe_id_to_workload_name,
     extract_identity,
     identity_from_sso_headers,
@@ -79,11 +85,13 @@ def _inject_config(config: ConfigParser):
 def _clear_caches():
     """Reset module-level caches between tests."""
     _jwks_clients.clear()
+    _jwks_signing_key_locks.clear()
     auth_mod._auth_config = None
     auth_mod._auth_config_source = None
     auth_mod._auth_config_tracks_file = False
     yield
     _jwks_clients.clear()
+    _jwks_signing_key_locks.clear()
     auth_mod._auth_config = None
     auth_mod._auth_config_source = None
     auth_mod._auth_config_tracks_file = False
@@ -190,10 +198,10 @@ class TestConfigLoading:
                     "issuer": "https://login.microsoftonline.com/t/v2.0",
                     "audiences": "api://app1",
                 },
-                "auth.jwt.ssa": {
-                    "issuer": "https://ssa.example.com",
-                    "audiences": "s:my-aud",
-                    "jwks_uri": "https://ssa.example.com/.well-known/jwks.json",
+                "auth.jwt.service": {
+                    "issuer": "https://service-idp.example.com",
+                    "audiences": "service-api",
+                    "jwks_uri": "https://service-idp.example.com/.well-known/jwks.json",
                     "claim_email": "sub",
                     "claim_user": "sub",
                     "claim_groups": "scopes",
@@ -203,10 +211,10 @@ class TestConfigLoading:
         cfg = load_auth_config(cp)
         assert len(cfg.jwt_providers) == 2
         names = {p.name for p in cfg.jwt_providers}
-        assert names == {"azure", "ssa"}
-        ssa = next(p for p in cfg.jwt_providers if p.name == "ssa")
-        assert ssa.claim_email == "sub"
-        assert ssa.jwks_uri == "https://ssa.example.com/.well-known/jwks.json"
+        assert names == {"azure", "service"}
+        service = next(p for p in cfg.jwt_providers if p.name == "service")
+        assert service.claim_email == "sub"
+        assert service.jwks_uri == "https://service-idp.example.com/.well-known/jwks.json"
 
     def test_spiffe_section_parsed(self):
         """[auth.spiffe] section is parsed into SpiffeConfig."""
@@ -279,7 +287,11 @@ class TestInstallIdentityProbe:
 
         @app.get("/state-user")
         async def state_user(request: Request):
-            return {"user": request.state.user}
+            """Expose normalized request identity fields for middleware tests."""
+            return {
+                "user": request.state.user,
+                "auth_source": request.state.auth_source,
+            }
 
         install_identity_probe(app)
         return app
@@ -296,6 +308,10 @@ class TestInstallIdentityProbe:
         resp = client.get("/protected", headers={"X-Auth-Request-Email": "alice@example.com"})
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
+
+        resp = client.get("/state-user", headers={"X-Auth-Request-Email": "alice@example.com"})
+        assert resp.status_code == 200
+        assert resp.json() == {"user": "alice", "auth_source": "sso"}
 
     def test_docs_are_protected(self):
         auth_mod._auth_config = load_auth_config(
@@ -315,7 +331,7 @@ class TestInstallIdentityProbe:
 
         resp = client.get("/state-user")
         assert resp.status_code == 200
-        assert resp.json() == {"user": "anonymous"}
+        assert resp.json() == {"user": "anonymous", "auth_source": "anonymous"}
 
     def test_openapi_describes_default_bearer_auth_and_public_paths(self):
         schema = self._make_app().openapi()
@@ -533,11 +549,11 @@ class TestIdentityFromJwt:
         assert "read" in data["groups"]
         assert "write" in data["groups"]
 
-    def test_multi_issuer_first_match_wins(self, rsa_keypair, make_jwt, client):
-        """With multiple providers, the first one whose issuer matches wins."""
+    def test_multi_issuer_only_fetches_matching_provider_jwks(self, rsa_keypair, make_jwt, client):
+        """A token must not refresh JWKS sets for providers with another issuer."""
         claims = {
-            "iss": "https://ssa.example.com",
-            "aud": "s:my-aud",
+            "iss": "https://service-idp.example.com",
+            "aud": "service-api",
             "sub": "bot-1",
             "scopes": ["deploy"],
             "exp": int(time.time()) + 300,
@@ -555,10 +571,10 @@ class TestIdentityFromJwt:
                     "audiences": "api://app",
                     "jwks_uri": "https://azure.jwks",
                 },
-                "auth.jwt.ssa": {
-                    "issuer": "https://ssa.example.com",
-                    "audiences": "s:my-aud",
-                    "jwks_uri": "https://ssa.example.com/jwks",
+                "auth.jwt.service": {
+                    "issuer": "https://service-idp.example.com",
+                    "audiences": "service-api",
+                    "jwks_uri": "https://service-idp.example.com/jwks",
                     "claim_email": "sub",
                     "claim_user": "sub",
                     "claim_groups": "scopes",
@@ -576,7 +592,7 @@ class TestIdentityFromJwt:
             mock_client_ok.get_signing_key_from_jwt.return_value = mock_jwk
 
             def _pick(uri):
-                if "ssa" in uri:
+                if "service-idp" in uri:
                     return mock_client_ok
                 return mock_client_fail
 
@@ -588,6 +604,78 @@ class TestIdentityFromJwt:
         assert data["email"] == "bot-1"
         assert data["source"] == "jwt"
         assert "deploy" in data["groups"]
+        mock_get_client.assert_called_once_with("https://service-idp.example.com/jwks")
+
+    def test_non_spiffe_jwt_does_not_fetch_spiffe_jwks(self, make_jwt, client):
+        """Ordinary JWTs do not force a SPIFFE JWKS lookup before JWT auth."""
+        token = make_jwt(
+            {
+                "iss": "https://idp.example.com",
+                "sub": "operator",
+                "exp": int(time.time()) + 300,
+                "iat": int(time.time()),
+            }
+        )
+        cp = _make_config(
+            **{
+                "auth.spiffe": {
+                    "jwks_uri": "https://spire.example.com/keys",
+                    "audiences": "spiffe://cluster.local",
+                },
+            }
+        )
+        auth_mod._auth_config = load_auth_config(cp)
+
+        with patch("nv_config_manager.common.auth._get_jwks_client") as mock_get_client:
+            response = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.json() == {"identity": None}
+        mock_get_client.assert_not_called()
+
+
+class TestJwksClientCache:
+    def test_enables_keyset_cache(self):
+        with patch.object(auth_mod.pyjwt, "PyJWKClient") as mock_client_class:
+            mock_client_class.return_value = MagicMock()
+
+            first = _get_jwks_client("https://idp.example.com/jwks")
+            second = _get_jwks_client("https://idp.example.com/jwks")
+
+        assert first is second
+        mock_client_class.assert_called_once_with(
+            "https://idp.example.com/jwks",
+            cache_jwk_set=True,
+            lifespan=JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
+        )
+
+    def test_serializes_cold_keyset_fetches(self):
+        class ColdCacheClient:
+            def __init__(self) -> None:
+                self.cached = False
+                self.fetches = 0
+                self.lock = Lock()
+
+            def get_signing_key_from_jwt(self, token: str) -> MagicMock:
+                if not self.cached:
+                    with self.lock:
+                        self.fetches += 1
+                    time.sleep(0.01)
+                    self.cached = True
+                return MagicMock()
+
+        client = ColdCacheClient()
+        with patch("nv_config_manager.common.auth._get_jwks_client", return_value=client):
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                list(
+                    executor.map(
+                        lambda _: _get_signing_key_from_jwks(
+                            "https://idp.example.com/jwks", "token"
+                        ),
+                        range(8),
+                    )
+                )
+
+        assert client.fetches == 1
 
 
 # ── identity_from_spiffe tests ───────────────────────────────────────────

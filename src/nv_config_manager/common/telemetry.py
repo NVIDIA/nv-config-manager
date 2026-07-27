@@ -21,13 +21,54 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.utils import suppress_instrumentation
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
+
+HTTP_TRACE_EXCLUDED_URLS = r"/(?:healthcheck|metrics)/?$"
+HTTP_TRACE_EXCLUDED_PATHS = frozenset(
+    {
+        "/healthcheck",
+        "/healthcheck/",
+        "/metrics",
+        "/metrics/",
+    }
+)
+
+
+class _SuppressOperationalTracingMiddleware:
+    """Suppress all auto-instrumentation within probe and scrape requests."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path") in HTTP_TRACE_EXCLUDED_PATHS:
+            with suppress_instrumentation():
+                await self.app(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+def instrument_fastapi_app(app: FastAPI) -> None:
+    """Instrument a FastAPI app without tracing probe and scrape endpoints."""
+    FastAPIInstrumentor.instrument_app(app, excluded_urls=HTTP_TRACE_EXCLUDED_URLS)
+    app.add_middleware(_SuppressOperationalTracingMiddleware)
+
+
+def instrument_asgi_app(app: ASGIApp) -> ASGIApp:
+    """Instrument an ASGI app without tracing probe and scrape endpoints."""
+    instrumented_app = OpenTelemetryMiddleware(app, excluded_urls=HTTP_TRACE_EXCLUDED_URLS)
+    return _SuppressOperationalTracingMiddleware(instrumented_app)
 
 
 def _optional_instrumentor(module_path: str, class_name: str) -> type[Any] | None:
