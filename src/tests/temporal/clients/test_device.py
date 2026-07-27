@@ -616,3 +616,222 @@ def test_update_interface_enable_deletes_disable(juniper_conn):
     with patch.object(juniper_conn, "configure_set") as mock_configure:
         juniper_conn.update_interface("xe-0/0/1", enabled=True)
     assert mock_configure.call_args.args[0] == ["delete interfaces xe-0/0/1 disable"]
+
+
+# ---------------------------------------------------------------------------
+# Full replace, numbered rollback, and rescue configuration.
+# ---------------------------------------------------------------------------
+
+
+def test_perform_replace_diff_defaults_to_load_update(juniper_conn):
+    """perform_replace_diff defaults to load update, returns the diff, and discards."""
+    cu = MagicMock()
+    cu.diff.return_value = "some-diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        diff = juniper_conn.perform_replace_diff("system { host-name RTR1; }")
+    assert diff == "some-diff"
+    cu.load.assert_called_once_with("system { host-name RTR1; }", format="text", update=True)
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
+
+
+def test_perform_replace_diff_override_mode_uses_overwrite(juniper_conn):
+    """replace_mode='override' maps to Junos load override (overwrite=True)."""
+    cu = MagicMock()
+    cu.diff.return_value = "some-diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.perform_replace_diff("system { host-name RTR1; }", replace_mode="override")
+    cu.load.assert_called_once_with("system { host-name RTR1; }", format="text", overwrite=True)
+
+
+def test_replace_configuration_rejects_unknown_mode(juniper_conn):
+    """An unknown replace_mode raises before touching the device config."""
+    cu = MagicMock()
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(NetworkDeviceException, match="replace_mode"):
+            juniper_conn.replace_configuration("config", approved_diff="d", replace_mode="merge")
+    cu.load.assert_not_called()
+
+
+def test_perform_replace_diff_rejects_set_format(juniper_conn):
+    """A full deploy cannot use set format; the client raises before touching the device."""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch(
+            "nv_config_manager.temporal.client.device.Config",
+            return_value=_FakeConfigCM(MagicMock()),
+        ),
+    ):
+        with pytest.raises(NetworkDeviceException, match="set"):
+            juniper_conn.perform_replace_diff("set system host-name RTR1", config_format="set")
+
+
+def test_replace_configuration_raises_config_syntax_on_load_error(juniper_conn):
+    """A load failure during replace surfaces as ConfigSyntaxException."""
+    cu = MagicMock()
+    cu.load.side_effect = ConfigLoadError(rsp=_rpc_error_rsp("syntax error"))
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(ConfigSyntaxException):
+            juniper_conn.replace_configuration("bad config", approved_diff="d")
+
+
+def test_replace_configuration_raises_when_diff_changed(juniper_conn):
+    """A replace whose fresh diff differs from the approved diff aborts before commit."""
+    cu = MagicMock()
+    cu.diff.return_value = "new-diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(DiffChangedException):
+            juniper_conn.replace_configuration("config", approved_diff="old-diff")
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
+
+
+def test_replace_configuration_noop_when_no_diff(juniper_conn):
+    """A replace that produces no diff discards the candidate and does not commit."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.replace_configuration("config", approved_diff="")
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
+
+
+def test_replace_configuration_commit_confirm_then_confirms(juniper_conn):
+    """replace_configuration with commit_confirm commits with a timer then confirms."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.replace_configuration("config", approved_diff="diff", commit_confirm=True)
+    assert cu.commit.call_count == 2
+    assert "confirm" in cu.commit.call_args_list[0].kwargs
+    assert "confirm" not in cu.commit.call_args_list[1].kwargs
+
+
+def test_get_rollback_diff_returns_diff(juniper_conn):
+    """get_rollback_diff compares the active config against a numbered rollback."""
+    cu = MagicMock()
+    cu.diff.return_value = "rollback-diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        diff = juniper_conn.get_rollback_diff(3)
+    assert diff == "rollback-diff"
+    cu.diff.assert_called_once_with(rb_id=3)
+    cu.rollback.assert_called_once()
+
+
+def test_rollback_configuration_commits_when_diff(juniper_conn):
+    """rollback_configuration loads the numbered revision and commits when it differs."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.rollback_configuration(2, commit_confirm=False)
+    cu.rollback.assert_called_once_with(rb_id=2)
+    cu.commit.assert_called_once()
+
+
+def test_rollback_configuration_noop_when_no_diff(juniper_conn):
+    """When the numbered revision matches the active config, nothing is committed."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.rollback_configuration(2, commit_confirm=False)
+    # rollback(rb_id=2) to load, then rollback() to discard the unchanged candidate.
+    assert cu.rollback.call_count == 2
+    cu.commit.assert_not_called()
+
+
+def test_save_rescue_configuration_calls_rescue_save(juniper_conn):
+    """save_rescue_configuration issues a rescue save."""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+    ):
+        juniper_conn.save_rescue_configuration()
+    mock_config.return_value.rescue.assert_called_once_with(action="save")
+
+
+def test_get_rescue_configuration_returns_text(juniper_conn):
+    """get_rescue_configuration returns the saved rescue text."""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+    ):
+        mock_config.return_value.rescue.return_value = "system { host-name RTR1; }"
+        rescue = juniper_conn.get_rescue_configuration()
+    assert rescue == "system { host-name RTR1; }"
+    mock_config.return_value.rescue.assert_called_once_with(action="get", format="text")
+
+
+def test_get_rescue_configuration_returns_none_when_absent(juniper_conn):
+    """get_rescue_configuration returns None when no rescue config is set."""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+    ):
+        mock_config.return_value.rescue.return_value = None
+        assert juniper_conn.get_rescue_configuration() is None
+
+
+def test_delete_rescue_configuration_calls_rescue_delete(juniper_conn):
+    """delete_rescue_configuration issues a rescue delete."""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+    ):
+        juniper_conn.delete_rescue_configuration()
+    mock_config.return_value.rescue.assert_called_once_with(action="delete")
+
+
+def test_rollback_to_rescue_reloads_and_commits(juniper_conn):
+    """rollback_to_rescue reloads the rescue config and commits when it differs."""
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.rollback_to_rescue(commit_confirm=False)
+    cu.rescue.assert_called_once_with(action="reload")
+    cu.commit.assert_called_once()
+
+
+def test_rollback_to_rescue_noop_when_no_diff(juniper_conn):
+    """rollback_to_rescue does nothing when the rescue config matches the active config."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.rollback_to_rescue(commit_confirm=False)
+    cu.commit.assert_not_called()
+    cu.rollback.assert_called_once()

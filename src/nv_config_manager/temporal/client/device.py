@@ -29,7 +29,7 @@ import time
 from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO, StringIO
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from uuid import uuid4
 
 import netaddr
@@ -535,6 +535,52 @@ class NetworkConnection:
         commit_confirm: bool = True,
     ) -> None:
         """Load the candidate configuration and commit."""
+        raise NotImplementedError()
+
+    def perform_replace_diff(
+        self,
+        new_configuration: str,
+        *,
+        config_format: str = "text",
+        replace_mode: str = "update",
+    ) -> str:
+        """Return the diff for a full desired-state deploy without committing."""
+        raise NotImplementedError()
+
+    def replace_configuration(
+        self,
+        new_configuration: str,
+        approved_diff: str,
+        *,
+        config_format: str = "text",
+        replace_mode: str = "update",
+        commit_confirm: bool = True,
+    ) -> None:
+        """Deploy the complete desired-state configuration and commit."""
+        raise NotImplementedError()
+
+    def get_rollback_diff(self, rollback_id: int = 1) -> str:
+        """Return the diff between the active config and a numbered rollback."""
+        raise NotImplementedError()
+
+    def rollback_configuration(self, rollback_id: int = 1, *, commit_confirm: bool = True) -> None:
+        """Roll back to a numbered rollback revision and commit."""
+        raise NotImplementedError()
+
+    def save_rescue_configuration(self) -> None:
+        """Save the current active config as the rescue checkpoint."""
+        raise NotImplementedError()
+
+    def get_rescue_configuration(self) -> str | None:
+        """Return the saved rescue configuration, or None if none is set."""
+        raise NotImplementedError()
+
+    def delete_rescue_configuration(self) -> None:
+        """Delete the saved rescue configuration."""
+        raise NotImplementedError()
+
+    def rollback_to_rescue(self, *, commit_confirm: bool = True) -> None:
+        """Roll back to the saved rescue configuration and commit."""
         raise NotImplementedError()
 
     def execute_ztp(self) -> None:
@@ -2630,6 +2676,193 @@ class JuniperConnection(NetworkConnection):
         if mtu is not None:
             commands.append(f"set interfaces {interface} mtu {mtu}")
         self.configure_set(commands, commit_confirm=commit_confirm)
+
+    # ------------------------------------------------------------------
+    # Full declarative configuration deploy.
+    #
+    # The intended config is the complete desired state for the device. We do
+    # not use per-stanza ``load replace`` markers; the whole document drives the
+    # device so drift is removed rather than accumulated.
+    #
+    #   * "update"   -> Junos ``load update``: full desired state, but only the
+    #                   hierarchies that actually differ are re-parsed, so
+    #                   unrelated daemons are not disturbed. This is the safe
+    #                   default for routine deploys.
+    #   * "override" -> Junos ``load override``: replaces the entire config in
+    #                   one shot (all daemons reload). Use for hard resets /
+    #                   initial provisioning.
+    #
+    # Neither mode is valid for ``set`` format, so the intended config must be
+    # supplied as text, xml, or json.
+    # ------------------------------------------------------------------
+
+    _REPLACE_MODES: ClassVar[dict[str, str]] = {"update": "update", "override": "overwrite"}
+
+    def _load_replace(
+        self, cu: Config, new_configuration: str, config_format: str, replace_mode: str
+    ) -> None:
+        """Load the complete desired-state config via ``load update``/``override``."""
+        load_flag = self._REPLACE_MODES.get(replace_mode)
+        if load_flag is None:
+            raise NetworkDeviceException(
+                f"Unknown replace_mode '{replace_mode}' for {self._host}; "
+                f"expected one of {sorted(self._REPLACE_MODES)}."
+            )
+        if config_format == "set":
+            raise NetworkDeviceException(
+                f"Full config {replace_mode} is not supported for 'set' format on {self._host}; "
+                "supply the configuration in text, xml, or json format."
+            )
+        try:
+            cu.load(new_configuration, format=config_format, **{load_flag: True})
+        except ConfigLoadError as error:
+            raise ConfigSyntaxException(
+                f"Invalid configuration for {self._host}: {error}"
+            ) from error
+
+    def perform_replace_diff(
+        self,
+        new_configuration: str,
+        *,
+        config_format: str = "text",
+        replace_mode: str = "update",
+    ) -> str:
+        """Return the diff for a full desired-state deploy without committing."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                self._load_replace(cu, new_configuration, config_format, replace_mode)
+                diff = cu.diff()
+                cu.rollback()
+        except ConfigSyntaxException:
+            raise
+        except (LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to perform replace diff on {self._host}: {error}"
+            ) from error
+        return diff or ""
+
+    def replace_configuration(
+        self,
+        new_configuration: str,
+        approved_diff: str,
+        *,
+        config_format: str = "text",
+        replace_mode: str = "update",
+        commit_confirm: bool = True,
+    ) -> None:
+        """Deploy the complete desired-state config and commit.
+
+        Uses Junos ``load update`` by default (``replace_mode="override"`` for a
+        full ``load override``). Gated on approved_diff like commit_candidate_config
+        so a changed device state aborts the deploy.
+        """
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                self._load_replace(cu, new_configuration, config_format, replace_mode)
+                diff = cu.diff()
+                if not diff:
+                    cu.rollback()
+                    return
+                if diff != approved_diff:
+                    cu.rollback()
+                    raise DiffChangedException("Diff has changed since approval, aborting.")
+                self._commit(cu, commit_confirm)
+        except (ConfigSyntaxException, DiffChangedException):
+            raise
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to replace configuration on {self._host}: {error}"
+            ) from error
+        if commit_confirm:
+            self._confirm_commit()
+
+    # ------------------------------------------------------------------
+    # Rollback to a numbered revision (Junos keeps rollback 0-49).
+    # ------------------------------------------------------------------
+
+    def get_rollback_diff(self, rollback_id: int = 1) -> str:
+        """Return the diff between the active config and a numbered rollback."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                diff = cu.diff(rb_id=rollback_id)
+                cu.rollback()
+        except (LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
+            raise NetworkDeviceException(
+                f"Failed to read rollback {rollback_id} diff on {self._host}: {error}"
+            ) from error
+        return diff or ""
+
+    def rollback_configuration(self, rollback_id: int = 1, *, commit_confirm: bool = True) -> None:
+        """Roll back to a numbered rollback revision and commit (instant rollback)."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                cu.rollback(rb_id=rollback_id)
+                if not cu.diff():
+                    cu.rollback()
+                    return
+                self._commit(cu, commit_confirm)
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
+            raise NetworkDeviceException(
+                f"Failed to roll back to revision {rollback_id} on {self._host}: {error}"
+            ) from error
+        if commit_confirm:
+            self._confirm_commit()
+
+    # ------------------------------------------------------------------
+    # Rescue configuration (a named checkpoint of the active config).
+    # ------------------------------------------------------------------
+
+    def save_rescue_configuration(self) -> None:
+        """Save the current active config as the rescue checkpoint."""
+        device = self._get_device()
+        try:
+            Config(device).rescue(action="save")
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to save rescue configuration on {self._host}: {error}"
+            ) from error
+
+    def get_rescue_configuration(self) -> str | None:
+        """Return the saved rescue configuration, or None if none is set."""
+        device = self._get_device()
+        try:
+            result = Config(device).rescue(action="get", format="text")
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to read rescue configuration on {self._host}: {error}"
+            ) from error
+        return result if result else None
+
+    def delete_rescue_configuration(self) -> None:
+        """Delete the saved rescue configuration."""
+        device = self._get_device()
+        try:
+            Config(device).rescue(action="delete")
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to delete rescue configuration on {self._host}: {error}"
+            ) from error
+
+    def rollback_to_rescue(self, *, commit_confirm: bool = True) -> None:
+        """Roll back to the saved rescue configuration and commit."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                cu.rescue(action="reload")
+                if not cu.diff():
+                    cu.rollback()
+                    return
+                self._commit(cu, commit_confirm)
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to roll back to rescue configuration on {self._host}: {error}"
+            ) from error
+        if commit_confirm:
+            self._confirm_commit()
 
     # ------------------------------------------------------------------
     # Diagnostic commands — operational RPCs returning JSON.
