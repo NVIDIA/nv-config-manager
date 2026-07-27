@@ -9,11 +9,20 @@
 - [ ] Standard CI passes.
 - [ ] Kind integration passes, or this PR explains why it was not run.
 
-The kind integration test is manual due to taking ~30 min to complete. When the PR is ready for
-review, approve the current commit and start the suite with these PR comments:
+The kind integration test is manual due to taking ~30 min to complete. Ready pull requests from
+configured trustees auto-sync when every commit is GitHub `Verified`. Other pull requests,
+including draft pull requests, require an authorized maintainer to approve the exact current
+commit. Approval must be repeated after the pull request is updated.
+
+For a pull request that requires approval, an authorized maintainer first comments:
 
 ```text
 /ok to test <sha>
+```
+
+After copy-pr-bot has synced the current commit, start the suite with:
+
+```text
 /kind test
 ```
 
