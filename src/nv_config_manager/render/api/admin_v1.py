@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from nats.js.errors import NotFoundError, ServiceUnavailableError
 from pydantic import BaseModel
 
 from nv_config_manager.common.config import (
@@ -187,15 +188,21 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
             message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages. Consumer will be automatically recreated within seconds."
             logger.info(f"Successfully deleted consumer {config['durable_name']}")
 
-        except Exception as delete_error:
-            if "not found" in str(delete_error).lower():
-                status = "success"
-                message = (
-                    f"Consumer '{config['durable_name']}' was already deleted or did not exist."
-                )
-                logger.info(f"Consumer {config['durable_name']} was already deleted")
-            else:
-                raise delete_error
+        except NotFoundError:
+            status = "success"
+            message = f"Consumer '{config['durable_name']}' was already deleted or did not exist."
+            logger.info(f"Consumer {config['durable_name']} was already deleted")
+
+        except ServiceUnavailableError as delete_error:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Consumer '{config['durable_name']}' on stream '{config['stream']}' cannot be"
+                    f" reset through API prefix '{config['api_prefix']}'. The stream is imported"
+                    f" from another NATS account which does not export consumer deletion, so the"
+                    f" owning account manages this consumer's lifecycle."
+                ),
+            ) from delete_error
 
         await nats_conn.close()
 
@@ -206,6 +213,8 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
             message=message,
         )
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Error resetting consumer %s", consumer_type)
         raise HTTPException(status_code=500, detail="Failed to reset consumer") from exc
@@ -246,17 +255,31 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                     message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages."
                     logger.info(f"Successfully deleted consumer {config['durable_name']}")
 
+                except NotFoundError:
+                    status = "success"
+                    message = (
+                        f"Consumer '{config['durable_name']}' was already deleted or did not exist."
+                    )
+                    logger.info(f"Consumer {config['durable_name']} was already deleted")
+
+                except ServiceUnavailableError:
+                    status = "skipped"
+                    message = (
+                        f"Consumer '{config['durable_name']}' is managed by the account owning"
+                        f" stream '{config['stream']}' and cannot be reset from here."
+                    )
+                    logger.warning(
+                        f"Skipped reset for externally managed consumer {config['durable_name']}"
+                    )
+
                 except Exception as delete_error:
-                    if "not found" in str(delete_error).lower():
-                        status = "success"
-                        message = f"Consumer '{config['durable_name']}' was already deleted or did not exist."
-                        logger.info(f"Consumer {config['durable_name']} was already deleted")
-                    else:
-                        status = "error"
-                        message = f"Failed to delete consumer '{config['durable_name']}': {str(delete_error)}"
-                        logger.error(
-                            f"Failed to delete consumer {config['durable_name']}: {delete_error}"
-                        )
+                    status = "error"
+                    message = (
+                        f"Failed to delete consumer '{config['durable_name']}': {str(delete_error)}"
+                    )
+                    logger.error(
+                        f"Failed to delete consumer {config['durable_name']}: {delete_error}"
+                    )
 
                 results.append(
                     ConsumerResetResponse(
@@ -311,14 +334,11 @@ async def get_consumer_info(consumer_type: ConsumerType, request: Request) -> Co
                 num_delivered=consumer_info.delivered.consumer_seq,
             )
 
-        except Exception as e:
-            if "not found" in str(e).lower():
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Consumer '{config['durable_name']}' not found",
-                ) from e
-            else:
-                raise e
+        except NotFoundError as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Consumer '{config['durable_name']}' not found",
+            ) from e
 
         await nats_conn.close()
         return result

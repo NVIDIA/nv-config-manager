@@ -17,6 +17,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+from nats.js.errors import NotFoundError, ServiceUnavailableError
 
 from nv_config_manager.render.api.main import app
 
@@ -200,7 +201,7 @@ class TestGetConsumerInfo:
         mock_get_conn.side_effect = mock_get_connection
 
         async def mock_consumer_info(stream, consumer):
-            raise Exception("Consumer not found")
+            raise NotFoundError
 
         mock_js.consumer_info.side_effect = mock_consumer_info
 
@@ -256,13 +257,13 @@ class TestResetConsumer:
 
         # Mock consumer info fails (consumer doesn't exist)
         async def mock_consumer_info(stream, consumer):
-            raise Exception("Consumer not found")
+            raise NotFoundError
 
         mock_js.consumer_info.side_effect = mock_consumer_info
 
-        # Mock deletion also fails with "not found"
+        # Mock deletion also reports the consumer as absent
         async def mock_delete_consumer(stream, consumer):
-            raise Exception("Consumer not found")
+            raise NotFoundError
 
         mock_js.delete_consumer.side_effect = mock_delete_consumer
 
@@ -273,6 +274,25 @@ class TestResetConsumer:
         data = response.json()
         assert data["status"] == "success"
         assert "was already deleted" in data["message"]
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_consumer_externally_managed(self, mock_get_conn, mock_load_config):
+        """A stream imported from another account does not export consumer deletion."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        async def mock_delete_consumer(stream, consumer):
+            raise ServiceUnavailableError
+
+        mock_js.delete_consumer.side_effect = mock_delete_consumer
+
+        client = TestClient(app)
+        response = client.delete("/v1/admin/consumers/device/reset")
+
+        assert response.status_code == 409
+        assert "owning account manages" in response.json()["detail"]
 
     def test_reset_consumer_invalid_type(self):
         """Test resetting with invalid consumer type."""
