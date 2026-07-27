@@ -24,7 +24,11 @@ from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.common.telemetry import instrument_fastapi_app, setup_tracing
+from nv_config_manager.common.telemetry import (
+    group_fastapi_status_codes,
+    instrument_fastapi_app,
+    setup_tracing,
+)
 from nv_config_manager.ztp.api import device_v1, files_v1, firmware_v1
 from nv_config_manager.ztp.api.metrics import device_http_requests
 
@@ -62,7 +66,10 @@ app.include_router(device_v1.router, prefix="/v1")
 app.include_router(firmware_v1.router, prefix="/v1")
 app.include_router(files_v1.router, prefix="/v1")
 
-instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+instrumentator = Instrumentator(
+    should_group_status_codes=group_fastapi_status_codes(),
+    excluded_handlers=["/healthcheck", "/metrics"],
+)
 instrumentator.add(
     metrics.default(
         metric_namespace="nv-config-manager",

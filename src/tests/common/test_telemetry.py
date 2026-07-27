@@ -26,6 +26,27 @@ from nv_config_manager.common import telemetry
 OTLP_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
 SERVICE_ENV = "OTEL_SERVICE_NAME"
 ENVIRONMENT_ENV = "ENVIRONMENT"
+GROUP_FASTAPI_STATUS_CODES_ENV = "NV_CONFIG_MANAGER_GROUP_FASTAPI_STATUS_CODES"
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, True),
+        ("true", True),
+        ("TRUE", True),
+        ("false", False),
+        ("FALSE", False),
+    ],
+)
+def test_fastapi_status_code_grouping_setting(monkeypatch, configured, expected):
+    """FastAPI metrics grouping follows its environment setting and defaults on."""
+    if configured is None:
+        monkeypatch.delenv(GROUP_FASTAPI_STATUS_CODES_ENV, raising=False)
+    else:
+        monkeypatch.setenv(GROUP_FASTAPI_STATUS_CODES_ENV, configured)
+
+    assert telemetry.group_fastapi_status_codes() is expected
 
 
 @pytest.mark.parametrize(
