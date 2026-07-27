@@ -14,7 +14,9 @@ version when a release tag is promoted.
   `prometheus_client` in multiprocess mode, and scrape Nautobot via `/metrics/`
   instead of `/metrics` to avoid recurring 404s. Nautobot metrics now aggregate
   across all uWSGI workers instead of reporting only the worker that answered
-  the scrape.
+  the scrape. The multiprocess metrics directory is an `emptyDir` with a size
+  limit so it starts empty on every pod start and cannot grow without bound,
+  and the Celery probes no longer leave metric files behind on each check.
 
 ## 1.3.0
 
