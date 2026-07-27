@@ -450,7 +450,7 @@ docker-build-kea-admin:
 # Build NVIDIA Config Manager UI image
 docker-build-ui:
 	@echo "🏗️  Building NVIDIA Config Manager UI image with tag $(LOCAL_TAG)..."
-	docker build --provenance=false $(APT_MIRROR_ARGS) -t nv-config-manager-ui:$(LOCAL_TAG) -f build/ui.Dockerfile ui/
+	docker build --provenance=false -t nv-config-manager-ui:$(LOCAL_TAG) -f build/ui.Dockerfile ui/
 	@echo "✅ Built nv-config-manager-ui:$(LOCAL_TAG)"
 
 # Build Nautobot image
@@ -616,7 +616,6 @@ docker-build-single-ui: ## Builds and pushes UI image for PLATFORM.
 		--platform $(PLATFORM) \
 		-t $(REGISTRY)/nv-config-manager-ui:$(VERSION) \
 		$(EXTRA_TAGS) \
-		$(APT_MIRROR_ARGS) \
 		-f build/ui.Dockerfile \
 		$(DOCKER_BUILD_OUTPUT) \
 		ui/
@@ -753,7 +752,6 @@ docker-build-ui-multiarch: docker-buildx-setup ## Builds and pushes multi-arch N
 		-t $(REGISTRY)/nv-config-manager-ui:$(VERSION) \
 		$(LATEST_TAG_ui) \
 		$(EXTRA_TAGS) \
-		$(APT_MIRROR_ARGS) \
 		-f build/ui.Dockerfile \
 		--push \
 		ui/
