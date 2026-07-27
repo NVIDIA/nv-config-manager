@@ -24,10 +24,10 @@ from pydantic import BaseModel
 from nv_config_manager.common.config import (
     DEFAULT_NATS_API_PREFIX,
     load_config,
+    nats_config_manager_api_prefix,
     nats_connection,
     nats_nautobot_api_prefix,
     nats_nautobot_change_config,
-    nats_render_change_api_prefix,
     nats_render_change_config,
 )
 from nv_config_manager.common.log import LogCategory, get_logger
@@ -85,7 +85,7 @@ def get_consumer_configs() -> dict[str, dict[str, str]]:
     nautobot_stream, nautobot_subject = nats_nautobot_change_config(config)
     nautobot_api_prefix = nats_nautobot_api_prefix(config)
     render_stream, render_subject = nats_render_change_config(config)
-    render_api_prefix = nats_render_change_api_prefix(config)
+    render_api_prefix = nats_config_manager_api_prefix(config)
 
     return {
         "nautobot": {

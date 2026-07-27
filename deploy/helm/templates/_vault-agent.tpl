@@ -300,13 +300,10 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           config_manager_api_prefix = {{ $root.Values.externalServices.nats.streams.configManager.apiPrefix | default "$JS.API" }}
           config_manager_subjects = {{ join "," $root.Values.externalServices.nats.streams.configManager.subjects }}
           render_change_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
-          render_change_api_prefix = {{ $root.Values.externalServices.nats.streams.configManager.apiPrefix | default "$JS.API" }}
           render_change_subject = {{ $root.Values.externalServices.nats.streams.configManager.renderChangeSubject }}
           device_change_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
-          device_change_api_prefix = {{ $root.Values.externalServices.nats.streams.configManager.apiPrefix | default "$JS.API" }}
           device_change_subject = {{ $root.Values.externalServices.nats.streams.configManager.deviceChangeSubject }}
           archive_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
-          archive_api_prefix = {{ $root.Values.externalServices.nats.streams.configManager.apiPrefix | default "$JS.API" }}
           archive_subject = {{ $root.Values.externalServices.nats.streams.configManager.archiveSubject }}
           nautobot_stream = {{ $root.Values.externalServices.nats.streams.nautobot.name }}
           nautobot_api_prefix = {{ $root.Values.externalServices.nats.streams.nautobot.apiPrefix | default "$JS.API" }}

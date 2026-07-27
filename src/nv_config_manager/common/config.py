@@ -48,6 +48,7 @@ from nv_config_manager.common.client import (
     RenderClient,
     TemporalClient,
     ZTPClient,
+    config_manager_api_prefix,
 )
 
 # =============================================================================
@@ -142,12 +143,13 @@ def _nats_section(config: ConfigParser | None = None) -> SectionProxy:
     return config["nats"]
 
 
-def _config_manager_api_prefix(nats_config: SectionProxy, key: str) -> str:
-    """Resolve a JetStream API prefix for a stream owned by the config-manager account."""
-    return nats_config.get(
-        key,
-        nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
-    )
+def nats_config_manager_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for the config-manager-owned stream.
+
+    Render-change, device-change and archive events are subjects on this one stream,
+    so they share its prefix.
+    """
+    return config_manager_api_prefix(_nats_section(config))
 
 
 def nats_render_change_config(config: ConfigParser | None = None) -> tuple[str, str]:
@@ -164,11 +166,6 @@ def nats_render_change_config(config: ConfigParser | None = None) -> tuple[str, 
     return stream, subject
 
 
-def nats_render_change_api_prefix(config: ConfigParser | None = None) -> str:
-    """Return the JetStream API prefix for render-triggering changes."""
-    return _config_manager_api_prefix(_nats_section(config), "render_change_api_prefix")
-
-
 def nats_device_change_config(config: ConfigParser | None = None) -> tuple[str, str]:
     """Return the configured stream and subject for device-change notifications."""
     nats_config = _nats_section(config)
@@ -183,11 +180,6 @@ def nats_device_change_config(config: ConfigParser | None = None) -> tuple[str, 
     return stream, subject
 
 
-def nats_device_change_api_prefix(config: ConfigParser | None = None) -> str:
-    """Return the JetStream API prefix for device-change notifications."""
-    return _config_manager_api_prefix(_nats_section(config), "device_change_api_prefix")
-
-
 def nats_archive_config(config: ConfigParser | None = None) -> tuple[str, str]:
     """Return the configured stream and subject for workflow archive events."""
     nats_config = _nats_section(config)
@@ -200,11 +192,6 @@ def nats_archive_config(config: ConfigParser | None = None) -> tuple[str, str]:
         DEFAULT_CONFIG_MANAGER_ARCHIVE_SUBJECT,
     )
     return stream, subject
-
-
-def nats_archive_api_prefix(config: ConfigParser | None = None) -> str:
-    """Return the JetStream API prefix for workflow archive events."""
-    return _config_manager_api_prefix(_nats_section(config), "archive_api_prefix")
 
 
 def nats_nautobot_change_config(config: ConfigParser | None = None) -> tuple[str, str]:

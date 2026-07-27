@@ -513,7 +513,8 @@ externalServices:
     streams:
       configManager:
         name: nv-config-manager
-        # JetStream API prefix for config-manager-owned streams.
+        # JetStream API prefix for this stream. Render-change, device-change and
+        # archive events are subjects on it, so they share this prefix.
         apiPrefix: "$JS.API"
         subjects:
           - nv-config-manager.nautobotchange

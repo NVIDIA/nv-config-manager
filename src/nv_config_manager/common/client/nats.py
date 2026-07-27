@@ -24,7 +24,7 @@ import logging
 import signal
 import ssl
 from collections.abc import Awaitable, Callable
-from configparser import ConfigParser
+from configparser import ConfigParser, SectionProxy
 from typing import Any
 
 import certifi
@@ -41,6 +41,15 @@ logger = get_logger(__name__, category=LogCategory.NATS)
 # Defined here rather than in common.config because that module imports this
 # package; common.config re-exports it as the public name.
 DEFAULT_NATS_API_PREFIX = "$JS.API"
+
+
+def config_manager_api_prefix(nats_config: SectionProxy) -> str:
+    """Return the JetStream API prefix for the stream owned by the config-manager account.
+
+    A JetStream API prefix identifies the NATS account hosting a stream, so it is a
+    property of the stream rather than of any individual subject on it.
+    """
+    return nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX)
 
 
 class NatsClient:
@@ -119,7 +128,7 @@ class NatsClient:
             creds_path=nats_config.get("creds_path"),
             default_stream_name=nats_config.get("config_manager_stream", "nv-config-manager"),
             default_stream_subjects=stream_subjects,
-            api_prefix=nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX),
+            api_prefix=config_manager_api_prefix(nats_config),
         )
 
     async def _disconnected_cb(self) -> None:

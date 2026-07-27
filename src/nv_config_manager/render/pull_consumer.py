@@ -40,10 +40,10 @@ from nv_config_manager.common.config import (
     configure_logging,
     get_logger,
     load_config,
+    nats_config_manager_api_prefix,
     nats_connection,
     nats_nautobot_api_prefix,
     nats_nautobot_change_config,
-    nats_render_change_api_prefix,
     nats_render_change_config,
 )
 from nv_config_manager.render.dispatch import EventDispatcher
@@ -409,7 +409,7 @@ class PullDeviceChangeConsumer(PullConsumer):
     def __init__(self) -> None:
         """Initialize a render-triggering change consumer."""
         stream, subject = nats_render_change_config()
-        api_prefix = nats_render_change_api_prefix()
+        api_prefix = nats_config_manager_api_prefix()
         super().__init__(
             stream=stream,
             subject=subject,

@@ -24,7 +24,6 @@ from nats.aio.msg import Msg
 
 from nv_config_manager.common.config import (
     load_config,
-    nats_archive_api_prefix,
     nats_archive_config,
 )
 from nv_config_manager.common.log import configure_logging
@@ -217,7 +216,6 @@ def main() -> None:
         subject=subject,
         queue_suffix="archive",
         handler=handle_archive_msg,
-        api_prefix=nats_archive_api_prefix(),
     )
     consumer.run()
 

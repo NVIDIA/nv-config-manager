@@ -32,6 +32,7 @@ from nv_config_manager.common.client.nats import (
     NatsClient,
     NatsConsumer,
     NatsProducer,
+    config_manager_api_prefix,
 )
 
 # Nautobot Client
@@ -83,6 +84,7 @@ __all__ = [
     "NatsClient",
     "NatsConsumer",
     "NatsProducer",
+    "config_manager_api_prefix",
     # Nautobot
     "NautobotClient",
     "NautobotException",
