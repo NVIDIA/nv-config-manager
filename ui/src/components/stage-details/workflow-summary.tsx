@@ -21,7 +21,7 @@ import { buildNautobotDeviceLink, formatTimestamp } from "@/lib/utils";
 
 interface SummaryData {
   label: string;
-  value: string | string[] | React.ReactElement | React.ReactElement[];
+  value: React.ReactNode;
 }
 
 const WorkflowSummary: React.FC<WorkflowClientComponentProps> = ({
@@ -38,17 +38,25 @@ const WorkflowSummary: React.FC<WorkflowClientComponentProps> = ({
     const deviceName = workflow?.search_attributes?.DeviceName;
     const deviceId = workflow?.search_attributes?.DeviceID;
     if (deviceName && deviceId && deviceName.length > 0) {
-      if (deviceName.length > 1) {
-        // TODO: Handle case where more than one device is included.
-      } else {
-        summaryData.push({
-          label: "Device",
-          value: buildNautobotDeviceLink(
-            String(deviceName[0]),
-            String(deviceId[0])
-          ),
-        });
-      }
+      const devices = deviceName.map((name, index) => {
+        const id = deviceId[index];
+        const value =
+          id === undefined
+            ? String(name)
+            : buildNautobotDeviceLink(String(name), String(id));
+
+        return (
+          <React.Fragment key={`${String(id ?? "")}-${String(name)}`}>
+            {index > 0 && ", "}
+            {value}
+          </React.Fragment>
+        );
+      });
+
+      summaryData.push({
+        label: devices.length === 1 ? "Device" : "Devices",
+        value: devices,
+      });
     }
 
     // User is always a 1-element list, if it is included.
@@ -83,8 +91,8 @@ const WorkflowSummary: React.FC<WorkflowClientComponentProps> = ({
   return (
     <div className="p-4">
       <ul>
-        {getSummaryData(workflow).map((item, index) => (
-          <li key={index}>
+        {getSummaryData(workflow).map((item) => (
+          <li key={item.label}>
             <span className="font-semibold">{item.label}:</span> {item.value}
           </li>
         ))}

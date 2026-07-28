@@ -18,21 +18,26 @@
 
 import { Suspense, use } from "react";
 import { handlers } from "@/mocks/handlers";
+import { shouldEnableMocksFromGlobals } from "@/mocks/shouldEnableMocks";
 
-const mockingEnabledPromise =
-  typeof window !== "undefined" && !window.BYPASS_MSW && process.env.NODE_ENV === 'development' 
-    ? import("@/mocks/browser").then(async ({ worker }) => {
-        await worker.start({
-          onUnhandledRequest(request, print) {
-            if (request.url.includes("_next")) {
-              return;
-            }
-            print.warning();
-          },
-        });
-        worker.use(...handlers);
-      })
-    : Promise.resolve();
+async function initializeMocking(): Promise<void> {
+  if (!shouldEnableMocksFromGlobals()) {
+    return;
+  }
+
+  const { worker } = await import("@/mocks/browser");
+  await worker.start({
+    onUnhandledRequest(request, print) {
+      if (request.url.includes("_next")) {
+        return;
+      }
+      print.warning();
+    },
+  });
+  worker.use(...handlers);
+}
+
+const mockingEnabledPromise = initializeMocking();
 
 export function MSWProvider({
   children,

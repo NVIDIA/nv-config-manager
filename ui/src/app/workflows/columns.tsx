@@ -19,7 +19,7 @@
 import { ColumnDef } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import { SortableHeaderButton } from "@/components/data-table";
-import { WorkflowColumns, WorkflowMetadata } from "@/types/data-table.types";
+import { Workflow, WorkflowMetadata } from "@/types/data-table.types";
 import { renderDeviceNameField } from "@/lib/utils";
 import { useRuntimeConfig } from "@/config/runtime";
 import Link from "next/link";
@@ -98,7 +98,7 @@ function getWorkflowStatusLabel(status: string): string {
   return workflowStatusLabels.get(status) ?? status;
 }
 
-function getWorkflowDisplayStatus(workflow: WorkflowColumns): string {
+function getWorkflowDisplayStatus(workflow: Workflow): string {
   if (workflow.failed_stage) {
     return "FAILED";
   }
@@ -112,11 +112,11 @@ function FilterValueIcon({
   label,
   param,
   value,
-}: {
+}: Readonly<{
   label: string;
   param: string;
   value: string;
-}) {
+}>) {
   const searchParams = useSearchParams();
   const isActive = isFilterActive(searchParams, param, value);
   const ariaLabel = isActive
@@ -144,12 +144,12 @@ function FilterableValue({
   label,
   param,
   value,
-}: {
+}: Readonly<{
   children: ReactNode;
   label: string;
   param: string;
   value: string;
-}) {
+}>) {
   return (
     <span className="inline-flex items-center gap-0.5">
       <span>{children}</span>
@@ -158,7 +158,9 @@ function FilterableValue({
   );
 }
 
-function WorkflowDateTimeCell({ value }: { value?: string | null }) {
+function WorkflowDateTimeCell({
+  value,
+}: Readonly<{ value?: string | null }>) {
   if (!value) {
     return null;
   }
@@ -193,7 +195,7 @@ function WorkflowDateTimeCell({ value }: { value?: string | null }) {
 }
 
 // Component wrapper to use runtime config in cell renderer
-function DeviceNameCell({ workflow }: { workflow: WorkflowColumns }) {
+function DeviceNameCell({ workflow }: Readonly<{ workflow: Workflow }>) {
   const { config } = useRuntimeConfig();
   const deviceName = workflow.search_attributes.DeviceName?.[0];
   const deviceNameValue = deviceName ? String(deviceName) : "";
@@ -217,11 +219,11 @@ function SearchAttributeCell({
   label,
   param,
   values,
-}: {
+}: Readonly<{
   label: string;
   param: string;
-  values?: WorkflowColumns["search_attributes"][string];
-}) {
+  values?: Workflow["search_attributes"][string];
+}>) {
   if (!values || values.length === 0) {
     return null;
   }
@@ -248,7 +250,7 @@ function SearchAttributeCell({
 
 export const getWorkflowColumns = (
   workflowMetadata: WorkflowMetadata[]
-): ColumnDef<WorkflowColumns>[] => {
+): ColumnDef<Workflow>[] => {
   const workflowMetadataByName = new Map(
     workflowMetadata.map((metadata) => [metadata.name, metadata])
   );
