@@ -1,0 +1,321 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+      - "pull-request/*"
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: TruffleHog
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          version: 3.96.0
+          extra_args: --results=verified,unknown
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: linux-amd64-cpu8
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: components/temporal/go.mod
+          cache: false
+      - name: Setup Node
+        if: matrix.language == 'javascript-typescript'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Build Go modules
+        if: matrix.language == 'go'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          (cd bindings/go && go build -mod=readonly ./...)
+          (cd components/nats-ready && go build -mod=readonly ./...)
+          (cd components/temporal && go build -mod=readonly -o "${RUNNER_TEMP}/temporal-bootstrap" ./...)
+      - name: Analyze
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+
+  codeql-pr-comment:
+    name: CodeQL PR Report
+    needs: codeql
+    if: always() && startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: read
+    steps:
+      - name: Get PR info
+        id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
+      - name: Update CodeQL report comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
+          TRUSTED_REF: ${{ github.ref }}
+        with:
+          script: |
+            const marker = "<!-- nv-config-manager-codeql-report -->";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = Number(process.env.PR_NUMBER);
+            const trustedRef = process.env.TRUSTED_REF;
+            const headSha = process.env.HEAD_SHA;
+            const codeqlResult = process.env.CODEQL_RESULT;
+
+            if (!Number.isInteger(pullNumber) || pullNumber < 1) {
+              core.setFailed(`Invalid pull request number: ${process.env.PR_NUMBER}`);
+              return;
+            }
+
+            let alerts = [];
+            let alertsError = "";
+            try {
+              alerts = await github.paginate(
+                github.rest.codeScanning.listAlertsForRepo,
+                {
+                  owner,
+                  repo,
+                  ref: trustedRef,
+                  state: "open",
+                  tool_name: "CodeQL",
+                  per_page: 100,
+                },
+              );
+            } catch (error) {
+              alertsError =
+                error instanceof Error ? error.message : String(error);
+              core.warning(`Unable to load CodeQL alerts: ${alertsError}`);
+            }
+
+            const severityOrder = new Map([
+              ["critical", 0],
+              ["high", 1],
+              ["medium", 2],
+              ["low", 3],
+              ["error", 4],
+              ["warning", 5],
+              ["recommendation", 6],
+              ["note", 7],
+              ["unknown", 8],
+            ]);
+            const severityIcon = new Map([
+              ["critical", "🔴"],
+              ["high", "🔴"],
+              ["medium", "🟡"],
+              ["low", "🔵"],
+              ["error", "🔴"],
+              ["warning", "🟡"],
+              ["recommendation", "🔵"],
+              ["note", "🔵"],
+              ["unknown", "⚪"],
+            ]);
+            const severity = (alert) =>
+              alert.rule.security_severity_level ??
+              alert.rule.severity ??
+              "unknown";
+            alerts.sort((left, right) => {
+              const severityDifference =
+                (severityOrder.get(severity(left)) ?? 9) -
+                (severityOrder.get(severity(right)) ?? 9);
+              return (
+                severityDifference ||
+                String(left.rule.id).localeCompare(String(right.rule.id))
+              );
+            });
+
+            const counts = new Map();
+            for (const alert of alerts) {
+              const level = severity(alert);
+              counts.set(level, (counts.get(level) ?? 0) + 1);
+            }
+
+            const escapeTable = (value) =>
+              String(value ?? "")
+                .replaceAll("|", "\\|")
+                .replace(/\r?\n/g, " ");
+            const inlineCode = (value) =>
+              `\`${String(value ?? "").replaceAll("`", "\\`")}\``;
+            const sortedCounts = [...counts.entries()]
+              .sort(
+                ([left], [right]) =>
+                  (severityOrder.get(left) ?? 9) -
+                  (severityOrder.get(right) ?? 9),
+              );
+            const dashboardQuery = encodeURIComponent(
+              `is:open tool:CodeQL ref:${trustedRef}`,
+            );
+            const dashboardUrl =
+              `https://github.com/${owner}/${repo}/security/code-scanning` +
+              `?query=${dashboardQuery}`;
+            const commitUrl =
+              `https://github.com/${owner}/${repo}/commit/${headSha}`;
+            const updatedAt = new Date()
+              .toISOString()
+              .replace("T", " ")
+              .replace(/\.\d{3}Z$/, " UTC");
+
+            const lines = [
+              marker,
+              "",
+              "## 🛡️ CodeQL Analysis",
+              "",
+            ];
+
+            if (codeqlResult !== "success") {
+              lines.push(
+                `❌ CodeQL analysis finished with status ` +
+                  `\`${codeqlResult}\`.`,
+              );
+            } else if (alertsError) {
+              lines.push(
+                "⚠️ CodeQL analysis completed, but open alerts could not be " +
+                  `loaded: ${inlineCode(alertsError)}`,
+              );
+            } else if (alerts.length === 0) {
+              lines.push("✅ No security issues found!");
+            } else {
+              lines.push(
+                `🚨 Found **${alerts.length} open ` +
+                  `issue${alerts.length === 1 ? "" : "s"}**`,
+                "",
+                "**Severity Breakdown:**",
+                ...sortedCounts.map(
+                  ([level, count]) =>
+                    `- ${severityIcon.get(level) ?? "⚪"} ` +
+                    `${level[0].toUpperCase()}${level.slice(1)}: ${count}`,
+                ),
+                "",
+                "> This is the CodeQL state for copy-pr-bot's trusted branch. " +
+                  "It can include pre-existing findings and does not assert " +
+                  "that this PR introduced every alert.",
+                "",
+                "<details>",
+                "<summary>📋 Open Issues</summary>",
+                "",
+                "| Severity | Rule | Location |",
+                "| --- | --- | --- |",
+              );
+
+              for (const alert of alerts.slice(0, 50)) {
+                const location = alert.most_recent_instance?.location;
+                const path = location?.path ?? "(location unavailable)";
+                const line = location?.start_line
+                  ? `:${location.start_line}`
+                  : "";
+                const description =
+                  alert.rule.description ?? alert.rule.name ?? alert.rule.id;
+                lines.push(
+                  `| ${escapeTable(severity(alert))} | ` +
+                    `[${escapeTable(alert.rule.id)}](${alert.html_url}) — ` +
+                    `${escapeTable(description)} | ` +
+                    `${inlineCode(`${path}${line}`)} |`,
+                );
+              }
+
+              if (alerts.length > 50) {
+                lines.push(
+                  "",
+                  `_Showing the first 50 of ${alerts.length} open alerts._`,
+                );
+              }
+              lines.push("", "</details>");
+            }
+
+            lines.push(
+              "",
+              `🔗 [View full details in Security tab](${dashboardUrl})`,
+              "",
+              `<sub>🕐 Last updated: ${updatedAt} | Commit: ` +
+                `[${headSha.slice(0, 7)}](${commitUrl})</sub>`,
+            );
+
+            const body = lines.join("\n");
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number: pullNumber,
+                per_page: 100,
+              },
+            );
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.login === "github-actions[bot]" &&
+                comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                body,
+              });
+            }
