@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import pytest
 
 import nv_config_manager_installer.air_sim.sim_manager as sim_manager_module
+from nv_config_manager_installer.air_sim.models import NVCMServerConfig
 from nv_config_manager_installer.air_sim.sim_manager import AirSimulationManager
 
 
@@ -129,3 +130,51 @@ def test_configure_nat_rules_enables_dhcp_relay(monkeypatch: pytest.MonkeyPatch)
     assert "sudo systemctl enable isc-dhcp-relay" in commands
     assert "sudo systemctl restart isc-dhcp-relay" in commands
     assert not any("disable --now isc-dhcp-relay" in command for command in commands)
+
+
+def test_print_socks_instructions_redacts_password(caplog: pytest.LogCaptureFixture) -> None:
+    manager = AirSimulationManager.__new__(AirSimulationManager)
+    manager.ssh_password = "do-not-log-this-password"
+
+    with caplog.at_level("INFO"):
+        manager.print_socks_instructions("worker.example", 17117)
+
+    assert manager.ssh_password not in caplog.text
+    assert "sshpass -p '<password>'" in caplog.text
+
+
+def test_setup_nvcm_server_does_not_log_deployment_script(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = AirSimulationManager.__new__(AirSimulationManager)
+    node = SimpleNamespace(name="oob-mgmt-server", state="RUNNING")
+    interface = SimpleNamespace(id="interface-id", name="eth0")
+    service = SimpleNamespace(
+        interface=interface,
+        node_port=22,
+        worker_fqdn="worker.example",
+        worker_port=17117,
+    )
+    manager.client = SimpleNamespace(
+        nodes=SimpleNamespace(list=lambda **_kwargs: [node]),
+        interfaces=SimpleNamespace(list=lambda **_kwargs: [interface]),
+        services=SimpleNamespace(list=lambda **_kwargs: [service]),
+    )
+    deployment_script = "export API_PASSWORD=do-not-log-this-script"
+    monkeypatch.setattr(
+        manager,
+        "_generate_nvcm_deploy_script",
+        lambda **_kwargs: deployment_script,
+    )
+    monkeypatch.setattr(sim_manager_module.time, "sleep", lambda _seconds: None)
+
+    with caplog.at_level("INFO"):
+        result = manager.setup_nvcm_server(
+            "simulation-id",
+            NVCMServerConfig(use_existing_server="oob-mgmt-server"),
+        )
+
+    assert deployment_script not in caplog.text
+    assert "content omitted from logs" in caplog.text
+    assert result["deploy_script"] == deployment_script

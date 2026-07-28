@@ -1271,6 +1271,16 @@ Usage: {{ include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
 {{- end -}}
 
 {{/*
+FastAPI metrics env var -- controls whether response status labels are grouped
+into classes such as 2xx and 5xx.
+Usage: {{ include "nv-config-manager.fastApiMetricsEnv" . | nindent 8 }}
+*/}}
+{{- define "nv-config-manager.fastApiMetricsEnv" -}}
+- name: NV_CONFIG_MANAGER_GROUP_FASTAPI_STATUS_CODES
+  value: {{ .Values.monitoring.groupFastApiStatusCodes | quote }}
+{{- end -}}
+
+{{/*
 Network ZTP storage env vars. Only Ceph uses env refs because Rook generates
 the endpoint and credentials Secret at runtime. Other storage settings render
 into the main INI.
