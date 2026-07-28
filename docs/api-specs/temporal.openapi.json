@@ -933,6 +933,7 @@
           "cumulus-linux",
           "nv-os",
           "mlnx-os",
+          "juniper-junos",
           "ufm"
         ],
         "title": "Platform",
