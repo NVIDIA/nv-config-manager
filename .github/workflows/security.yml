@@ -150,6 +150,17 @@ jobs:
               ["note", 7],
               ["unknown", 8],
             ]);
+            const severityIcon = new Map([
+              ["critical", "🔴"],
+              ["high", "🔴"],
+              ["medium", "🟡"],
+              ["low", "🔵"],
+              ["error", "🔴"],
+              ["warning", "🟡"],
+              ["recommendation", "🔵"],
+              ["note", "🔵"],
+              ["unknown", "⚪"],
+            ]);
             const severity = (alert) =>
               alert.rule.security_severity_level ??
               alert.rule.severity ??
@@ -176,21 +187,12 @@ jobs:
                 .replace(/\r?\n/g, " ");
             const inlineCode = (value) =>
               `\`${String(value ?? "").replaceAll("`", "\\`")}\``;
-            const countSummary = [...counts.entries()]
+            const sortedCounts = [...counts.entries()]
               .sort(
                 ([left], [right]) =>
                   (severityOrder.get(left) ?? 9) -
                   (severityOrder.get(right) ?? 9),
-              )
-              .map(([level, count]) => `${count} ${level}`)
-              .join(", ");
-
-            const resultIcon =
-              codeqlResult === "success"
-                ? "✅"
-                : codeqlResult === "cancelled"
-                  ? "⚪"
-                  : "❌";
+              );
             const dashboardQuery = encodeURIComponent(
               `is:open tool:CodeQL ref:${trustedRef}`,
             );
@@ -199,31 +201,43 @@ jobs:
               `?query=${dashboardQuery}`;
             const commitUrl =
               `https://github.com/${owner}/${repo}/commit/${headSha}`;
+            const updatedAt = new Date()
+              .toISOString()
+              .replace("T", " ")
+              .replace(/\.\d{3}Z$/, " UTC");
 
             const lines = [
               marker,
               "",
-              "## CodeQL report",
-              "",
-              `**Analysis status:** ${resultIcon} \`${codeqlResult}\``,
-              `**Trusted commit:** [\`${headSha.slice(0, 12)}\`](${commitUrl})`,
+              "## 🛡️ CodeQL Analysis",
               "",
             ];
 
-            if (alerts.length === 0) {
+            if (codeqlResult !== "success") {
               lines.push(
-                `No open CodeQL alerts were reported for the ` +
-                  `[trusted PR branch](${dashboardUrl}).`,
+                `❌ CodeQL analysis finished with status ` +
+                  `\`${codeqlResult}\`.`,
               );
+            } else if (alerts.length === 0) {
+              lines.push("✅ No security issues found!");
             } else {
               lines.push(
-                `Found **${alerts.length} open CodeQL ` +
-                  `alert${alerts.length === 1 ? "" : "s"}** ` +
-                  `(${countSummary}). [View all alerts](${dashboardUrl}).`,
+                `🚨 Found **${alerts.length} open ` +
+                  `issue${alerts.length === 1 ? "" : "s"}**`,
+                "",
+                "**Severity Breakdown:**",
+                ...sortedCounts.map(
+                  ([level, count]) =>
+                    `- ${severityIcon.get(level) ?? "⚪"} ` +
+                    `${level[0].toUpperCase()}${level.slice(1)}: ${count}`,
+                ),
                 "",
                 "> This is the CodeQL state for copy-pr-bot's trusted branch. " +
                   "It can include pre-existing findings and does not assert " +
                   "that this PR introduced every alert.",
+                "",
+                "<details>",
+                "<summary>📋 Open Issues</summary>",
                 "",
                 "| Severity | Rule | Location |",
                 "| --- | --- | --- |",
@@ -251,7 +265,16 @@ jobs:
                   `_Showing the first 50 of ${alerts.length} open alerts._`,
                 );
               }
+              lines.push("", "</details>");
             }
+
+            lines.push(
+              "",
+              `🔗 [View full details in Security tab](${dashboardUrl})`,
+              "",
+              `<sub>🕐 Last updated: ${updatedAt} | Commit: ` +
+                `[${headSha.slice(0, 7)}](${commitUrl})</sub>`,
+            );
 
             const body = lines.join("\n");
             const comments = await github.paginate(
