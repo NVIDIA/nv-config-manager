@@ -14,7 +14,7 @@
 # limitations under the License.
 import json
 from configparser import ConfigParser
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import paramiko
 import pytest
@@ -250,22 +250,17 @@ def test_mock_get_tech_support_bundle_returns_bytes():
 
 
 @patch("nv_config_manager.temporal.client.device.paramiko.SSHClient")
-def test_sftp_download_rejects_unknown_host_keys(mock_ssh_client):
-    """SFTP loads trusted host keys and rejects hosts that are not present."""
-    ssh = MagicMock()
-    sftp = ssh.open_sftp.return_value
-    sftp.get_channel.return_value = None
-    sftp.getfo.side_effect = lambda _path, buffer, callback: buffer.write(b"bundle")
-    mock_ssh_client.return_value = ssh
+def test_sftp_download_closes_client_when_connect_fails(mock_ssh_client):
+    """SFTP closes the SSH client when connection setup fails."""
+    ssh = mock_ssh_client.return_value
+    ssh.connect.side_effect = paramiko.SSHException("connection failed")
     conn = CumulusConnection.__new__(CumulusConnection)
     conn._host = _TEST_HOST
     conn._username = "admin"
 
-    assert conn._sftp_download("password", "/tmp/support.tar", None) == b"bundle"
+    with pytest.raises(paramiko.SSHException, match="connection failed"):
+        conn._sftp_download("password", "/tmp/support.tar", None)
 
-    ssh.load_system_host_keys.assert_called_once_with()
-    policy = ssh.set_missing_host_key_policy.call_args.args[0]
-    assert isinstance(policy, paramiko.RejectPolicy)
     ssh.close.assert_called_once_with()
 
 

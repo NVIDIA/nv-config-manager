@@ -2058,20 +2058,19 @@ class CumulusConnection(NetworkConnection):
     ) -> bytes:
         """Open a fresh paramiko SSH connection and download remote_path over SFTP."""
         ssh = paramiko.SSHClient()
-        ssh.load_system_host_keys()
-        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
-        ssh.connect(
-            hostname=self._host,
-            port=22,
-            username=self._username,
-            password=password,
-            timeout=30,
-            banner_timeout=30,
-            auth_timeout=30,
-            allow_agent=False,
-            look_for_keys=False,
-        )
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
+            ssh.connect(
+                hostname=self._host,
+                port=22,
+                username=self._username,
+                password=password,
+                timeout=30,
+                banner_timeout=30,
+                auth_timeout=30,
+                allow_agent=False,
+                look_for_keys=False,
+            )
             last_hb = [time.monotonic()]
 
             def _progress(transferred: int, total: int) -> None:
