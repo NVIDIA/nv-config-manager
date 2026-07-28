@@ -6,10 +6,6 @@ position: 40
 
 The SpX Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign the overlay to the device and ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
 
-<Warning title="Experimental">
-This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
-</Warning>
-
 ## Prerequisites
 
 Before running, confirm:

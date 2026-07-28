@@ -6,10 +6,6 @@ position: 20
 
 The SpX Overlay Deletion workflow removes the VRF, L3 VXLAN, and Overlay metadata for an existing overlay from Nautobot. It is the cleanup counterpart to [SpX Overlay Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted. The Overlay object is only deleted once all of its VXLANs and member assignments are gone.
 
-<Warning title="Experimental">
-This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
-</Warning>
-
 ## Prerequisites
 
 Before running, confirm:
