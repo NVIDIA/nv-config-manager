@@ -18,6 +18,8 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from nats.aio.client import Client
+from nats.js import JetStreamContext
 from nats.js.errors import NotFoundError, ServiceUnavailableError
 from pydantic import BaseModel
 
@@ -103,7 +105,7 @@ def get_consumer_configs() -> dict[str, dict[str, str]]:
     }
 
 
-def jetstream_for_consumer(nats_conn: Any, consumer_config: dict[str, str]) -> Any:
+def jetstream_for_consumer(nats_conn: Client, consumer_config: dict[str, str]) -> JetStreamContext:
     """Return a JetStream context for this consumer's configured stream account."""
     return nats_conn.jetstream(prefix=consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX))
 

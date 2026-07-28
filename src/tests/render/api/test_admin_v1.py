@@ -181,6 +181,25 @@ class TestGetConsumerInfo:
         assert data["num_ack_pending"] == 2
         assert data["num_delivered"] == 150
 
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_get_consumer_info_nautobot_uses_imported_prefix(self, mock_get_conn, mock_load_config):
+        """The nautobot stream is owned by another account, so info must use its import prefix."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        async def mock_consumer_info(stream, consumer):
+            return MockConsumerInfo(num_pending=7, num_ack_pending=1, consumer_seq=42)
+
+        mock_js.consumer_info.side_effect = mock_consumer_info
+
+        client = TestClient(app)
+        response = client.get("/v1/admin/consumers/nautobot")
+
+        assert response.status_code == 200
+        mock_conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
+
     def test_get_consumer_info_invalid_type(self):
         """Test getting consumer info with invalid consumer type."""
         client = TestClient(app)
