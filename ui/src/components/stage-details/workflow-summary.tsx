@@ -37,9 +37,9 @@ const WorkflowSummary: React.FC<WorkflowClientComponentProps> = ({
     // DeviceName/DeviceID may include more than one element.
     const deviceName = workflow?.search_attributes?.DeviceName;
     const deviceId = workflow?.search_attributes?.DeviceID;
-    if (deviceName && deviceId && deviceName.length > 0) {
+    if (deviceName?.length) {
       const devices = deviceName.map((name, index) => {
-        const id = deviceId[index];
+        const id = deviceId?.[index];
         const value =
           id === undefined
             ? String(name)

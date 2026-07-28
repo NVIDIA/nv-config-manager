@@ -74,14 +74,18 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
 
     const handleSelect = (selectedValue: string) => {
       if (multiple) {
-        let newValue: string[];
-        if (!Array.isArray(value)) {
-          newValue = [selectedValue];
-        } else if (value.includes(selectedValue)) {
-          newValue = value.filter((item) => item !== selectedValue);
+        let selectedValues: string[];
+        if (Array.isArray(value)) {
+          selectedValues = value;
+        } else if (value) {
+          selectedValues = [value];
         } else {
-          newValue = [...value, selectedValue];
+          selectedValues = [];
         }
+
+        const newValue = selectedValues.includes(selectedValue)
+          ? selectedValues.filter((item) => item !== selectedValue)
+          : [...selectedValues, selectedValue];
         onChange?.(newValue);
       } else {
         onChange?.(selectedValue);
