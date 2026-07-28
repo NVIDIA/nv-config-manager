@@ -80,8 +80,6 @@ navigation:
     collapsible: true
     collapsed-by-default: true
     contents:
-    - page: Spectrum-X Switch Management
-      path: ../user-guides/spectrum-x-switch-management/index.mdx
     - page: New Site Bringup
       path: ../user-guides/new-site-deployment/index.mdx
     - page: Controlling Running Workflows
@@ -144,6 +142,9 @@ navigation:
         path: ../user-guides/ib-pkey-member-delete/index.mdx
       - page: IB Port GUID Discovery
         path: ../user-guides/ib-port-guid-discovery/index.mdx
+
+    - page: Spectrum-X Switch Management
+      path: ../user-guides/spectrum-x-switch-management/index.mdx
 
     - section: SpX Overlay Lifecycle
       collapsible: true
