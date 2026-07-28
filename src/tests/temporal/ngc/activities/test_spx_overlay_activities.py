@@ -418,12 +418,12 @@ async def test_reconcile_spx_overlay_assignments_retry_removes_remaining_device_
 
     with aioresponses() as m:
         for assignments in (
-            [device_assignment],
-            [interface_assignment],
-            [],
-            [device_assignment],
-            [],
-            [],
+            [device_assignment],  # Attempt 1: device assignments.
+            [interface_assignment],  # Attempt 1: selected interface assignments.
+            [],  # Attempt 1: other device interface assignments.
+            [device_assignment],  # Attempt 2: device assignments.
+            [],  # Attempt 2: selected interface after its assignment was deleted.
+            [],  # Attempt 2: other device interface assignments.
         ):
             m.get(
                 _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
@@ -470,7 +470,7 @@ async def test_reconcile_spx_overlay_assignments_retry_retains_completed_change_
 
     with aioresponses() as m:
         for assignments in (
-            [],
+            [],  # Attempt 1: device assignments.
             [
                 {
                     "id": interface_assignment_id,
@@ -479,7 +479,7 @@ async def test_reconcile_spx_overlay_assignments_retry_retains_completed_change_
                         "isolation_type": "spectrum_x_vrf",
                     },
                 }
-            ],
+            ],  # Attempt 1: selected interface assignments.
         ):
             m.get(
                 _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
@@ -494,7 +494,7 @@ async def test_reconcile_spx_overlay_assignments_retry_retains_completed_change_
             status=500,
             payload={"detail": "temporary failure"},
         )
-        for _ in range(3):
+        for _ in range(3):  # Attempt 2: device, selected, and other interface reads.
             m.get(
                 _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
                 payload={"results": []},
@@ -590,22 +590,22 @@ async def test_remove_unmapped_device_vrfs_retry_retains_prior_removed_ids():
                     "device": {"id": device_id},
                     "vrf": {"id": first_vrf_id},
                 }
-            ],
+            ],  # Attempt 1: first VRF assignment.
             [
                 {
                     "id": second_assignment_id,
                     "device": {"id": device_id},
                     "vrf": {"id": second_vrf_id},
                 }
-            ],
-            [],
+            ],  # Attempt 1: second VRF assignment.
+            [],  # Attempt 2: first VRF after its assignment was deleted.
             [
                 {
                     "id": second_assignment_id,
                     "device": {"id": device_id},
                     "vrf": {"id": second_vrf_id},
                 }
-            ],
+            ],  # Attempt 2: second VRF assignment.
         ):
             m.get(
                 _r(f"{NAUTOBOT}/api/ipam/vrf-device-assignments/"),
