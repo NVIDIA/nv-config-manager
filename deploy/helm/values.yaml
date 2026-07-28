@@ -2899,6 +2899,8 @@ nautobotNats:
 monitoring:
   # Master switch for all monitoring resources
   enabled: false
+  # Group FastAPI response status labels into classes such as 2xx and 5xx.
+  groupFastApiStatusCodes: true
   # External Grafana URL.
   # When set, the UI splash page links to this URL. 
   grafanaUrl: ""

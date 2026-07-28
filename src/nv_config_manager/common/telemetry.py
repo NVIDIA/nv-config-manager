@@ -43,6 +43,13 @@ HTTP_TRACE_EXCLUDED_PATHS = frozenset(
         "/metrics/",
     }
 )
+GROUP_FASTAPI_STATUS_CODES_ENV = "NV_CONFIG_MANAGER_GROUP_FASTAPI_STATUS_CODES"
+
+
+def group_fastapi_status_codes() -> bool:
+    """Return whether Prometheus FastAPI metrics should group status codes."""
+    configured = os.getenv(GROUP_FASTAPI_STATUS_CODES_ENV, "true")
+    return configured.strip().lower() in {"1", "true", "yes", "on"}
 
 
 class _SuppressOperationalTracingMiddleware:
