@@ -720,7 +720,8 @@ class NetworkConnection:
         vary by platform — see the diagnostics catalog for the full list.
 
         Raises:
-            NetworkDeviceException: If the command name is not supported.
+            NetworkDeviceException: If the command name is unknown or the
+                platform does not implement it.
         """
         dispatch: dict[str, Callable[[], object]] = {
             "show_version": self.diag_get_version,
@@ -756,7 +757,13 @@ class NetworkConnection:
                 f"Diagnostic command '{name}' is not supported on this platform. "
                 f"Supported: {sorted(dispatch)}"
             )
-        return json.dumps(dispatch[name](), indent=2)
+        try:
+            result = dispatch[name]()
+        except NotImplementedError as error:
+            raise NetworkDeviceException(
+                f"Diagnostic command '{name}' is not implemented for {type(self).__name__}."
+            ) from error
+        return json.dumps(result, indent=2)
 
     def get_tech_support_bundle(
         self, heartbeat_fn: Callable[[], None] | None = None
@@ -2361,8 +2368,9 @@ class JuniperConnection(NetworkConnection):
     rotation); no dedicated local REST account is required.
     """
 
-    # Junos commit-confirmed timeout is expressed in minutes, not seconds.
-    _COMMIT_CONFIRM_ROLLBACK_MINUTES = max(1, COMMIT_CONFIRM_ROLLBACK_SECONDS // 60)
+    # Junos commit-confirmed timeout is expressed in minutes, not seconds. Round
+    # up so the rollback window is never shorter than the requested seconds.
+    _COMMIT_CONFIRM_ROLLBACK_MINUTES = max(1, (COMMIT_CONFIRM_ROLLBACK_SECONDS + 59) // 60)
 
     # Ceiling for a single RPC / commit so a stuck device surfaces an error
     # instead of hanging the activity indefinitely.
@@ -2427,12 +2435,21 @@ class JuniperConnection(NetworkConnection):
 
     def close(self) -> None:
         """Close the NETCONF session if it is open."""
-        if self._device is not None:
+        device = getattr(self, "_device", None)
+        if device is not None:
             try:
-                self._device.close()
+                device.close()
             except Exception:  # noqa: BLE001 - cleanup must not raise
                 logger.debug("Error closing NETCONF session to %s", self._host, exc_info=True)
             self._device = None
+
+    def __enter__(self) -> JuniperConnection:
+        """Enter a context that closes the NETCONF session on exit."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the NETCONF session when leaving the context."""
+        self.close()
 
     def __del__(self) -> None:
         """Best-effort cleanup of the NETCONF session on garbage collection."""
@@ -2645,10 +2662,25 @@ class JuniperConnection(NetworkConnection):
         if commit_confirm:
             self._confirm_commit()
 
+    @staticmethod
+    def _reject_unsafe_config_value(field: str, value: str) -> None:
+        """Reject values that could break out of a Junos ``set`` statement.
+
+        Double quotes would terminate a quoted description early and newlines
+        would inject additional statements when commands are joined.
+        """
+        if any(char in value for char in ('"', "\n", "\r")):
+            raise NetworkDeviceException(
+                f"Invalid {field}: double quotes and newlines are not allowed.",
+                non_retryable=True,
+            )
+
     def set_interface_description(
         self, interface: str, description: str, *, commit_confirm: bool = False
     ) -> None:
         """Set the description on an interface."""
+        self._reject_unsafe_config_value("interface", interface)
+        self._reject_unsafe_config_value("description", description)
         self.configure_set(
             [f'set interfaces {interface} description "{description}"'],
             commit_confirm=commit_confirm,
@@ -2664,8 +2696,10 @@ class JuniperConnection(NetworkConnection):
         commit_confirm: bool = False,
     ) -> None:
         """Update common interface attributes (description, admin state, MTU)."""
+        self._reject_unsafe_config_value("interface", interface)
         commands: list[str] = []
         if description is not None:
+            self._reject_unsafe_config_value("description", description)
             commands.append(f'set interfaces {interface} description "{description}"')
         if enabled is not None:
             # Junos uses the `disable` knob; deleting it re-enables the interface.

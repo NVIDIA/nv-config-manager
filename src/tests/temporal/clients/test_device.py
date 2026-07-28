@@ -408,6 +408,22 @@ def test_connect_raises_clear_error_on_probe_failure(juniper_conn):
             juniper_conn._get_device()
 
 
+def test_close_is_safe_before_device_assigned(juniper_conn):
+    """close() must not raise even if _device was never set (failed init path)."""
+    del juniper_conn._device
+    juniper_conn.close()
+
+
+def test_context_manager_closes_session(juniper_conn):
+    """Using the connection as a context manager closes the session on exit."""
+    device = MagicMock()
+    juniper_conn._device = device
+    with juniper_conn as conn:
+        assert conn is juniper_conn
+    device.close.assert_called_once()
+    assert juniper_conn._device is None
+
+
 def test_rpc_requests_json_and_converts_flag_params(juniper_conn):
     """_rpc asks for JSON format and turns empty values into boolean flags."""
     device = MagicMock()
@@ -616,6 +632,28 @@ def test_update_interface_enable_deletes_disable(juniper_conn):
     with patch.object(juniper_conn, "configure_set") as mock_configure:
         juniper_conn.update_interface("xe-0/0/1", enabled=True)
     assert mock_configure.call_args.args[0] == ["delete interfaces xe-0/0/1 disable"]
+
+
+@pytest.mark.parametrize(
+    "bad_description", ['peering "circuit"', "line1\nset system host-name evil"]
+)
+def test_set_interface_description_rejects_unsafe_input(juniper_conn, bad_description):
+    """Descriptions with a quote or newline are rejected with no config emitted."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        with pytest.raises(NetworkDeviceException, match="double quotes and newlines"):
+            juniper_conn.set_interface_description("xe-0/0/0", bad_description)
+    mock_configure.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "bad_description", ['peering "circuit"', "line1\nset system host-name evil"]
+)
+def test_update_interface_rejects_unsafe_description(juniper_conn, bad_description):
+    """update_interface rejects unsafe descriptions without emitting statements."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        with pytest.raises(NetworkDeviceException, match="double quotes and newlines"):
+            juniper_conn.update_interface("xe-0/0/1", description=bad_description)
+    mock_configure.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -835,3 +873,18 @@ def test_rollback_to_rescue_noop_when_no_diff(juniper_conn):
         juniper_conn.rollback_to_rescue(commit_confirm=False)
     cu.commit.assert_not_called()
     cu.rollback.assert_called_once()
+
+
+def test_run_diagnostic_command_dispatches_supported_junos_command(juniper_conn):
+    """A supported Junos diagnostic maps to its RPC and serialises to JSON."""
+    with patch.object(juniper_conn, "_rpc", return_value={"host-name": "test-router"}) as mock_rpc:
+        raw = juniper_conn.run_diagnostic_command("show_version")
+    mock_rpc.assert_called_once_with("get-software-information")
+    assert json.loads(raw) == {"host-name": "test-router"}
+
+
+def test_run_diagnostic_command_unsupported_junos_raises_network_exception(juniper_conn):
+    """Junos diagnostics with no RPC mapping surface a NetworkDeviceException, not
+    a raw NotImplementedError from the base stub."""
+    with pytest.raises(NetworkDeviceException, match="not implemented for JuniperConnection"):
+        juniper_conn.run_diagnostic_command("show_bgp_summary")
