@@ -126,17 +126,25 @@ jobs:
               return;
             }
 
-            const alerts = await github.paginate(
-              github.rest.codeScanning.listAlertsForRepo,
-              {
-                owner,
-                repo,
-                ref: trustedRef,
-                state: "open",
-                tool_name: "CodeQL",
-                per_page: 100,
-              },
-            );
+            let alerts = [];
+            let alertsError = "";
+            try {
+              alerts = await github.paginate(
+                github.rest.codeScanning.listAlertsForRepo,
+                {
+                  owner,
+                  repo,
+                  ref: trustedRef,
+                  state: "open",
+                  tool_name: "CodeQL",
+                  per_page: 100,
+                },
+              );
+            } catch (error) {
+              alertsError =
+                error instanceof Error ? error.message : String(error);
+              core.warning(`Unable to load CodeQL alerts: ${alertsError}`);
+            }
 
             const severityOrder = new Map([
               ["critical", 0],
@@ -216,6 +224,11 @@ jobs:
               lines.push(
                 `❌ CodeQL analysis finished with status ` +
                   `\`${codeqlResult}\`.`,
+              );
+            } else if (alertsError) {
+              lines.push(
+                "⚠️ CodeQL analysis completed, but open alerts could not be " +
+                  `loaded: ${inlineCode(alertsError)}`,
               );
             } else if (alerts.length === 0) {
               lines.push("✅ No security issues found!");
