@@ -2058,7 +2058,8 @@ class CumulusConnection(NetworkConnection):
     ) -> bytes:
         """Open a fresh paramiko SSH connection and download remote_path over SFTP."""
         ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.load_system_host_keys()
+        ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
         ssh.connect(
             hostname=self._host,
             port=22,

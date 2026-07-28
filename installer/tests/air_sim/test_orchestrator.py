@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import pytest
 
-from nv_config_manager_installer.air_sim.orchestrator import SimOrchestrator
+from nv_config_manager_installer.air_sim.orchestrator import (
+    SimOrchestrator,
+    _monitor_setup_command,
+)
 from nv_config_manager_installer.air_sim.sim_config import SimConfig
 
 
@@ -75,3 +78,11 @@ def test_resolve_topology_requires_direct_path_for_custom_flows() -> None:
 
     with pytest.raises(RuntimeError, match="topology_path is required"):
         orchestrator._resolve_topology_path(cfg)
+
+
+def test_monitor_setup_command_uses_password_placeholder() -> None:
+    command = _monitor_setup_command("worker.example", 17117)
+
+    assert command.startswith("sshpass -p '<password>'")
+    assert "worker.example" in command
+    assert "17117" in command

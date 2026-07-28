@@ -14,8 +14,9 @@
 # limitations under the License.
 import json
 from configparser import ConfigParser
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import paramiko
 import pytest
 
 from nv_config_manager.temporal.client.device import (
@@ -246,6 +247,26 @@ def test_mock_get_tech_support_bundle_returns_bytes():
     assert isinstance(content, bytes)
     assert content == b"[mock tech-support bundle]"
     assert isinstance(log, str)
+
+
+@patch("nv_config_manager.temporal.client.device.paramiko.SSHClient")
+def test_sftp_download_rejects_unknown_host_keys(mock_ssh_client):
+    """SFTP loads trusted host keys and rejects hosts that are not present."""
+    ssh = MagicMock()
+    sftp = ssh.open_sftp.return_value
+    sftp.get_channel.return_value = None
+    sftp.getfo.side_effect = lambda _path, buffer, callback: buffer.write(b"bundle")
+    mock_ssh_client.return_value = ssh
+    conn = CumulusConnection.__new__(CumulusConnection)
+    conn._host = _TEST_HOST
+    conn._username = "admin"
+
+    assert conn._sftp_download("password", "/tmp/support.tar", None) == b"bundle"
+
+    ssh.load_system_host_keys.assert_called_once_with()
+    policy = ssh.set_missing_host_key_policy.call_args.args[0]
+    assert isinstance(policy, paramiko.RejectPolicy)
+    ssh.close.assert_called_once_with()
 
 
 # =============================================================================
