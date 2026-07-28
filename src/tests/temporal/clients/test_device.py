@@ -16,6 +16,7 @@ import json
 from configparser import ConfigParser
 from unittest.mock import patch
 
+import paramiko
 import pytest
 
 from nv_config_manager.temporal.client.device import (
@@ -246,6 +247,21 @@ def test_mock_get_tech_support_bundle_returns_bytes():
     assert isinstance(content, bytes)
     assert content == b"[mock tech-support bundle]"
     assert isinstance(log, str)
+
+
+@patch("nv_config_manager.temporal.client.device.paramiko.SSHClient")
+def test_sftp_download_closes_client_when_connect_fails(mock_ssh_client):
+    """SFTP closes the SSH client when connection setup fails."""
+    ssh = mock_ssh_client.return_value
+    ssh.connect.side_effect = paramiko.SSHException("connection failed")
+    conn = CumulusConnection.__new__(CumulusConnection)
+    conn._host = _TEST_HOST
+    conn._username = "admin"
+
+    with pytest.raises(paramiko.SSHException, match="connection failed"):
+        conn._sftp_download("password", "/tmp/support.tar", None)
+
+    ssh.close.assert_called_once_with()
 
 
 # =============================================================================

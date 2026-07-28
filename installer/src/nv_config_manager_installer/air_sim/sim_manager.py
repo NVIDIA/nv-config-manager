@@ -1619,7 +1619,7 @@ class AirSimulationManager:
         ssh_password = self._require_ssh_password()
         socks_port = self._SOCKS_PORT
         ssh_cmd = (
-            f"sshpass -p {shlex.quote(ssh_password)}"
+            "sshpass -p '<password>'"
             f" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
             f" -D {socks_port} -N -p {port}"
             f" {NVCM_BOX_USER}@{host}"
@@ -2339,7 +2339,7 @@ class AirSimulationManager:
         LOG.info("\n2. Run the setup script:")
         LOG.info(f"   {NVCM_SERVER_SETUP_SCRIPT}")
         LOG.info("\n3. Run the deployment script:")
-        LOG.info(f"   {deploy_script}")
+        LOG.info("   Deployment script content omitted from logs because it contains credentials.")
         LOG.info("=" * 70 + "\n")
 
         return {
@@ -2353,6 +2353,7 @@ class AirSimulationManager:
             "switch_password": NVCM_SECRETS["nvcm_password"],
             "nautobot_user": NVCM_SECRETS["nautobot_superuser"],
             "nautobot_password": NVCM_SECRETS["nautobot_password"],
+            "deploy_script": deploy_script,
         }
 
     def _generate_nvcm_deploy_script(

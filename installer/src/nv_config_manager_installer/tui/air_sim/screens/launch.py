@@ -24,7 +24,6 @@ import tempfile
 import threading
 import time
 from collections import deque
-from datetime import datetime
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import IO
@@ -119,6 +118,13 @@ _BUFFER_LIMITS = {
 }
 _FOLLOW_LABEL_ON = "Follow: On"
 _FOLLOW_LABEL_OFF = "Follow: Off"
+
+
+def _create_deploy_log_path() -> Path:
+    """Create an owner-only deployment log and return its path."""
+    descriptor, path = tempfile.mkstemp(prefix="nvcm-deploy-", suffix=".log")
+    os.close(descriptor)
+    return Path(path)
 
 
 def _copy_button(
@@ -1259,8 +1265,7 @@ class LaunchScreen(Container):
             )
             return
 
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        self._deploy_log_path = Path(tempfile.gettempdir()) / f"nvcm-deploy-{stamp}.log"
+        self._deploy_log_path = _create_deploy_log_path()
         self._bringup_running = True
         self._monitor_stop.clear()
         self.query_one("#btn-launch", Button).disabled = True
