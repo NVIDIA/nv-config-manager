@@ -98,8 +98,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: write
-      pull-requests: read
+      pull-requests: write
       security-events: read
     steps:
       - name: Get PR info
