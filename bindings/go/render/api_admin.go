@@ -249,7 +249,7 @@ func (r ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest) Execute() ([]
 /*
 ResetAllConsumersV1AdminConsumersResetAllDelete Reset All Consumers
 
-Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services.
+Fast-forward every consumer past its backlog, acking pending messages unprocessed.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest
@@ -350,7 +350,10 @@ func (r ApiResetConsumerV1AdminConsumersConsumerTypeResetDeleteRequest) Execute(
 /*
 ResetConsumerV1AdminConsumersConsumerTypeResetDelete Reset Consumer
 
-Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service.
+Fast-forward a consumer past its backlog by acking pending messages unprocessed.
+
+The consumer is kept in place rather than deleted, so this works identically on
+locally owned streams and on streams imported from another NATS account.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@param consumerType

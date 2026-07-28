@@ -153,6 +153,16 @@
             "title": "Message",
             "type": "string"
           },
+          "remaining_pending": {
+            "default": 0,
+            "title": "Remaining Pending",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -399,7 +409,7 @@
     },
     "/v1/admin/consumers/reset-all": {
       "delete": {
-        "description": "Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services.",
+        "description": "Fast-forward every consumer past its backlog, acking pending messages unprocessed.",
         "operationId": "reset_all_consumers_v1_admin_consumers_reset_all_delete",
         "responses": {
           "200": {
@@ -489,7 +499,7 @@
     },
     "/v1/admin/consumers/{consumer_type}/reset": {
       "delete": {
-        "description": "Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service.",
+        "description": "Fast-forward a consumer past its backlog by acking pending messages unprocessed.\n\nThe consumer is kept in place rather than deleted, so this works identically on\nlocally owned streams and on streams imported from another NATS account.",
         "operationId": "reset_consumer_v1_admin_consumers__consumer_type__reset_delete",
         "parameters": [
           {
