@@ -72,17 +72,17 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
     const [searchTerm, setSearchTerm] = React.useState<string>("");
     const [isOpen, setIsOpen] = React.useState(false);
 
+    let selectedValues: string[];
+    if (Array.isArray(value)) {
+      selectedValues = value;
+    } else if (value) {
+      selectedValues = [value];
+    } else {
+      selectedValues = [];
+    }
+
     const handleSelect = (selectedValue: string) => {
       if (multiple) {
-        let selectedValues: string[];
-        if (Array.isArray(value)) {
-          selectedValues = value;
-        } else if (value) {
-          selectedValues = [value];
-        } else {
-          selectedValues = [];
-        }
-
         const newValue = selectedValues.includes(selectedValue)
           ? selectedValues.filter((item) => item !== selectedValue)
           : [...selectedValues, selectedValue];
@@ -98,11 +98,7 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
     };
 
     const selectedLabels = options
-      .filter((option) =>
-        Array.isArray(value)
-          ? value.includes(option.value)
-          : option.value === value,
-      )
+      .filter((option) => selectedValues.includes(option.value))
       .map((option) => option.key);
     const triggerLabel = selectedLabels.length
       ? `${selectedLabels.join(", ")}. Open options`
@@ -112,9 +108,7 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
     let selectedContent: React.ReactNode;
     if (hasSelection && multiple) {
       selectedContent = options
-        .filter(
-          (option) => Array.isArray(value) && value.includes(option.value),
-        )
+        .filter((option) => selectedValues.includes(option.value))
         .map((option) => (
           <span
             key={option.value}
@@ -227,8 +221,7 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
                 <ScrollArea>
                   <div className="max-h-64">
                     {options?.map((option) => {
-                      const isSelected =
-                        Array.isArray(value) && value.includes(option.value);
+                      const isSelected = selectedValues.includes(option.value);
                       return (
                         <CommandItem
                           key={option.value}
