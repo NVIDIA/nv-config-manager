@@ -89,3 +89,198 @@ jobs:
           (cd components/temporal && go build -mod=readonly -o "${RUNNER_TEMP}/temporal-bootstrap" ./...)
       - name: Analyze
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+
+  codeql-pr-comment:
+    name: CodeQL PR Report
+    needs: codeql
+    if: always() && startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      security-events: read
+    steps:
+      - name: Get PR info
+        id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@090577647b8ddc4e06e809e264f7881650ecdccf
+      - name: Update CodeQL report comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).number }}
+          TRUSTED_REF: ${{ github.ref }}
+        with:
+          script: |
+            const marker = "<!-- nv-config-manager-codeql-report -->";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = Number(process.env.PR_NUMBER);
+            const trustedRef = process.env.TRUSTED_REF;
+            const headSha = process.env.HEAD_SHA;
+            const codeqlResult = process.env.CODEQL_RESULT;
+
+            if (!Number.isInteger(pullNumber) || pullNumber < 1) {
+              core.setFailed(`Invalid pull request number: ${process.env.PR_NUMBER}`);
+              return;
+            }
+
+            const alerts = await github.paginate(
+              github.rest.codeScanning.listAlertsForRepo,
+              {
+                owner,
+                repo,
+                ref: trustedRef,
+                state: "open",
+                tool_name: "CodeQL",
+                per_page: 100,
+              },
+            );
+
+            const severityOrder = new Map([
+              ["critical", 0],
+              ["high", 1],
+              ["medium", 2],
+              ["low", 3],
+              ["error", 4],
+              ["warning", 5],
+              ["recommendation", 6],
+              ["note", 7],
+              ["unknown", 8],
+            ]);
+            const severity = (alert) =>
+              alert.rule.security_severity_level ??
+              alert.rule.severity ??
+              "unknown";
+            alerts.sort((left, right) => {
+              const severityDifference =
+                (severityOrder.get(severity(left)) ?? 9) -
+                (severityOrder.get(severity(right)) ?? 9);
+              return (
+                severityDifference ||
+                String(left.rule.id).localeCompare(String(right.rule.id))
+              );
+            });
+
+            const counts = new Map();
+            for (const alert of alerts) {
+              const level = severity(alert);
+              counts.set(level, (counts.get(level) ?? 0) + 1);
+            }
+
+            const escapeTable = (value) =>
+              String(value ?? "")
+                .replaceAll("|", "\\|")
+                .replace(/\r?\n/g, " ");
+            const inlineCode = (value) =>
+              `\`${String(value ?? "").replaceAll("`", "\\`")}\``;
+            const countSummary = [...counts.entries()]
+              .sort(
+                ([left], [right]) =>
+                  (severityOrder.get(left) ?? 9) -
+                  (severityOrder.get(right) ?? 9),
+              )
+              .map(([level, count]) => `${count} ${level}`)
+              .join(", ");
+
+            const resultIcon =
+              codeqlResult === "success"
+                ? "✅"
+                : codeqlResult === "cancelled"
+                  ? "⚪"
+                  : "❌";
+            const dashboardQuery = encodeURIComponent(
+              `is:open tool:CodeQL ref:${trustedRef}`,
+            );
+            const dashboardUrl =
+              `https://github.com/${owner}/${repo}/security/code-scanning` +
+              `?query=${dashboardQuery}`;
+            const commitUrl =
+              `https://github.com/${owner}/${repo}/commit/${headSha}`;
+
+            const lines = [
+              marker,
+              "",
+              "## CodeQL report",
+              "",
+              `**Analysis status:** ${resultIcon} \`${codeqlResult}\``,
+              `**Trusted commit:** [\`${headSha.slice(0, 12)}\`](${commitUrl})`,
+              "",
+            ];
+
+            if (alerts.length === 0) {
+              lines.push(
+                `No open CodeQL alerts were reported for the ` +
+                  `[trusted PR branch](${dashboardUrl}).`,
+              );
+            } else {
+              lines.push(
+                `Found **${alerts.length} open CodeQL ` +
+                  `alert${alerts.length === 1 ? "" : "s"}** ` +
+                  `(${countSummary}). [View all alerts](${dashboardUrl}).`,
+                "",
+                "> This is the CodeQL state for copy-pr-bot's trusted branch. " +
+                  "It can include pre-existing findings and does not assert " +
+                  "that this PR introduced every alert.",
+                "",
+                "| Severity | Rule | Location |",
+                "| --- | --- | --- |",
+              );
+
+              for (const alert of alerts.slice(0, 50)) {
+                const location = alert.most_recent_instance?.location;
+                const path = location?.path ?? "(location unavailable)";
+                const line = location?.start_line
+                  ? `:${location.start_line}`
+                  : "";
+                const description =
+                  alert.rule.description ?? alert.rule.name ?? alert.rule.id;
+                lines.push(
+                  `| ${escapeTable(severity(alert))} | ` +
+                    `[${escapeTable(alert.rule.id)}](${alert.html_url}) — ` +
+                    `${escapeTable(description)} | ` +
+                    `${inlineCode(`${path}${line}`)} |`,
+                );
+              }
+
+              if (alerts.length > 50) {
+                lines.push(
+                  "",
+                  `_Showing the first 50 of ${alerts.length} open alerts._`,
+                );
+              }
+            }
+
+            const body = lines.join("\n");
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner,
+                repo,
+                issue_number: pullNumber,
+                per_page: 100,
+              },
+            );
+            const existing = comments.find(
+              (comment) =>
+                comment.user?.login === "github-actions[bot]" &&
+                comment.body?.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                body,
+              });
+            }
