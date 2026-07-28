@@ -16,9 +16,12 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
-from nats.js.errors import NotFoundError, ServiceUnavailableError
+from nats.errors import TimeoutError as NatsTimeoutError
+from nats.js.errors import NotFoundError
 
+from nv_config_manager.render.api.admin_v1 import FAST_FORWARD_BATCH, fast_forward_consumer
 from nv_config_manager.render.api.main import app
 
 
@@ -62,6 +65,36 @@ def create_test_mocks():
         return mock_conn
 
     return mock_config_obj, mock_get_connection, mock_conn, mock_js
+
+
+def setup_fast_forward(mock_conn, mock_js, backlog):
+    """Wire the drain path so a bound subscription yields `backlog` messages then empties.
+
+    ``consumer_info`` reports the shrinking backlog, so the endpoint sees the same
+    before/after counts a real consumer would report.
+    """
+    mock_conn.flush = AsyncMock()
+    pending = {"count": backlog}
+
+    async def mock_consumer_info(stream, consumer):
+        return MockConsumerInfo(num_pending=pending["count"])
+
+    mock_js.consumer_info.side_effect = mock_consumer_info
+
+    requested_batches: list[int] = []
+
+    async def mock_fetch(batch, timeout):
+        if pending["count"] <= 0:
+            raise NatsTimeoutError
+        requested_batches.append(batch)
+        count = min(batch, pending["count"])
+        pending["count"] -= count
+        return [MagicMock(ack=AsyncMock()) for _ in range(count)]
+
+    subscription = MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
+    subscription.requested_batches = requested_batches
+    mock_js.pull_subscribe_bind = AsyncMock(return_value=subscription)
+    return subscription
 
 
 class TestConsumerList:
@@ -235,22 +268,12 @@ class TestResetConsumer:
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
     def test_reset_consumer_success(self, mock_get_conn, mock_load_config):
-        """Test successful consumer reset."""
+        """Reset walks the consumer past its backlog and reports how much it skipped."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        # Mock consumer info (before deletion)
-        async def mock_consumer_info(stream, consumer):
-            return MockConsumerInfo(num_pending=50, num_ack_pending=1, consumer_seq=200)
-
-        mock_js.consumer_info.side_effect = mock_consumer_info
-
-        # Mock successful deletion
-        async def mock_delete_consumer(stream, consumer):
-            return None
-
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
+        setup_fast_forward(mock_conn, mock_js, backlog=50)
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/nautobot/reset")
@@ -261,55 +284,80 @@ class TestResetConsumer:
         assert data["consumer_name"] == "test-queue-nautobot"
         assert data["stream"] == "nautobot"
         assert data["status"] == "success"
-        assert "Had 50 pending messages" in data["message"]
-        assert "automatically recreated within seconds" in data["message"]
+        assert data["skipped"] == 50
+        assert data["remaining_pending"] == 0
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
-    def test_reset_consumer_already_deleted(self, mock_get_conn, mock_load_config):
-        """Test resetting a consumer that's already deleted."""
+    def test_reset_consumer_never_deletes(self, mock_get_conn, mock_load_config):
+        """The imported stream exports no consumer delete, so reset must not attempt one."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        # Mock consumer info fails (consumer doesn't exist)
+        setup_fast_forward(mock_conn, mock_js, backlog=5)
+
+        client = TestClient(app)
+        response = client.delete("/v1/admin/consumers/nautobot/reset")
+
+        assert response.status_code == 200
+        mock_js.delete_consumer.assert_not_called()
+        # Binding names the stream so the client never resolves it via STREAM.NAMES.
+        mock_js.pull_subscribe_bind.assert_called_once_with(
+            durable="test-queue-nautobot", stream="nautobot"
+        )
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_consumer_partial_when_budget_exhausted(self, mock_get_conn, mock_load_config):
+        """A backlog larger than one pass reports partial progress instead of hanging."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        mock_conn.flush = AsyncMock()
+
+        async def mock_consumer_info(stream, consumer):
+            return MockConsumerInfo(num_pending=1000)
+
+        mock_js.consumer_info.side_effect = mock_consumer_info
+
+        # The stream keeps handing back messages, so only the budget stops the loop.
+        async def mock_fetch(batch, timeout):
+            return [MagicMock(ack=AsyncMock()) for _ in range(batch)]
+
+        mock_js.pull_subscribe_bind = AsyncMock(
+            return_value=MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
+        )
+
+        client = TestClient(app)
+        with patch("nv_config_manager.render.api.admin_v1.FAST_FORWARD_BUDGET_SECONDS", 0.0):
+            response = client.delete("/v1/admin/consumers/device/reset")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "partial"
+        assert data["remaining_pending"] == 1000
+        assert "Call reset again" in data["message"]
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_consumer_not_found(self, mock_get_conn, mock_load_config):
+        """A consumer that does not exist has no cursor to advance."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
         async def mock_consumer_info(stream, consumer):
             raise NotFoundError
 
         mock_js.consumer_info.side_effect = mock_consumer_info
 
-        # Mock deletion also reports the consumer as absent
-        async def mock_delete_consumer(stream, consumer):
-            raise NotFoundError
-
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
-
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/device/reset")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
-        assert "was already deleted" in data["message"]
-
-    @patch("nv_config_manager.render.api.admin_v1.load_config")
-    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
-    def test_reset_consumer_externally_managed(self, mock_get_conn, mock_load_config):
-        """A stream imported from another account does not export consumer deletion."""
-        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
-        mock_load_config.return_value = mock_config_obj
-        mock_get_conn.side_effect = mock_get_connection
-
-        async def mock_delete_consumer(stream, consumer):
-            raise ServiceUnavailableError
-
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
-
-        client = TestClient(app)
-        response = client.delete("/v1/admin/consumers/device/reset")
-
-        assert response.status_code == 409
-        assert "owning account manages" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]
 
     def test_reset_consumer_invalid_type(self):
         """Test resetting with invalid consumer type."""
@@ -322,23 +370,25 @@ class TestResetConsumer:
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
-    def test_reset_consumer_deletion_error(self, mock_get_conn, mock_load_config):
-        """Test consumer reset with deletion error."""
+    def test_reset_consumer_fetch_error(self, mock_get_conn, mock_load_config):
+        """An unexpected failure while draining surfaces as a server error."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        # Mock consumer info succeeds
+        mock_conn.flush = AsyncMock()
+
         async def mock_consumer_info(stream, consumer):
             return MockConsumerInfo(num_pending=10)
 
         mock_js.consumer_info.side_effect = mock_consumer_info
 
-        # Mock deletion fails with unexpected error
-        async def mock_delete_consumer(stream, consumer):
+        async def mock_fetch(batch, timeout):
             raise Exception("Unexpected error")
 
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
+        mock_js.pull_subscribe_bind = AsyncMock(
+            return_value=MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
+        )
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/template/reset")
@@ -347,36 +397,58 @@ class TestResetConsumer:
         assert "Failed to reset consumer" in response.json()["detail"]
 
 
+class TestFastForward:
+    """Tests for the drain helper that backs reset."""
+
+    async def _drain(self, backlog):
+        mock_conn = MagicMock(flush=AsyncMock())
+        mock_js = MagicMock()
+        setup_fast_forward(mock_conn, mock_js, backlog=backlog)
+        config = {"durable_name": "test-queue-nautobot", "stream": "nautobot"}
+        return mock_conn, mock_js, await fast_forward_consumer(mock_conn, mock_js, config)
+
+    @pytest.mark.asyncio
+    async def test_batches_stay_under_max_ack_pending(self):
+        """Batches must stay small enough that unacked messages never cap the consumer."""
+        _, mock_js, (skipped, remaining) = await self._drain(600)
+
+        assert (skipped, remaining) == (600, 0)
+        # The final batch asks only for what is left rather than overshooting the backlog.
+        assert mock_js.pull_subscribe_bind.return_value.requested_batches == [
+            FAST_FORWARD_BATCH,
+            FAST_FORWARD_BATCH,
+            600 - 2 * FAST_FORWARD_BATCH,
+        ]
+
+    @pytest.mark.asyncio
+    async def test_acks_are_flushed_between_batches(self):
+        """Acks are fire-and-forget, so each batch flushes before asking for the next."""
+        mock_conn, _, (skipped, _) = await self._drain(600)
+
+        assert skipped == 600
+        assert mock_conn.flush.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_backlog_fetches_nothing(self):
+        """A consumer already at the end of the stream needs no fetches at all."""
+        _, mock_js, (skipped, remaining) = await self._drain(0)
+
+        assert (skipped, remaining) == (0, 0)
+        mock_js.pull_subscribe_bind.return_value.unsubscribe.assert_awaited_once()
+
+
 class TestResetAllConsumers:
     """Tests for resetting all consumers."""
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
     def test_reset_all_consumers_success(self, mock_get_conn, mock_load_config):
-        """Test successful reset of all consumers."""
+        """Every consumer is fast-forwarded, each through its own stream's API prefix."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        # Mock consumer info for all configured consumers
-        call_count = [0]  # Use list to modify in nested function
-
-        async def mock_consumer_info(stream, consumer):
-            responses = [
-                MockConsumerInfo(num_pending=10, num_ack_pending=0, consumer_seq=100),
-                MockConsumerInfo(num_pending=20, num_ack_pending=1, consumer_seq=200),
-            ]
-            result = responses[call_count[0]]
-            call_count[0] += 1
-            return result
-
-        mock_js.consumer_info.side_effect = mock_consumer_info
-
-        # Mock successful deletions
-        async def mock_delete_consumer(stream, consumer):
-            return None
-
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
+        setup_fast_forward(mock_conn, mock_js, backlog=10)
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/reset-all")
@@ -385,10 +457,13 @@ class TestResetAllConsumers:
         data = response.json()
         assert len(data) == 2
 
-        # Check all consumers were reset successfully
         for result in data:
             assert result["status"] == "success"
-            assert "deleted successfully" in result["message"]
+            assert "fast-forwarded past" in result["message"]
+
+        mock_js.delete_consumer.assert_not_called()
+        mock_conn.jetstream.assert_any_call(prefix="$JS.CUSTOM.API")
+        mock_conn.jetstream.assert_any_call(prefix="$JS.API")
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
@@ -477,15 +552,13 @@ class TestIntegration:
         assert response.status_code == 200
         assert response.json()["num_pending"] == 100
 
-        # Reset the consumer
-        async def mock_delete_consumer(stream, consumer):
-            return None
-
-        mock_js.delete_consumer.side_effect = mock_delete_consumer
+        # Reset walks the consumer past those 100 messages without deleting it.
+        setup_fast_forward(mock_conn, mock_js, backlog=100)
 
         response = client.delete("/v1/admin/consumers/device/reset")
         assert response.status_code == 200
         assert response.json()["status"] == "success"
+        assert response.json()["skipped"] == 100
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")

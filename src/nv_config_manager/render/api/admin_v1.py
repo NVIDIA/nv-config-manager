@@ -14,13 +14,15 @@
 # limitations under the License.
 """V1 Admin API Endpoints for NATS Consumer Management."""
 
+import time
 from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from nats.aio.client import Client
+from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js import JetStreamContext
-from nats.js.errors import NotFoundError, ServiceUnavailableError
+from nats.js.errors import NotFoundError
 from pydantic import BaseModel
 
 from nv_config_manager.common.config import (
@@ -52,6 +54,13 @@ responses: dict[int | str, dict[str, Any]] = {
 router = APIRouter(prefix="/admin", responses=responses)
 logger = get_logger(__name__, category=LogCategory.RENDER_API)
 
+# Fast-forward tuning. The batch stays under the consumers' max_ack_pending so a drain
+# never stalls waiting for the server to register acks, and the budget bounds the request
+# so a large backlog returns partial progress rather than hanging.
+FAST_FORWARD_BATCH = 256
+FAST_FORWARD_FETCH_TIMEOUT_SECONDS = 2.0
+FAST_FORWARD_BUDGET_SECONDS = 30.0
+
 
 class ConsumerInfo(BaseModel):
     """Consumer information model."""
@@ -71,6 +80,8 @@ class ConsumerResetResponse(BaseModel):
     stream: str
     status: str
     message: str
+    skipped: int = 0
+    remaining_pending: int = 0
 
 
 class ConsumerListResponse(BaseModel):
@@ -108,6 +119,54 @@ def get_consumer_configs() -> dict[str, dict[str, str]]:
 def jetstream_for_consumer(nats_conn: Client, consumer_config: dict[str, str]) -> JetStreamContext:
     """Return a JetStream context for this consumer's configured stream account."""
     return nats_conn.jetstream(prefix=consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX))
+
+
+async def fast_forward_consumer(
+    nats_conn: Client, jetstream: JetStreamContext, consumer_config: dict[str, str]
+) -> tuple[int, int]:
+    """Advance a consumer past its backlog by acking pending messages without processing them.
+
+    This binds to the existing durable rather than deleting it. A stream imported from
+    another NATS account exports CONSUMER.MSG.NEXT and $JS.ACK but not the consumer
+    create/delete API, so fetching and acking is the only way to move a cursor there.
+
+    Returns the number of messages skipped and the backlog still outstanding.
+    """
+    durable = consumer_config["durable_name"]
+    stream = consumer_config["stream"]
+
+    backlog = (await jetstream.consumer_info(stream=stream, consumer=durable)).num_pending
+
+    # Naming the stream is required: resolving it from the subject would call the
+    # unexported STREAM.NAMES endpoint. Binding itself issues no JetStream API call.
+    subscription = await jetstream.pull_subscribe_bind(durable=durable, stream=stream)
+
+    skipped = 0
+    deadline = time.monotonic() + FAST_FORWARD_BUDGET_SECONDS
+
+    try:
+        # Stop at the backlog measured on entry so a busy stream cannot loop forever.
+        while skipped < backlog and time.monotonic() < deadline:
+            try:
+                messages = await subscription.fetch(
+                    batch=min(FAST_FORWARD_BATCH, backlog - skipped),
+                    timeout=FAST_FORWARD_FETCH_TIMEOUT_SECONDS,
+                )
+            except NatsTimeoutError:
+                break
+
+            for message in messages:
+                await message.ack()
+            skipped += len(messages)
+
+            # Acks are fire-and-forget publishes, so flush before the next fetch to let
+            # the server clear them from the outstanding count.
+            await nats_conn.flush()
+    finally:
+        await subscription.unsubscribe()
+
+    remaining = (await jetstream.consumer_info(stream=stream, consumer=durable)).num_pending
+    return skipped, remaining
 
 
 @router.get("/consumers", response_model=ConsumerListResponse)
@@ -158,9 +217,28 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
         raise HTTPException(status_code=500, detail="Failed to list consumers") from exc
 
 
+def _reset_result(consumer_config: dict[str, str], skipped: int, remaining: int) -> tuple[str, str]:
+    """Describe the outcome of a fast-forward for the given consumer."""
+    durable = consumer_config["durable_name"]
+    if remaining:
+        return (
+            "partial",
+            f"Consumer '{durable}' skipped {skipped} message(s); {remaining} still pending."
+            f" Call reset again to continue.",
+        )
+    return (
+        "success",
+        f"Consumer '{durable}' fast-forwarded past {skipped} message(s); no backlog remains.",
+    )
+
+
 @router.delete("/consumers/{consumer_type}/reset", response_model=ConsumerResetResponse)
 async def reset_consumer(consumer_type: ConsumerType, request: Request) -> ConsumerResetResponse:
-    """Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service."""
+    """Fast-forward a consumer past its backlog by acking pending messages unprocessed.
+
+    The consumer is kept in place rather than deleted, so this works identically on
+    locally owned streams and on streams imported from another NATS account.
+    """
 
     try:
         consumer_configs = get_consumer_configs()
@@ -169,42 +247,21 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
         nats_conn = await nats_connection()
         jetstream = jetstream_for_consumer(nats_conn, config)
 
-        # Try to get consumer info first to check if it exists
         try:
-            consumer_info = await jetstream.consumer_info(
-                stream=config["stream"], consumer=config["durable_name"]
-            )
-            pending_msgs = consumer_info.num_pending
-            logger.info(f"Consumer {config['durable_name']} has {pending_msgs} pending messages")
-        except Exception:
-            pending_msgs = 0
-            logger.info(f"Consumer {config['durable_name']} not found or already deleted")
-
-        # Delete the consumer
-        try:
-            await jetstream.delete_consumer(
-                stream=config["stream"], consumer=config["durable_name"]
-            )
-
-            status = "success"
-            message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages. Consumer will be automatically recreated within seconds."
-            logger.info(f"Successfully deleted consumer {config['durable_name']}")
-
-        except NotFoundError:
-            status = "success"
-            message = f"Consumer '{config['durable_name']}' was already deleted or did not exist."
-            logger.info(f"Consumer {config['durable_name']} was already deleted")
-
-        except ServiceUnavailableError as delete_error:
+            skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
+        except NotFoundError as exc:
             raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Consumer '{config['durable_name']}' on stream '{config['stream']}' cannot be"
-                    f" reset through API prefix '{config['api_prefix']}'. The stream is imported"
-                    f" from another NATS account which does not export consumer deletion, so the"
-                    f" owning account manages this consumer's lifecycle."
-                ),
-            ) from delete_error
+                status_code=404,
+                detail=f"Consumer '{config['durable_name']}' not found",
+            ) from exc
+
+        status, message = _reset_result(config, skipped, remaining)
+        logger.info(
+            "Fast-forwarded consumer %s: skipped %d, %d still pending",
+            config["durable_name"],
+            skipped,
+            remaining,
+        )
 
         await nats_conn.close()
 
@@ -213,6 +270,8 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
             stream=config["stream"],
             status=status,
             message=message,
+            skipped=skipped,
+            remaining_pending=remaining,
         )
 
     except HTTPException:
@@ -224,7 +283,7 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
 
 @router.delete("/consumers/reset-all", response_model=list[ConsumerResetResponse])
 async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
-    """Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services."""
+    """Fast-forward every consumer past its backlog, acking pending messages unprocessed."""
     try:
         results = []
         consumer_configs = get_consumer_configs()
@@ -233,75 +292,38 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
 
         for consumer_type, config in consumer_configs.items():
             jetstream = jetstream_for_consumer(nats_conn, config)
+            skipped = 0
+            remaining = 0
             try:
-                # Try to get consumer info first
-                try:
-                    consumer_info = await jetstream.consumer_info(
-                        stream=config["stream"], consumer=config["durable_name"]
-                    )
-                    pending_msgs = consumer_info.num_pending
-                    logger.info(
-                        f"Consumer {config['durable_name']} has {pending_msgs} pending messages"
-                    )
-                except Exception:
-                    pending_msgs = 0
-                    logger.info(f"Consumer {config['durable_name']} not found")
-
-                # Delete the consumer
-                try:
-                    await jetstream.delete_consumer(
-                        stream=config["stream"], consumer=config["durable_name"]
-                    )
-
-                    status = "success"
-                    message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages."
-                    logger.info(f"Successfully deleted consumer {config['durable_name']}")
-
-                except NotFoundError:
-                    status = "success"
-                    message = (
-                        f"Consumer '{config['durable_name']}' was already deleted or did not exist."
-                    )
-                    logger.info(f"Consumer {config['durable_name']} was already deleted")
-
-                except ServiceUnavailableError:
-                    status = "skipped"
-                    message = (
-                        f"Consumer '{config['durable_name']}' is managed by the account owning"
-                        f" stream '{config['stream']}' and cannot be reset from here."
-                    )
-                    logger.warning(
-                        f"Skipped reset for externally managed consumer {config['durable_name']}"
-                    )
-
-                except Exception as delete_error:
-                    status = "error"
-                    message = (
-                        f"Failed to delete consumer '{config['durable_name']}': {str(delete_error)}"
-                    )
-                    logger.error(
-                        f"Failed to delete consumer {config['durable_name']}: {delete_error}"
-                    )
-
-                results.append(
-                    ConsumerResetResponse(
-                        consumer_name=config["durable_name"],
-                        stream=config["stream"],
-                        status=status,
-                        message=message,
-                    )
+                skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
+                status, message = _reset_result(config, skipped, remaining)
+                logger.info(
+                    "Fast-forwarded consumer %s: skipped %d, %d still pending",
+                    config["durable_name"],
+                    skipped,
+                    remaining,
                 )
+
+            except NotFoundError:
+                status = "success"
+                message = f"Consumer '{config['durable_name']}' does not exist."
+                logger.info(f"Consumer {config['durable_name']} not found")
 
             except Exception as e:
+                status = "error"
+                message = f"Failed to fast-forward consumer '{config['durable_name']}': {str(e)}"
                 logger.error(f"Error processing consumer {consumer_type}: {e}")
-                results.append(
-                    ConsumerResetResponse(
-                        consumer_name=config["durable_name"],
-                        stream=config["stream"],
-                        status="error",
-                        message=f"Error processing consumer: {str(e)}",
-                    )
+
+            results.append(
+                ConsumerResetResponse(
+                    consumer_name=config["durable_name"],
+                    stream=config["stream"],
+                    status=status,
+                    message=message,
+                    skipped=skipped,
+                    remaining_pending=remaining,
                 )
+            )
 
         await nats_conn.close()
         return results
