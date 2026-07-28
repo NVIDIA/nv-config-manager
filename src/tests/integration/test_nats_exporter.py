@@ -239,10 +239,14 @@ def test_nats_deployment_has_exporter_sidecar(nats_deployment: dict) -> None:
             f"'{EXPORTER_CONTAINER}' image {image!r} is not a '{EXPORTER_IMAGE_REPO}' image"
         )
 
-    port_names = [p.get("name") for p in container.get("ports", [])]
-    if EXPORTER_PORT not in port_names:
+    exporter_port = next(
+        (p for p in container.get("ports", []) if p.get("name") == EXPORTER_PORT),
+        None,
+    )
+    if exporter_port is None or exporter_port.get("containerPort") != EXPORTER_PORT_NUMBER:
         problems.append(
-            f"'{EXPORTER_CONTAINER}' does not expose port '{EXPORTER_PORT}' (ports={port_names})"
+            f"'{EXPORTER_CONTAINER}' must expose '{EXPORTER_PORT}' on "
+            f"{EXPORTER_PORT_NUMBER} (ports={container.get('ports', [])})"
         )
 
     args = container.get("args", [])
