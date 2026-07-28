@@ -818,6 +818,16 @@ class ReconcileSpXOverlayAssignmentsOutput(BaseModel):
 
     created: int
     removed: int
+    reconciliation_changed: bool = False
+
+
+def _activity_was_retried() -> bool:
+    """Return whether the current activity has already made an attempt."""
+    try:
+        return activity.info().attempt > 1
+    except RuntimeError:
+        # Unit tests call activity implementations directly, outside a worker.
+        return False
 
 
 def _related_object_id(value: Any) -> str | None:
@@ -1031,7 +1041,15 @@ async def reconcile_spx_overlay_assignments(
                 continue
             removed += await _delete_overlay_assignments(client, [str(assignment["id"])])
 
-    return ReconcileSpXOverlayAssignmentsOutput(created=created, removed=removed)
+    # A prior attempt can complete the only mutation and then fail during a
+    # later read. The retry sees the desired state and reports zero counts, but
+    # downstream render/deploy decisions must still conservatively treat the
+    # reconciliation as changed.
+    return ReconcileSpXOverlayAssignmentsOutput(
+        created=created,
+        removed=removed,
+        reconciliation_changed=bool(created or removed or _activity_was_retried()),
+    )
 
 
 class RemoveUnmappedDeviceVrfsInput(BaseModel):

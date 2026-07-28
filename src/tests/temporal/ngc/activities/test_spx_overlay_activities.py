@@ -15,6 +15,7 @@
 """Unit tests for SpX Overlay activity logic."""
 
 import re
+from unittest.mock import patch
 
 import pytest
 from aioresponses import aioresponses
@@ -449,6 +450,68 @@ async def test_reconcile_spx_overlay_assignments_retry_removes_remaining_device_
 
     assert result.created == 0
     assert result.removed == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_spx_overlay_assignments_retry_retains_completed_change_signal():
+    """A retry reports a prior mutation even when its final attempt is a no-op."""
+    device_id = "22220000-0000-0000-0000-000000000001"
+    interface_id = "33330000-0000-0000-0000-000000000001"
+    other_interface_id = "33330000-0000-0000-0000-000000000002"
+    old_overlay_id = "44440000-0000-0000-0000-000000000001"
+    interface_assignment_id = "66660000-0000-0000-0000-000000000001"
+    activity_input = ReconcileSpXOverlayAssignmentsInput(
+        overlay_id=None,
+        site=LOCATION_ID,
+        device_id=device_id,
+        interface_ids=[interface_id],
+        device_interface_ids=[interface_id, other_interface_id],
+    )
+
+    with aioresponses() as m:
+        for assignments in (
+            [],
+            [
+                {
+                    "id": interface_assignment_id,
+                    "overlay": {
+                        "id": old_overlay_id,
+                        "isolation_type": "spectrum_x_vrf",
+                    },
+                }
+            ],
+        ):
+            m.get(
+                _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+                payload={"results": assignments},
+            )
+        m.delete(
+            f"{OVERLAYS_BASE}/overlay-assignments/{interface_assignment_id}/",
+            status=204,
+        )
+        m.get(
+            _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+            status=500,
+            payload={"detail": "temporary failure"},
+        )
+        for _ in range(3):
+            m.get(
+                _r(f"{OVERLAYS_BASE}/overlay-assignments/"),
+                payload={"results": []},
+            )
+
+        with pytest.raises(NautobotException, match="temporary failure"):
+            await reconcile_spx_overlay_assignments(activity_input)
+
+        with patch(
+            "nv_config_manager.temporal.ngc.activities.nautobot.activity.info"
+        ) as mock_activity_info:
+            mock_activity_info.return_value.attempt = 2
+            result = await reconcile_spx_overlay_assignments(activity_input)
+
+    assert result.created == 0
+    assert result.removed == 0
+    assert result.reconciliation_changed is True
 
 
 @pytest.mark.asyncio

@@ -27,29 +27,39 @@ test("queries the selected device ports and supports multiple selections", async
   await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
 
   const firstDevice = DEVICES_LIST.PDX01[0];
-  const interfaceRequest = page.waitForRequest((request) =>
-    request.url().includes(`/v1/parameter/device/${firstDevice.id}/interfaces`)
+  const interfaceResponse = page.waitForResponse((response) =>
+    response.url().includes(`/v1/parameter/device/${firstDevice.id}/interfaces`)
   );
   await page.getByRole("button", { name: "Device" }).click();
   await page.getByRole("dialog").getByText(firstDevice.name).click();
-  await interfaceRequest;
+  await interfaceResponse;
 
   await page.getByRole("button", { name: "Ports" }).click();
   await page.getByRole("dialog").getByText("swp1").click();
   await page.getByRole("dialog").getByText("swp2").click();
 
-  const ports = page.getByRole("button", { name: /swp1.*swp2/ });
-  await expect(ports).toContainText("swp1", { timeout: TEST_TIMEOUT });
-  await expect(ports).toContainText("swp2");
+  await expect(
+    page.getByRole("button", { name: "Remove swp1" })
+  ).toBeVisible({ timeout: TEST_TIMEOUT });
+  await expect(
+    page.getByRole("button", { name: "Remove swp2" })
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
 
   await page.getByRole("heading", {
     name: "New SpX Overlay Tenant Change Workflow",
   }).click();
+  const secondDevice = DEVICES_LIST.PDX01[1];
+  const secondInterfaceResponse = page.waitForResponse((response) =>
+    response.url().includes(`/v1/parameter/device/${secondDevice.id}/interfaces`)
+  );
   await page.getByRole("button", { name: firstDevice.name }).click();
-  await page.getByRole("dialog").getByText(DEVICES_LIST.PDX01[1].name).click();
+  await page.getByRole("dialog").getByText(secondDevice.name).click();
+  await secondInterfaceResponse;
 
   await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Remove swp1" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Remove swp2" })).toHaveCount(0);
 });
 
 test("loads device and port selections from URL parameters", async ({ page }) => {
@@ -72,12 +82,16 @@ test("loads device and port selections from URL parameters", async ({ page }) =>
 
 test("rejects URL port selections that are not on the device", async ({ page }) => {
   const device = DEVICES_LIST.PDX01[0];
+  const interfaceResponse = page.waitForResponse((response) =>
+    response.url().includes(`/v1/parameter/device/${device.id}/interfaces`)
+  );
   await page.goto(
     "/workflows/spxoverlaytenantchangeworkflow/form" +
       `?site=${SITES_LIST.pdx01}` +
       `&device-id=${device.id}` +
       "&port_names=not-a-device-port"
   );
+  await interfaceResponse;
 
   await expect(
     page.getByRole("button", { name: device.name })

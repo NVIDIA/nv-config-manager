@@ -125,6 +125,7 @@ _mock_state = {
     "reconcile_calls": 0,
     "reconcile_created": 0,
     "reconcile_removed": 0,
+    "reconcile_changed": False,
     "recorded_config_drift": False,
     "removed_vrf_ids": [],
     "interface_vrf_updates": [],
@@ -139,6 +140,7 @@ def reset_spx_mock_mutations() -> Generator[None]:
     _mock_state["removed_vrf_ids"] = []
     _mock_state["reconcile_created"] = 0
     _mock_state["reconcile_removed"] = 0
+    _mock_state["reconcile_changed"] = False
     _mock_state["interface_vrf_updates"] = []
     _mock_state["reconcile_overlay_ids"] = []
     _mock_state["cleanup_vrf_ids"] = []
@@ -241,6 +243,11 @@ async def mock_reconcile_spx_overlay_assignments(
     return ReconcileSpXOverlayAssignmentsOutput(
         created=int(_mock_state["reconcile_created"]),
         removed=int(_mock_state["reconcile_removed"]),
+        reconciliation_changed=bool(
+            _mock_state["reconcile_changed"]
+            or _mock_state["reconcile_created"]
+            or _mock_state["reconcile_removed"]
+        ),
     )
 
 
@@ -746,16 +753,28 @@ async def test_spx_overlay_tenant_change_is_noop_when_already_assigned(
         assert stages["deploy"]["state"] == "UNREACHABLE"
 
 
+@pytest.mark.parametrize(
+    ("reconcile_created", "reconcile_changed"),
+    [
+        pytest.param(1, False, id="counted-mutation"),
+        pytest.param(0, True, id="retry-stable-change-signal"),
+    ],
+)
 @pytest.mark.asyncio
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_spx_overlay_tenant_change_deploys_reconciliation_only_change(
-    _mock_time, _mock_nats_client, env
+    _mock_time,
+    _mock_nats_client,
+    env,
+    reconcile_created,
+    reconcile_changed,
 ):
     """Overlay-plugin-only mutations still require a render and deploy."""
     _mock_state["vrf_exists"] = True
     _mock_state["interfaces_with_vrf"] = ["swp1", "swp2"]
-    _mock_state["reconcile_created"] = 1
+    _mock_state["reconcile_created"] = reconcile_created
+    _mock_state["reconcile_changed"] = reconcile_changed
 
     task_queue_name = str(uuid.uuid4())
     async with Worker(
@@ -799,7 +818,7 @@ async def test_spx_overlay_tenant_change_deploys_reconciliation_only_change(
 
     assert result.assigned_ports == []
     assert result.unassigned_ports == []
-    assert result.overlay_assignments_created == 1
+    assert result.overlay_assignments_created == reconcile_created
     assert result.overlay_assignments_removed == 0
     assert result.device_deployed == "mock_device_id_with_vrf"
     assert stages["render_tenant_config"]["state"] == "COMPLETE"

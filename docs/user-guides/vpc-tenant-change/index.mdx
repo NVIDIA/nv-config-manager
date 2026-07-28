@@ -6,10 +6,6 @@ position: 40
 
 The SpX Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign or remove the overlay on selected ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, removing, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
 
-<Warning title="Experimental">
-This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
-</Warning>
-
 ## Prerequisites
 
 Before running, confirm:
@@ -33,11 +29,11 @@ Before running, confirm:
 | **Device** | The target device. | Yes |
 | **Ports** | One or more interfaces queried from the selected device. The chosen ports are assigned to the target overlay, or unassigned when Overlay ID is blank. Already-assigned ports are skipped. | Yes |
 
-After submission, a status page shows the five stages. The workflow runs without human approval.
+After submission, a status page shows the six stages. The workflow runs without human approval.
 
 ## Execution stages
 
-The workflow runs five stages in order. None require manual approval.
+The workflow runs six stages in order. None require manual approval.
 
 1. **`get_device` — Load the target device record from Nautobot.**
 
@@ -46,6 +42,10 @@ The workflow runs five stages in order. None require manual approval.
 1. **`assign_spx_overlay` — Run SpX Overlay Assignment as a child workflow.**
 
    Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs. With an Overlay ID, it binds the target VRF to the device and ports. Without an Overlay ID, it clears the selected ports' VRF and Spectrum-X overlay assignments. After either operation, it removes any device/VRF association for which no interface on the device still maps to that VRF. The stage display links to the child workflow as soon as it starts. If the child fails, the stage retains the link and the tenant-change workflow stops before rendering or deployment. If the requested state is already present, the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
+
+1. **`determine_deployment_action` — Decide whether rendering and deployment are needed.**
+
+   Continues to render and deploy when the assignment workflow changed a VRF, port, device association, or overlays-plugin assignment. When the requested state is already present, it checks for a pending recorded configuration change; it deploys the latest render when one exists and otherwise marks the downstream stages UNREACHABLE.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
@@ -63,7 +63,7 @@ The workflow runs five stages in order. None require manual approval.
 
 After the workflow reports success, confirm:
 
-- **All five stages green** on the Config Manager run page (or `assign_spx_overlay` green and downstream UNREACHABLE on the no-op path).
+- **All six stages green** on the Config Manager run page (or `determine_deployment_action` green and downstream UNREACHABLE on the no-op path).
 - **`assign_spx_overlay` stage display** shows either the target Overlay, L3 VXLAN, VRF, and assigned ports or the ports whose assignment was removed. It also lists device/VRF associations removed by cleanup.
 - **`vrf_assigned`, `assigned_ports`, `unassigned_ports`, `removed_vrf_ids`, `overlay_assignments_created`, `overlay_assignments_removed`, and `vrf`** in the result reflect the change you intended.
 - **`device_deployed`** is the device name when a deploy actually ran; `null` when the no-op short-circuit fired.

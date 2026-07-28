@@ -452,6 +452,7 @@ class SpXOverlayAssignmentWorkflowOutput(BaseModel):
     removed_vrf_ids: list[str]
     overlay_assignments_created: int
     overlay_assignments_removed: int
+    overlay_reconciliation_changed: bool = False
     vrf: DeviceVrfInfo | None
 
 
@@ -621,6 +622,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         removed_vrf_ids: list[str]
         overlay_assignments_created: int
         overlay_assignments_removed: int
+        overlay_reconciliation_changed: bool = False
 
     @stage_executor("assign_vrf_to_ports")
     async def assign_vrf_to_ports_stage(
@@ -709,6 +711,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
             removed_vrf_ids=removed_device_vrfs.removed_vrf_ids,
             overlay_assignments_created=overlay_assignments.created,
             overlay_assignments_removed=overlay_assignments.removed,
+            overlay_reconciliation_changed=overlay_assignments.reconciliation_changed,
             display=(
                 f"{change_display}\n"
                 f"Ports already assigned: {', '.join(already_assigned_ports)}\n"
@@ -763,6 +766,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
             removed_vrf_ids=ports_output.removed_vrf_ids,
             overlay_assignments_created=ports_output.overlay_assignments_created,
             overlay_assignments_removed=ports_output.overlay_assignments_removed,
+            overlay_reconciliation_changed=ports_output.overlay_reconciliation_changed,
             vrf=(
                 DeviceVrfInfo(
                     vrf_id=device_vrf_output.vrf.id,
@@ -909,6 +913,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         removed_vrf_ids: list[str]
         overlay_assignments_created: int
         overlay_assignments_removed: int
+        overlay_reconciliation_changed: bool = False
         vrf: DeviceVrfInfo | None
         overlay_name: str | None
         vxlan_name: str | None
@@ -955,6 +960,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 removed_vrf_ids=[],
                 overlay_assignments_created=0,
                 overlay_assignments_removed=0,
+                overlay_reconciliation_changed=False,
                 vrf=None,
                 overlay_name=stage_input.overlay_id,
                 vxlan_name=None,
@@ -998,6 +1004,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             removed_vrf_ids=result.removed_vrf_ids,
             overlay_assignments_created=result.overlay_assignments_created,
             overlay_assignments_removed=result.overlay_assignments_removed,
+            overlay_reconciliation_changed=result.overlay_reconciliation_changed,
             vrf=result.vrf,
             overlay_name=overlay_name,
             vxlan_name=vxlan_name,
@@ -1247,6 +1254,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     or assign_output.removed_vrf_ids
                     or assign_output.overlay_assignments_created
                     or assign_output.overlay_assignments_removed
+                    or assign_output.overlay_reconciliation_changed
                 ),
             )
         )
