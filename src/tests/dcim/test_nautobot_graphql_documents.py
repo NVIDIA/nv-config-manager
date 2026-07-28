@@ -41,6 +41,13 @@ def test_selection_fragment_is_validated_for_dynamic_legacy_queries():
     assert "configmanagerdevicestatus" in fields
 
 
+def test_render_location_query_excludes_specialty_topology_roles():
+    """Provider baseline data must not require optional template-plugin roles."""
+    query = load_graphql_query("query_location_data.graphql")
+
+    assert "FNN-Switch" not in query
+
+
 def test_dynamic_fields_are_validated_after_template_expansion():
     """The legacy field extension point is still rejected when it is invalid GraphQL."""
     with pytest.raises(GraphQLSyntaxError, match="Syntax Error"):

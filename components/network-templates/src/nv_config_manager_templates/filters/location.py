@@ -33,19 +33,19 @@ def site_aggregates(
     """Return the site level aggregates by name."""
     aggregates = []
 
-    for prefix_entry in value.inventory.get("prefixes", []):
-        prefix_tags = {entry["name"] for entry in prefix_entry["tags"]}
+    for prefix_entry in value.address_space.prefixes:
+        prefix_tags = set(prefix_entry.tags)
 
         # Check if prefix should be excluded
         if exclude_tags and set(exclude_tags).intersection(prefix_tags):
             continue
 
         if (
-            prefix_entry["role"]
-            and prefix_entry["role"]["name"].lower() == role_name.lower()
+            prefix_entry.role
+            and prefix_entry.role.lower() == role_name.lower()
             and (not tags or set(tags).issubset(prefix_tags))
         ):
-            aggregates.append(prefix_entry["prefix"])
+            aggregates.append(str(prefix_entry.prefix))
     if not aggregates:
         if not fail_if_missing:
             return []

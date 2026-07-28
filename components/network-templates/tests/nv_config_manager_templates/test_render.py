@@ -22,9 +22,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from jinja2 import DictLoader
+from nv_config_manager_dcim import RenderData, RenderDataExtension
 
 from nv_config_manager_templates.filters import FilterException
-from nv_config_manager_templates.models import RenderData
 from nv_config_manager_templates.render import Renderer
 
 RESOURCES_DIR = Path(__file__).resolve().parents[1] / "resources"
@@ -66,7 +67,17 @@ def test_rendered_config(
 
     with render_data_input.open(encoding="utf-8") as file:
         render_data = RenderData.from_cache(json.load(file))
-    render_data.device.intent["intended-firmware"]["version"] = firmware_version
+    render_data = render_data.model_copy(
+        update={
+            "device": render_data.device.model_copy(
+                update={
+                    "firmware": render_data.device.firmware.model_copy(
+                        update={"desired_version": firmware_version}
+                    )
+                }
+            )
+        }
+    )
 
     expected_output = expected_config.read_text(encoding="utf-8")
 
@@ -94,8 +105,24 @@ def test_missing_site_aggregate_fails_edge_render() -> None:
 
     with (RENDER_DATA_DIR / "a09-u28-p01-bleaf-01.json").open(encoding="utf-8") as file:
         render_data = RenderData.from_cache(json.load(file))
-    render_data.device.intent["intended-firmware"]["version"] = "5.16.1"
-    render_data.location.inventory["prefixes"] = []
+    render_data = render_data.model_copy(
+        update={
+            "device": render_data.device.model_copy(
+                update={
+                    "firmware": render_data.device.firmware.model_copy(
+                        update={"desired_version": "5.16.1"}
+                    )
+                }
+            ),
+            "location": render_data.location.model_copy(
+                update={
+                    "address_space": render_data.location.address_space.model_copy(
+                        update={"prefixes": ()}
+                    )
+                }
+            ),
+        }
+    )
 
     renderer = Renderer()
     template = next(
@@ -106,3 +133,24 @@ def test_missing_site_aggregate_fails_edge_render() -> None:
 
     with pytest.raises(FilterException, match="Found no aggregates in role 'Site-Aggregate'"):
         renderer.render(template, render_data)
+
+
+def test_renderer_exposes_plugin_extension_data(public_leaf_data, public_location_data) -> None:
+    """Plugin filters receive extension data, not provider cache envelope metadata."""
+    render_data = RenderData(
+        device=public_leaf_data,
+        location=public_location_data,
+        plugin_data={
+            "example": RenderDataExtension(
+                schema="example.render-data",
+                version=1,
+                data={"enabled": True},
+            )
+        },
+    )
+    renderer = Renderer(enable_plugins=False)
+    renderer.environment.loader = DictLoader(
+        {"extension-test.j2": "{{ plugin_data.example.enabled }}"}
+    )
+
+    assert renderer.render("extension-test.j2", render_data) == "True"

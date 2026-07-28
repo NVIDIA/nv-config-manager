@@ -17,7 +17,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+
+from nv_config_manager_dcim.render import RenderConsoleServerPort
 
 
 @dataclass(frozen=True)
@@ -45,21 +46,20 @@ class ConsoleServerPort:  # pylint: disable=too-many-instance-attributes
     connected: bool
 
     @staticmethod
-    def from_render_data(entry: dict[str, Any]) -> ConsoleServerPort:
+    def from_render_data(entry: RenderConsoleServerPort) -> ConsoleServerPort:
         """Create a console-server port from normalized render data."""
         connected_console_port = None
 
-        if entry["connected_console_port"]:
-            device_entry = entry["connected_console_port"]["device"]
+        if entry.connected_port_name:
             device = ConnectedDevice(
-                name=device_entry["name"],
-                manufacturer=device_entry["device_type"]["manufacturer"]["name"],
+                name=entry.connected_device_name or "",
+                manufacturer=entry.connected_device_manufacturer or "",
             )
             connected_console_port = ConnectedConsolePort(
-                name=entry["connected_console_port"]["name"], device=device
+                name=entry.connected_port_name, device=device
             )
         return ConsoleServerPort(
-            name=entry["name"],
+            name=entry.name,
             connected_console_port=connected_console_port,
             connected=connected_console_port is not None,
         )

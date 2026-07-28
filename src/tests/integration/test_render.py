@@ -84,8 +84,18 @@ class TestRenderPipeline:
             response.raise_for_status()
             data = response.json()
 
-            total_pending = sum(c.get("num_pending", 0) for c in data.get("consumers", []))
-            total_ack_pending = sum(c.get("num_ack_pending", 0) for c in data.get("consumers", []))
+            device_consumers = [
+                consumer
+                for consumer in data.get("consumers", [])
+                if str(consumer.get("name", "")).endswith("-device")
+            ]
+            if not device_consumers or any(
+                consumer.get("num_pending", -1) < 0 or consumer.get("num_ack_pending", -1) < 0
+                for consumer in device_consumers
+            ):
+                return {"pending": -1, "ack_pending": -1}
+            total_pending = sum(consumer["num_pending"] for consumer in device_consumers)
+            total_ack_pending = sum(consumer["num_ack_pending"] for consumer in device_consumers)
 
             return {
                 "pending": total_pending,

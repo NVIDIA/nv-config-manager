@@ -24,8 +24,8 @@ The render engine is intentionally small:
 5. It renders each entrypoint with this Jinja context:
 
    ```text
-   device_data   # DeviceRenderData: identity, interfaces, inventory, and intent
-   location_data # LocationRenderData: location, inventory, and intent
+   device_data   # DeviceRenderData: typed identity, interface, network, routing, overlay, firmware, service, and access data
+   location_data # LocationRenderData: typed location, routing, address-space, and topology data
    plugin_data   # optional provider-supplied extension data, keyed by requirement name
    ```
 

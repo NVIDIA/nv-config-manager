@@ -19,7 +19,8 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Any
+
+from nv_config_manager_dcim.render import RenderInterface
 
 
 @dataclass(frozen=True)
@@ -27,11 +28,11 @@ class ConnectedDevice:  # pylint: disable=too-many-instance-attributes
     """Representation of a Device connected on an interface."""
 
     name: str
-    role: str
+    role: str | None
     asn: str | None
     tags: list[str] = field(compare=False)  # make this class hashable
-    peer_ipv4: str
-    peer_ipv6: str
+    peer_ipv4: str | None
+    peer_ipv6: str | None
     tenant: str | None = None
 
     @property
@@ -42,10 +43,6 @@ class ConnectedDevice:  # pylint: disable=too-many-instance-attributes
             return "GW"
         if peer_group.startswith("AZURE-"):
             return peer_group.replace("AZURE-", "")
-        if peer_group == "NSV DEVICE":
-            # Temp hack for things not properly modeled yet
-            if "dpu" in self.name:
-                return "DPU"
         if peer_group in (
             "GPU",
             "HIGHSPEEDSTORAGE-SERVER",
@@ -66,7 +63,7 @@ class ConnectedInterface:
 
 @dataclass(frozen=True)
 class Interface:  # pylint: disable=too-many-instance-attributes
-    """Representation of a nautobot interface for ease of use in templates."""
+    """Template-facing representation of a provider-neutral interface."""
 
     name: str
     primary_ipv4: str | None
@@ -76,7 +73,7 @@ class Interface:  # pylint: disable=too-many-instance-attributes
     secondary_ipv6: list[str] | None
     link_local: str | None
     enabled: bool
-    mtu: int
+    mtu: int | None
     tags: list[str]
     untagged_vlan: int | None
     tagged_vlans: list[int]
@@ -144,37 +141,34 @@ class Interface:  # pylint: disable=too-many-instance-attributes
         return []
 
     @staticmethod
-    def _build_addressing_v2(
-        entry: dict[str, Any],
-    ) -> tuple[str, str, list[str], list[str], str, str, str | None]:
+    def _build_addressing(
+        entry: RenderInterface,
+    ) -> tuple[str | None, str | None, list[str], list[str], str | None, str, str | None]:
+        """Build template-facing interface addressing from typed render data."""
         primary_ipv4 = None
         primary_ipv6 = None
         secondary_ipv4 = []
         secondary_ipv6 = []
         link_local = None
         vip_ipv4 = None
-        vrf = entry["vrf"]["name"] if entry["vrf"] else "default"
-        for ip_entry in entry["ip_addresses"]:
-            if ip_entry["ip_version"] == 4:
-                role_name = ip_entry["role"]["name"] if ip_entry.get("role") else None
+        vrf = entry.vrf.name if entry.vrf else "default"
+        for ip_entry in entry.addresses:
+            if ip_entry.version == 4:
+                role_name = ip_entry.role
                 if role_name == "VIP":
-                    vip_ipv4 = ip_entry["address"]
+                    vip_ipv4 = str(ip_entry.address)
                 elif not primary_ipv4:
-                    primary_ipv4 = ip_entry["address"]
+                    primary_ipv4 = str(ip_entry.address)
                 else:
-                    secondary_ipv4.append(ip_entry["address"])
+                    secondary_ipv4.append(str(ip_entry.address))
             else:
                 # Set primary, secondary, and link_local IPv6 Addresses
-                if ipaddress.ip_interface(ip_entry["address"]).is_link_local:
-                    link_local = ip_entry["address"]
+                if ipaddress.ip_interface(ip_entry.address).is_link_local:
+                    link_local = str(ip_entry.address)
                 elif not primary_ipv6:
-                    primary_ipv6 = ip_entry["address"]
+                    primary_ipv6 = str(ip_entry.address)
                 else:
-                    secondary_ipv6.append(ip_entry["address"])
-
-        # Convert NSV VRF to default for the purposes of configuration
-        if vrf == "NSV":
-            vrf = "default"
+                    secondary_ipv6.append(str(ip_entry.address))
 
         # Strip site name from VRF name (e.g., "SITE_VRFNAME" becomes "VRFNAME")
         if "_" in vrf:
@@ -191,93 +185,32 @@ class Interface:  # pylint: disable=too-many-instance-attributes
         )
 
     @staticmethod
-    def _normalize_vrf_name(vrf_name: str | None) -> str:
-        if not vrf_name or vrf_name == "NSV":
-            return "default"
-        if "_" in vrf_name:
-            return vrf_name.split("_", 1)[1]
-        return vrf_name
-
-    @staticmethod
-    def _routing_instance_vrfs(instance: dict[str, Any]) -> set[str]:
-        router_id_interfaces = (
-            instance.get("router_id", {}).get("interfaces") if instance.get("router_id") else None
+    def _build_connected_interface(entry: RenderInterface) -> ConnectedInterface | None:
+        """Build a template-facing peer from the typed provider contract."""
+        connected = entry.connected_interface
+        if connected is None:
+            return None
+        peer_ipv4 = next(
+            (str(address.host) for address in connected.addresses if address.version == 4), None
         )
-        if not router_id_interfaces:
-            return {"default"}
-
-        return {
-            Interface._normalize_vrf_name(
-                router_id_interface["vrf"]["name"] if router_id_interface.get("vrf") else None
-            )
-            for router_id_interface in router_id_interfaces
-        }
-
-    @staticmethod
-    def _bgp_asn_from_routing_instances(
-        device: dict[str, Any], connected_interface_vrf: str
-    ) -> str | None:
-        routing_instances = device.get("bgp_routing_instances") or []
-        for instance in routing_instances:
-            if connected_interface_vrf in Interface._routing_instance_vrfs(instance):
-                return str(instance["autonomous_system"]["asn"])
-
-        if connected_interface_vrf == "default" and len(routing_instances) == 1:
-            return str(routing_instances[0]["autonomous_system"]["asn"])
-
-        return None
-
-    @staticmethod
-    def _build_connected_interface_v2(entry: dict[str, Any]) -> ConnectedInterface:
-        # This is incomplete and just a sample as we also need frontport data
-        # for breakout cables
-        connected_interface = None
-        if entry["connected_interface"]:
-            # Build the ConnectedInterface object
-            device = entry["connected_interface"]["device"]
-
-            # Use the module-bays parent device as the object if the module exist.
-            # If a module is inserted, the connected device will be `null`
-            if not device and entry["connected_interface"].get("module"):
-                device = entry["connected_interface"]["module"]["parent_module_bay"][
-                    "parent_device"
-                ]
-
-            device_tags = [tag["name"] for tag in device["tags"]] if device else []
-            connected_vrf_entry = entry["connected_interface"].get("vrf")
-            connected_vrf = Interface._normalize_vrf_name(
-                connected_vrf_entry["name"] if connected_vrf_entry else None
-            )
-            peer_asn = Interface._bgp_asn_from_routing_instances(device, connected_vrf)
-            if peer_asn is None:
-                peer_asn = (device.get("intent") or {}).get("bgp", {}).get("asn")
-                if peer_asn is not None:
-                    peer_asn = str(peer_asn)
-
-            peer_ipv4 = None
-            peer_ipv6 = None
-            for ip_entry in entry["connected_interface"]["ip_addresses"]:
-                if ip_entry["ip_version"] == 4:
-                    peer_ipv4 = ip_entry["host"]
-                else:
-                    peer_ipv6 = ip_entry["host"]
-
-            connected_device = ConnectedDevice(
-                name=device["name"],
-                role=device["role"]["name"],
-                tags=device_tags,
-                tenant=device["tenant"]["name"] if device["tenant"] else None,
-                asn=peer_asn,
+        peer_ipv6 = next(
+            (str(address.host) for address in connected.addresses if address.version == 6), None
+        )
+        return ConnectedInterface(
+            name=connected.name,
+            device=ConnectedDevice(
+                name=connected.device.name,
+                role=connected.device.role,
+                tags=list(connected.device.tags),
+                tenant=connected.device.tenant,
+                asn=connected.device.routing_asn,
                 peer_ipv4=peer_ipv4,
                 peer_ipv6=peer_ipv6,
-            )
-            connected_interface = ConnectedInterface(
-                name=entry["connected_interface"]["name"], device=connected_device
-            )
-        return connected_interface
+            ),
+        )
 
     @staticmethod
-    def _from_render_data(entry: dict[str, Any]) -> Interface:
+    def _from_render_data(entry: RenderInterface) -> Interface:
         (
             primary_ipv4,
             primary_ipv6,
@@ -286,34 +219,34 @@ class Interface:  # pylint: disable=too-many-instance-attributes
             link_local,
             vrf,
             vip_ipv4,
-        ) = Interface._build_addressing_v2(entry)
+        ) = Interface._build_addressing(entry)
 
-        connected_interface = Interface._build_connected_interface_v2(entry)
+        connected_interface = Interface._build_connected_interface(entry)
 
         return Interface(
-            name=entry["name"],
+            name=entry.name,
             primary_ipv4=primary_ipv4,
             primary_ipv6=primary_ipv6,
             secondary_ipv4=secondary_ipv4,
             secondary_ipv6=secondary_ipv6,
             link_local=link_local,
-            enabled=entry["enabled"],
-            mtu=entry["mtu"],
-            tags=[tag["name"] for tag in entry["tags"]],
-            untagged_vlan=entry["untagged_vlan"]["vid"] if entry["untagged_vlan"] else None,
-            tagged_vlans=[vlan["vid"] for vlan in entry["tagged_vlans"]],
+            enabled=entry.enabled,
+            mtu=entry.mtu,
+            tags=list(entry.tags),
+            untagged_vlan=entry.untagged_vlan.vid if entry.untagged_vlan else None,
+            tagged_vlans=[vlan.vid for vlan in entry.tagged_vlans],
             vrf=vrf,
             connected_interface=connected_interface,
-            description=entry["description"],
-            role=entry["role"]["name"] if entry["role"] else None,
-            optic_type=entry["type"],
-            mgmt_only=entry["mgmt_only"],
-            member_interfaces=[member["name"] for member in entry["member_interfaces"]],
-            mac_address=entry.get("mac_address"),
+            description=entry.description,
+            role=entry.role,
+            optic_type=entry.type,
+            mgmt_only=entry.management_only,
+            member_interfaces=list(entry.member_interfaces),
+            mac_address=entry.mac_address,
             vip_ipv4=vip_ipv4,
         )
 
     @staticmethod
-    def from_render_data(entry: dict[str, Any]) -> Interface:
+    def from_render_data(entry: RenderInterface) -> Interface:
         """Create an interface object from normalized render data."""
         return Interface._from_render_data(entry)

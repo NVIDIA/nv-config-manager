@@ -13,6 +13,7 @@ query ($id: ID!, $id_str: String) {
       model
     }
     overlay {
+      id
       name
       assignments {
         assigned_object_id
@@ -32,13 +33,16 @@ query ($id: ID!, $id_str: String) {
     vni_type
     l3_vlan_id
     overlay {
+      id
       name
     }
     vlan {
+      id
       vid
       name
     }
     vrf {
+      id
       name
       rd
     }
@@ -52,6 +56,7 @@ query ($id: ID!, $id_str: String) {
   device(id: $id) {
     id
     vrfs {
+      id
       name
       rd
       _custom_field_data
@@ -170,6 +175,7 @@ query ($id: ID!, $id_str: String) {
       name
       description
       vrf {
+        id
         name
         rd
         export_targets {
@@ -187,10 +193,12 @@ query ($id: ID!, $id_str: String) {
         name
       }
       untagged_vlan {
+        id
         vid
         name
       }
       tagged_vlans {
+        id
         vid
         name
       }
@@ -218,6 +226,7 @@ query ($id: ID!, $id_str: String) {
         }
         device {
           name
+          config_context
           tenant {
             name
           }
@@ -245,6 +254,7 @@ query ($id: ID!, $id_str: String) {
             parent_device {
               id
               name
+              config_context
               tenant {
                 name
               }

@@ -283,7 +283,7 @@ belongs outside templates.
 | `uuid` | device_data | string | Provider device identifier | `device.id` |
 | `device_tags` | device_data | list[str] | List of device tags | `device.tags[].name` |
 | `has_tag` | device_data, tag | bool | Check if device has specific tag | `device.tags[].name` |
-| `desired_firmware` | device_data | string | Target firmware version | `device_data.intent['intended-firmware']['version']` |
+| `desired_firmware` | device_data | string | Target firmware version | `DeviceRenderData.firmware.desired_version` (bundled Nautobot provider maps `config_context.intended-firmware.version`) |
 
 **Example Usage:**
 
@@ -298,16 +298,16 @@ hostname {{ device_data|hostname }}
 | Filter | Input | Output | Description | Nautobot Field |
 | :----- | :---- | :----- | :---------- | :------------- |
 | `router_id` | device_data | string | Router ID (IPv4 without mask) | Loopback interface IP |
-| `asn` | device_data, vrf="default" | string | BGP ASN for device/VRF | `device.bgp_routing_instances[].autonomous_system.asn` or config context |
-| `local_asn` | device_data | string | Local ASN for Azure devices | `device_data.intent['bgp']['local-asn']` |
-| `bgp_peers` | device_data, vrf="default" | list[BGPPeer] | List of BGP peers | `device.bgp_routing_instances[].endpoints` |
+| `asn` | device_data, vrf="default" | string | BGP ASN for device/VRF | `DeviceRenderData.routing.bgp_instances[].asn` or `default_asn` |
+| `bgp_routing_instance` | device_data, vrf="default" | BGPLocalConfig | Local BGP configuration and peers | `DeviceRenderData.routing.bgp_instances[]` |
 
 **Example Usage:**
 
 ```jinja
-router bgp {{ device_data|asn }}
+{% set bgp = device_data|bgp_routing_instance %}
+router bgp {{ bgp.asn }}
   router-id {{ device_data|router_id }}
-  {% for peer in device_data|bgp_peers %}
+  {% for peer in bgp.peers %}
   neighbor {{ peer.peer_ipv4 }} remote-as {{ peer.asn }}
   {% endfor %}
 ```
@@ -435,11 +435,8 @@ Extract site/location-level data (operates on `location_data`, not `device_data`
 
 | Filter | Input | Output | Description | Nautobot Field |
 | :----- | :---- | :----- | :---------- | :------------- |
-| `site_aggregates` | location_data, role_name, tags=None, exclude_tags=None | list[str] | Prefixes with specific role; optional tag include/exclude lists | `location.prefixes[]` filtered by role |
-| `site_asn` | location_data | string | Site-level BGP ASN | `location_data.intent['site_asn']` |
-| `route_server_peers` | location_data | list[BGPPeer] | BGP route server peers at site | `location.route_servers[]` |
-| `wan_loopbacks` | location_data | list[tuple] | WAN router names and loopbacks | `location.wan_devices[].interfaces[]` |
-| `uc_jumphost_prefixes` | location_data | list[str] | UC jumphost prefixes | `location.uc_jumphost_prefixes[]` |
+| `site_aggregates` | location_data, role_name, tags=None, exclude_tags=None | list[str] | Prefixes with specific role; optional tag include/exclude lists | `LocationRenderData.address_space.prefixes` |
+| `location_has_tag` | location_data, tag_name | bool | Check a location tag | `LocationRenderData.location.tags` |
 
 **Example Usage:**
 
@@ -450,9 +447,10 @@ network {{ aggregate }}
 {% endfor %}
 
 {# Peer with route servers #}
-{% for rs in location_data|route_server_peers %}
-neighbor {{ rs.peer_ipv4 }} remote-as {{ rs.asn }}
-neighbor {{ rs.peer_ipv4 }} peer-group {{ rs.peer_group }}
+{% for rs in location_data.topology.route_servers %}
+{% for address in rs.loopback_addresses %}
+neighbor {{ address }} remote-as {{ rs.routing_asn }}
+{% endfor %}
 {% endfor %}
 ```
 
@@ -549,10 +547,24 @@ location
 └── uc_jumphost_prefixes[]: Jumphost prefixes
 ```
 
-### Intent Mapping
+### Provider Mapping
 
-Nautobot's `config_context` field contains custom JSON data. The provider maps
-that value to `DeviceRenderData.intent` before invoking the renderer:
+Nautobot's `config_context` field can contain policy JSON, but templates never
+receive that native object. The bundled provider maps the values it supports to
+typed `RenderData` fields before invoking the renderer; another provider can
+obtain the same concepts from first-class fields, REST resources, or GraphQL:
+
+| Provider-neutral field | Bundled Nautobot source |
+| :--- | :--- |
+| `device.firmware.desired_version` | `config_context.intended-firmware.version` |
+| `device.routing.default_asn`, `local_asn`, and `site_asn` | `config_context.bgp` and location `config_context.site_asn` |
+| `device.routing.isis_interfaces` | `config_context.isis.interfaces` |
+| `device.services` | service keys in `config_context` such as `dns`, `ntp`, and `ztp` |
+| `device.access.credentials` | `config_context.password_mappings` |
+| `device.overlays` | Native Nautobot VXLAN and overlay records |
+
+For example, this Nautobot configuration context contributes firmware, routing,
+and credentials. It is provider input, not a template-facing schema:
 
 ```json
 {
@@ -576,7 +588,9 @@ that value to `DeviceRenderData.intent` before invoking the renderer:
 }
 ```
 
-Allowed password-mapping roles are `admin`, `ro`, and `rw`.
+Template plugins must consume the typed SDK models and existing filters. When a
+provider cannot supply a required value, the provider or filter reports the
+specific typed field so the DCIM data can be corrected and the render retried.
 
 ## Creating Templates
 
@@ -812,16 +826,17 @@ interface {{ intf.name }}
 **Template**: `my-platform/my-role/include/bgp.j2`
 
 ```jinja
-router bgp {{ device_data|asn }}
+{% set bgp = device_data|bgp_routing_instance %}
+router bgp {{ bgp.asn }}
   router-id {{ device_data|router_id }}
 
   {# Define peer groups #}
   neighbor SPINE peer-group
-  neighbor SPINE remote-as {{ location_data|site_asn }}
+  neighbor SPINE remote-as {{ location_data.routing.site_asn }}
   neighbor SPINE send-community extended
 
   {# Configure individual peers #}
-  {% for peer in device_data|bgp_peers %}
+  {% for peer in bgp.peers %}
   {% if peer.peer_group == "SPINE" %}
   neighbor {{ peer.peer_ipv4 }} peer-group SPINE
   neighbor {{ peer.peer_ipv4 }} description {{ peer.description }}
@@ -894,13 +909,14 @@ subnet {{ intf.primary_ipv4|network_address|netmask_notation|first }}
 **Template**: `my-platform/my-role/include/bgp-vrf.j2`
 
 ```jinja
-{% for vrf in device_data|tenant_vrfs %}
-router bgp {{ device_data|asn("default") }}
+{% for vrf in device_data|attached_vrfs %}
+{% set bgp = device_data|bgp_routing_instance(vrf=vrf.name) %}
+router bgp {{ bgp.asn }}
   vrf {{ vrf.name }}
     router-id {{ device_data|router_id }}
 
     {# VRF-specific peers #}
-    {% for peer in device_data|bgp_peers(vrf=vrf.name) %}
+    {% for peer in bgp.peers %}
     neighbor {{ peer.peer_ipv4 }} remote-as {{ peer.asn }}
     neighbor {{ peer.peer_ipv4 }} description {{ peer.description }}
     {% endfor %}

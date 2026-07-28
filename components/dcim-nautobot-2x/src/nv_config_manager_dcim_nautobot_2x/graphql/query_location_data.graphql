@@ -16,9 +16,6 @@ query ($location: [String]!) {
   route_servers: devices(tags: "route-server", location: $location) {
     ...remote_peer
   }
-  fnn_devices: devices(role: ["FNN-Switch"], location: $location) {
-    ...remote_peer
-  }
   prefixes(tags: "role-aggregate", location: $location) {
     prefix
     role {

@@ -153,8 +153,16 @@ same run.
 ## Render data and templates
 
 `DCIMClient.get_render_data()` receives a `RenderDataRequest` and returns one
-SDK `RenderData` object. Built-in filters consume the stable `identity`,
-`interfaces`, `inventory`, and `intent` concepts—not a native API response:
+SDK `RenderData` object. Built-in filters consume typed, stable concepts—not a
+native API response. The primary device sections are `identity`, `interfaces`,
+`network`, `routing`, `overlays`, `firmware`, `services`, and `access`; the
+location sections are `location`, `routing`, `address_space`, and `topology`.
+
+Use the narrowest existing Pydantic model for each value. For example, put a
+firmware target in `RenderFirmwareData.desired_version`, BGP data in
+`RenderRoutingData`, and service endpoints in `RenderServicesData`. Do not add
+a provider-shaped dictionary as a shortcut. If a general template concept is
+missing, add a typed SDK model and update the providers that support it.
 
 ```python
 from nv_config_manager_dcim import (
@@ -163,9 +171,9 @@ from nv_config_manager_dcim import (
     RenderData,
     RenderDataRequest,
     RenderDeviceIdentity,
+    RenderFirmwareData,
     RenderLocation,
 )
-
 
 async def get_render_data(self, request: RenderDataRequest) -> RenderData:
     location = RenderLocation(id="site-1", name="site-1", kind="Site")
@@ -180,11 +188,9 @@ async def get_render_data(self, request: RenderDataRequest) -> RenderData:
                 location=location,
             ),
             interfaces=(),
-            inventory={},
-            intent={"intended-firmware": {"version": "5.16.1"}},
+            firmware=RenderFirmwareData(desired_version="5.16.1"),
         ),
-        location=LocationRenderData(location=location, inventory={}, intent={}),
-        plugin_data={},
+        location=LocationRenderData(location=location),
     )
 ```
 
@@ -194,19 +200,28 @@ provider may make several REST requests, one GraphQL request, or no GraphQL
 requests at all. The template engine and `template-cli` never choose those
 requests.
 
-`device.identity`, `device.interfaces`, `device.inventory`, `device.intent`,
-`location.location`, `location.inventory`, `location.intent`, and
-`plugin_data` are template-facing contract data. Do not expose a provider's
-native response format as an accidental public API. Preserve the stable
-concepts that built-in filters and installed template plugins use, then put
-provider-specific shape conversion in the provider. Template fixtures use only
-the portable `RenderData` cache envelope.
+The typed `device` and `location` sections, plus `plugin_data`, are
+template-facing contract data. Do not expose a provider's native response
+format as an accidental public API. Preserve the stable concepts that built-in
+filters and installed template plugins use, then put provider-specific shape
+conversion in the provider. Template fixtures use only the portable
+`RenderData` cache envelope.
+
+Required values must fail at the boundary with `DCIMInvalidDataError` and a
+provider/object/field-specific message. Values that are optional in the SDK
+remain optional; a filter that requires one raises `FilterException` naming the
+typed field. This gives operators a useful correction path without making a
+workflow retry opaque validation failures.
 
 When a template plugin needs extension data, it declares provider-neutral
 render-data requirements with `get_render_data_requirements()`. A deployment's
 selected provider is responsible for obtaining and normalizing the requested
-extension data into `RenderData.plugin_data`; a template plugin must not issue
-native DCIM calls or embed a GraphQL query. See [Template and Plugin Expansion](../render/template-expansion.mdx).
+extension data into `RenderData.plugin_data`; each value uses the namespaced,
+versioned `RenderDataExtension` envelope. A template plugin must not issue
+native DCIM calls or embed a GraphQL query. The renderer exposes the envelope's
+`data` value under the requirement name, preserving the template-facing
+`plugin_data["requirement"]` mapping while retaining schema/version metadata in
+the provider cache. See [Template and Plugin Expansion](../render/template-expansion.mdx).
 
 ## Change events and affected devices
 

@@ -1,5 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Built-in Nautobot reference implementation of the DCIM provider API."""
 
 from __future__ import annotations
@@ -36,6 +48,7 @@ from nv_config_manager_dcim.models import (
 )
 from nv_config_manager_dcim.render import RenderData, RenderDataRequest
 
+from nv_config_manager_dcim_nautobot_2x.client import NautobotException
 from nv_config_manager_dcim_nautobot_2x.dhcp import NautobotDHCPOperations
 from nv_config_manager_dcim_nautobot_2x.events import register_render_event_handlers
 from nv_config_manager_dcim_nautobot_2x.queries import load_graphql_query
@@ -94,6 +107,13 @@ _PARAMETER_DEVICE_BY_NAME_QUERY = load_graphql_query(
 )
 
 _NAUTOBOT_CONNECTION_KEYS = ("server", "token", "public_url", "verify")
+_INTENDED_CONFIGURATION_PATH = "plugins/nv-config-manager/intendedconfig/"
+
+
+def _is_existing_intended_configuration_error(error: NautobotException) -> bool:
+    """Return whether Nautobot rejected a create for its one-per-device record."""
+    message = str(error)
+    return "returned 400" in message and "Intended Config Settings with this Device id" in message
 
 
 def _parse_verify(value: object) -> bool | str:
@@ -592,19 +612,25 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def upsert_intended_configuration(self, update: IntendedConfigurationUpdate) -> None:
         """Persist render metadata through the Nautobot plugin's upsert endpoint."""
-        await self.post(
-            "plugins/nv-config-manager/intendedconfig/",
-            {
-                "device_id": update.device_id,
-                "config_store_instance": update.config_store_instance,
-                "path": update.path,
-                "commit_id": update.commit_id,
-                "updated": update.updated,
-                "updated_by": update.updated_by,
-                "commit_message": update.commit_message,
-                "template_version": update.template_version,
-            },
-        )
+        data = {
+            "device_id": update.device_id,
+            "config_store_instance": update.config_store_instance,
+            "path": update.path,
+            "commit_id": update.commit_id,
+            "updated": update.updated,
+            "updated_by": update.updated_by,
+            "commit_message": update.commit_message,
+            "template_version": update.template_version,
+        }
+        try:
+            await self.post(_INTENDED_CONFIGURATION_PATH, data)
+        except NautobotException as exc:
+            if not _is_existing_intended_configuration_error(exc):
+                raise
+            await self.patch(
+                f"{_INTENDED_CONFIGURATION_PATH}{update.device_id}/",
+                {key: value for key, value in data.items() if key != "device_id"},
+            )
 
     async def update_render_template_version(self, device_id: str, template_version: str) -> None:
         """Update the template version stored by the Nautobot plugin."""

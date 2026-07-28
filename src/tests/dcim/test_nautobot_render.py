@@ -14,10 +14,18 @@
 # limitations under the License.
 """Tests for the built-in provider's Render contract implementation."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call
 
 import pytest
+from nv_config_manager_dcim import DCIMInvalidDataError
+from nv_config_manager_dcim_nautobot_2x.client import NautobotException
 from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient
+from nv_config_manager_dcim_nautobot_2x.render import (
+    _bgp_instances,
+    _bgp_peer,
+    _overlay_data,
+    _routing_asn_from_instances,
+)
 
 from nv_config_manager.dcim import IntendedConfigurationUpdate, RenderDataRequest
 
@@ -25,6 +33,105 @@ from nv_config_manager.dcim import IntendedConfigurationUpdate, RenderDataReques
 def _client() -> NautobotDCIMClient:
     """Build a provider client without opening an HTTP session."""
     return NautobotDCIMClient("https://nautobot.example", "token")
+
+
+def test_peer_asn_allows_a_single_instance_without_router_id():
+    """A peer router ID is optional when its one BGP instance is unambiguous."""
+    assert (
+        _routing_asn_from_instances(
+            [{"autonomous_system": {"asn": 65001}, "router_id": None}],
+            "EXIT",
+            "device 'example-wan-1'",
+        )
+        == "65001"
+    )
+
+
+def test_bgp_instance_allows_an_unset_router_id():
+    """Native routing instances can exist before a router ID is assigned."""
+    instances = _bgp_instances(
+        [
+            {
+                "status": {"name": "Active"},
+                "autonomous_system": {"asn": 65001},
+                "router_id": None,
+                "endpoints": [],
+            }
+        ],
+        "example-switch",
+    )
+
+    assert instances[0].router_id_interface is None
+    assert instances[0].peers == ()
+
+
+def test_bgp_peer_requires_source_interface_for_nautobot_vrf_association():
+    """The BGP plugin's source IP cannot supply the peer interface VRF."""
+    with pytest.raises(
+        DCIMInvalidDataError,
+        match="BGP peer is missing required source_interface.*VRF association on source_ip",
+    ):
+        _bgp_peer(
+            {
+                "peer": {
+                    "source_ip": {"address": "192.0.2.1/31"},
+                    "source_interface": None,
+                }
+            },
+            "example-switch",
+        )
+
+
+def test_overlay_inventory_is_scoped_to_device_vlans_and_vrfs():
+    """Global Nautobot VXLAN results retain only records used by one device."""
+    payload = {
+        "overlay_assignments": [],
+        "vxlans": [
+            {
+                "id": "vxlan-201",
+                "vnid": 2001,
+                "vni_type": "L2",
+                "overlay": {"id": "overlay-201", "name": "Vlan201"},
+                "vlan": {"id": "vlan-201", "vid": 201, "name": "Vlan201"},
+            },
+            {
+                "id": "vxlan-301",
+                "vnid": 3001,
+                "vni_type": "L2",
+                "overlay": {"id": "overlay-301", "name": "Vlan301"},
+                "vlan": {"id": "vlan-301", "vid": 301, "name": "Vlan301"},
+            },
+            {
+                "id": "vxlan-oob",
+                "vnid": 2000,
+                "vni_type": "L3",
+                "overlay": {"id": "overlay-oob", "name": "OOB-L3"},
+                "vrf": {"id": "vrf-oob", "name": "OOB"},
+            },
+            {
+                "id": "vxlan-storage",
+                "vnid": 3000,
+                "vni_type": "L3",
+                "overlay": {"id": "overlay-storage", "name": "STORAGE-L3"},
+                "vrf": {"id": "vrf-storage", "name": "STORAGE"},
+            },
+        ],
+    }
+    device = {
+        "vrfs": [{"id": "vrf-oob", "name": "OOB"}],
+        "interfaces": [
+            {
+                "untagged_vlan": {"id": "vlan-201", "vid": 201, "name": "Vlan201"},
+                "tagged_vlans": [],
+                "vrf": {"id": "vrf-oob", "name": "OOB"},
+            }
+        ],
+    }
+
+    overlays = _overlay_data(payload, device, "example-switch")
+
+    assert [entry.vlan.vid for entry in overlays.l2_vnis] == [201]
+    assert [entry.vrf.name for entry in overlays.l3_vnis] == ["OOB"]
 
 
 @pytest.mark.asyncio
@@ -43,6 +150,32 @@ async def test_get_render_data_loads_provider_owned_queries():
                         "device_type": {"model": "SN5600"},
                         "tags": [],
                         "interfaces": [],
+                        "bgp_routing_instances": [
+                            {
+                                "status": {"name": "Active"},
+                                "autonomous_system": {"asn": 65000},
+                                "router_id": {"interfaces": [{"name": "lo", "vrf": None}]},
+                                "endpoints": [
+                                    {
+                                        "source_interface": {"vrf": {"name": "EXIT"}},
+                                        "peer": {
+                                            "source_interface": {
+                                                "name": "swp1",
+                                                "ip_addresses": [],
+                                            },
+                                            "routing_instance": {
+                                                "device": {
+                                                    "name": "spine-1",
+                                                    "role": {"name": "Spine"},
+                                                },
+                                                "status": {"name": "Active"},
+                                                "autonomous_system": {"asn": 65001},
+                                            },
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
                         "config_context": {},
                         "location": {
                             "name": "Rack 1",
@@ -62,7 +195,6 @@ async def test_get_render_data_loads_provider_owned_queries():
                         {
                             "name": "Site A",
                             "location_type": {"name": "Site"},
-                            "config_contexts": [],
                         }
                     ]
                 }
@@ -74,9 +206,55 @@ async def test_get_render_data_loads_provider_owned_queries():
 
     assert render_data.device.identity.location.name == "Rack 1"
     assert render_data.location.location.name == "Site A"
+    assert render_data.device.routing.bgp_instances[0].vrfs == ("EXIT", "default")
     first_call, second_call = client.graphql_query.await_args_list
     assert first_call.args[1] == {"id": "device-id", "id_str": "device-id"}
     assert second_call.args[1] == {"location": "Site A"}
+
+
+@pytest.mark.asyncio
+async def test_get_render_data_rejects_missing_required_interface_type():
+    """Provider errors name the device, object, and missing typed field."""
+    client = _client()
+    client.graphql_query = AsyncMock(
+        side_effect=[
+            {
+                "data": {
+                    "device": {
+                        "id": "device-id",
+                        "name": "leaf-1",
+                        "platform": {"name": "Cumulus Linux"},
+                        "role": {"name": "Leaf"},
+                        "device_type": {"model": "SN5600"},
+                        "tags": [],
+                        "interfaces": [{"name": "swp1", "type": None, "enabled": True}],
+                        "config_context": {},
+                        "location": {
+                            "name": "Site A",
+                            "location_type": {"name": "Site"},
+                            "parent": None,
+                        },
+                    }
+                }
+            },
+            {
+                "data": {
+                    "locations": [
+                        {
+                            "name": "Site A",
+                            "location_type": {"name": "Site"},
+                        }
+                    ]
+                }
+            },
+        ]
+    )
+
+    with pytest.raises(
+        DCIMInvalidDataError,
+        match="Nautobot device 'leaf-1' interface 'swp1' is missing required field 'type'",
+    ):
+        await client.get_render_data(RenderDataRequest(device_id="device-id"))
 
 
 @pytest.mark.asyncio
@@ -146,8 +324,49 @@ async def test_intended_configuration_writes_are_provider_owned():
         },
     )
     client.patch.assert_awaited_once_with(
-        "plugins/nv-config-manager/intendedconfig/device-id/",
-        {"template_version": "next-version"},
+        "plugins/nv-config-manager/intendedconfig/device-id/", {"template_version": "next-version"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_intended_configuration_updates_duplicate_record():
+    """The provider handles Nautobot versions whose create endpoint is not an upsert."""
+    client = _client()
+    client.post = AsyncMock(
+        side_effect=NautobotException(
+            "Nautobot API error: POST plugins/nv-config-manager/intendedconfig/ returned 400: "
+            "{'device_id': ['Intended Config Settings with this Device id already exists.']}"
+        )
+    )
+    client.patch = AsyncMock()
+    update = IntendedConfigurationUpdate(
+        device_id="device-id",
+        config_store_instance="https://config-store/",
+        path="startup.yaml",
+        commit_id="commit-id",
+        updated="2026-07-20T00:00:00+00:00",
+        updated_by="user",
+        commit_message="render",
+        template_version="version",
+    )
+
+    await client.upsert_intended_configuration(update)
+
+    client.patch.assert_has_awaits(
+        [
+            call(
+                "plugins/nv-config-manager/intendedconfig/device-id/",
+                {
+                    "config_store_instance": "https://config-store/",
+                    "path": "startup.yaml",
+                    "commit_id": "commit-id",
+                    "updated": "2026-07-20T00:00:00+00:00",
+                    "updated_by": "user",
+                    "commit_message": "render",
+                    "template_version": "version",
+                },
+            )
+        ]
     )
 
 

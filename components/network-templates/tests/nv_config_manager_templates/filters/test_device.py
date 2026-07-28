@@ -14,14 +14,30 @@
 # limitations under the License.
 """Device filter tests."""
 
-from copy import deepcopy
-
 import pytest
 from nv_config_manager_dcim import (
     DeviceRenderData,
     LocationRenderData,
+    RenderAccessData,
+    RenderBGPInstance,
+    RenderCredentialReference,
     RenderDeviceIdentity,
+    RenderEndpointSet,
+    RenderFirmwareData,
+    RenderInterface,
+    RenderIsisInterface,
+    RenderL3Vni,
     RenderLocation,
+    RenderLocationAddressSpace,
+    RenderLocationVlan,
+    RenderNamedEndpointSet,
+    RenderNetworkData,
+    RenderOverlayData,
+    RenderPrefixSet,
+    RenderRoutingData,
+    RenderServicesData,
+    RenderVlan,
+    RenderVrf,
 )
 
 from nv_config_manager_templates.dataclasses.interface import Interface
@@ -84,9 +100,13 @@ from nv_config_manager_templates.filters.device import (
 def _render_device(
     name: str = "test-device",
     *,
-    interfaces: tuple[dict, ...] = (),
-    inventory: dict | None = None,
-    intent: dict | None = None,
+    interfaces: tuple[RenderInterface, ...] = (),
+    network: RenderNetworkData | None = None,
+    routing: RenderRoutingData | None = None,
+    overlays: RenderOverlayData | None = None,
+    firmware: RenderFirmwareData | None = None,
+    services: RenderServicesData | None = None,
+    access: RenderAccessData | None = None,
 ) -> DeviceRenderData:
     """Build compact provider-neutral device data for focused filter tests."""
     return DeviceRenderData(
@@ -99,8 +119,12 @@ def _render_device(
             location=RenderLocation(name="TEST-SITE", kind="Site"),
         ),
         interfaces=interfaces,
-        inventory=inventory or {},
-        intent=intent or {},
+        network=network or RenderNetworkData(),
+        routing=routing or RenderRoutingData(),
+        overlays=overlays or RenderOverlayData(),
+        firmware=firmware or RenderFirmwareData(),
+        services=services or RenderServicesData(),
+        access=access or RenderAccessData(),
     )
 
 
@@ -135,9 +159,13 @@ def test_tags(public_leaf_data: dict) -> None:
 
 def test_interface_has_tag(public_leaf_data: dict) -> None:
     """Interface tag matching is case-insensitive."""
-    data = deepcopy(public_leaf_data)
-    data.interfaces[0]["tags"] = [{"name": "Cable-Validation"}]
-    intf = interface_by_name(data, data.interfaces[0]["name"])
+    tagged_interface = public_leaf_data.interfaces[0].model_copy(
+        update={"tags": ("Cable-Validation",)}
+    )
+    data = public_leaf_data.model_copy(
+        update={"interfaces": (tagged_interface, *public_leaf_data.interfaces[1:])}
+    )
+    intf = interface_by_name(data, tagged_interface.name)
 
     assert interface_has_tag(intf, "cable-validation")
     assert interface_has_tag(intf, "CABLE-VALIDATION")
@@ -146,10 +174,11 @@ def test_interface_has_tag(public_leaf_data: dict) -> None:
 
 def test_desired_firmware_missing(public_leaf_data: dict) -> None:
     """Missing intended firmware reports a clear filter error."""
-    no_desired_data = deepcopy(public_leaf_data)
-    del no_desired_data.intent["intended-firmware"]
+    no_desired_data = public_leaf_data.model_copy(
+        update={"firmware": public_leaf_data.firmware.model_copy(update={"desired_version": None})}
+    )
 
-    with pytest.raises(FilterException, match="No intended firmware image set for device."):
+    with pytest.raises(FilterException, match="device.firmware.desired_version"):
         desired_firmware(no_desired_data)
 
 
@@ -175,12 +204,11 @@ def test_connected_interface_asn_uses_neighbor_routing_instance(
 ) -> None:
     """Connected peer ASN is sourced from the peer BGP routing instance."""
     interface_entry = next(
-        interface for interface in public_leaf_data.interfaces if interface["name"] == "swp53s0"
+        interface for interface in public_leaf_data.interfaces if interface.name == "swp53s0"
     )
-    peer_device = interface_entry["connected_interface"]["device"]
+    peer_device = interface_entry.connected_interface.device
 
-    assert "intent" not in peer_device
-    assert peer_device["bgp_routing_instances"][0]["autonomous_system"]["asn"] == 4230000001
+    assert peer_device.routing_asn == "4230000001"
 
     intf = interface_by_name(public_leaf_data, "swp53s0")
 
@@ -192,21 +220,28 @@ def test_connected_interface_asn_uses_matching_neighbor_routing_instance(
     public_leaf_data: dict,
 ) -> None:
     """Connected peer ASN matches the peer routing instance for the connected VRF."""
-    data = deepcopy(public_leaf_data)
     interface_entry = next(
-        interface for interface in data.interfaces if interface["name"] == "swp53s0"
+        interface for interface in public_leaf_data.interfaces if interface.name == "swp53s0"
     )
-    interface_entry["connected_interface"]["vrf"] = {"name": "TEST-SITE_BLUE"}
-    interface_entry["connected_interface"]["device"]["bgp_routing_instances"] = [
-        {
-            "autonomous_system": {"asn": 65000},
-            "router_id": {"interfaces": [{"vrf": None}]},
-        },
-        {
-            "autonomous_system": {"asn": 65001},
-            "router_id": {"interfaces": [{"vrf": {"name": "TEST-SITE_BLUE"}}]},
-        },
-    ]
+    peer = interface_entry.connected_interface
+    updated_interface = interface_entry.model_copy(
+        update={
+            "connected_interface": peer.model_copy(
+                update={
+                    "vrf": "TEST-SITE_BLUE",
+                    "device": peer.device.model_copy(update={"routing_asn": "65001"}),
+                }
+            )
+        }
+    )
+    data = public_leaf_data.model_copy(
+        update={
+            "interfaces": tuple(
+                updated_interface if interface.name == updated_interface.name else interface
+                for interface in public_leaf_data.interfaces
+            )
+        }
+    )
 
     intf = interface_by_name(data, "swp53s0")
 
@@ -272,9 +307,31 @@ def test_bgp_routing_instance(public_leaf_data: dict) -> None:
 
     with pytest.raises(
         FilterException,
-        match="Routing instance for VRF dummy not found on device a08-u32-p01-cleaf-01.",
+        match="Device a08-u32-p01-cleaf-01 has no BGP routing instance for VRF 'dummy'",
     ):
         bgp_routing_instance(public_leaf_data, "dummy")
+
+
+def test_bgp_routing_instance_allows_a_vrf_without_peers() -> None:
+    """A valid non-default instance remains useful before peers are modeled."""
+    data = _render_device(
+        routing=RenderRoutingData(
+            bgp_instances=(
+                RenderBGPInstance(
+                    status="Active",
+                    asn="65001",
+                    router_id_interface="lo",
+                    vrfs=("BLUE",),
+                ),
+            )
+        )
+    )
+
+    instance = bgp_routing_instance(data, "BLUE")
+
+    assert instance.asn == 65001
+    assert instance.vrf == "BLUE"
+    assert instance.peers == []
 
 
 def test_common_context_servers(public_leaf_data: dict) -> None:
@@ -289,12 +346,26 @@ def test_common_context_servers(public_leaf_data: dict) -> None:
 
 
 def test_gni_context_helpers(public_leaf_data: dict) -> None:
-    """Generic context helpers expose common site config values."""
-    data = deepcopy(public_leaf_data)
-    data.intent["dhcp"] = {"nv-config-manager": {"ipv4": ["192.0.2.20"]}}
-    data.intent["management_prefixes"] = {"ipv4": ["192.0.2.0/24"]}
-    data.intent["provisioning_servers"] = {"ipv4": ["192.0.2.10"]}
-    data.intent["isis"] = {"interfaces": {"swp1": 30}}
+    """Typed service and routing data is available through the stable filters."""
+    data = public_leaf_data.model_copy(
+        update={
+            "services": public_leaf_data.services.model_copy(
+                update={
+                    "dhcp": (
+                        RenderNamedEndpointSet(
+                            name="nv-config-manager",
+                            endpoints=RenderEndpointSet(ipv4=("192.0.2.20",)),
+                        ),
+                    ),
+                    "management_prefixes": RenderPrefixSet(ipv4=("192.0.2.0/24",)),
+                    "provisioning": RenderEndpointSet(ipv4=("192.0.2.10",)),
+                }
+            ),
+            "routing": public_leaf_data.routing.model_copy(
+                update={"isis_interfaces": (RenderIsisInterface(interface_name="swp1", metric=30),)}
+            ),
+        }
+    )
 
     assert dhcp_servers(data, "nv-config-manager") == ["192.0.2.20"]
     assert dhcp_servers(data, "missing") == []
@@ -308,97 +379,63 @@ def test_spx_subnets() -> None:
     """Spectrum-X subnet helper returns /31 subnet and rail prefix pairs."""
     data = _render_device(
         interfaces=(
-            {
-                "name": "swp1",
-                "role": {"name": "Downlink"},
-                "ip_addresses": [
-                    {
-                        "ip_version": 4,
-                        "parent": {
-                            "prefix": "10.0.0.0/31",
-                            "parent": {
-                                "prefix": "10.0.0.0/26",
-                                "parent": {"prefix": "10.0.0.0/16"},
-                            },
-                        },
-                    }
-                ],
-            },
+            RenderInterface.model_validate(
+                {
+                    "name": "swp1",
+                    "type": "A_100GBASE_CR4",
+                    "enabled": True,
+                    "role": "Downlink",
+                    "addresses": [
+                        {
+                            "address": "10.0.0.0/31",
+                            "host": "10.0.0.0",
+                            "version": 4,
+                            "parent_prefixes": [
+                                "10.0.0.0/31",
+                                "10.0.0.0/26",
+                                "10.0.0.0/16",
+                            ],
+                        }
+                    ],
+                }
+            ),
         )
     )
 
     assert spx_subnets(data) == [{"subnet": "10.0.0.0/31", "rail_prefix": "10.0.0.0/16"}]
 
-    data.interfaces[0]["ip_addresses"][0]["parent"]["parent"]["parent"] = {"prefix": "10.0.0.0/18"}
+    invalid_address = (
+        data.interfaces[0]
+        .addresses[0]
+        .model_copy(update={"parent_prefixes": ("10.0.0.0/31", "10.0.0.0/26", "10.0.0.0/18")})
+    )
+    invalid_interface = data.interfaces[0].model_copy(update={"addresses": (invalid_address,)})
+    data = data.model_copy(update={"interfaces": (invalid_interface,)})
     with pytest.raises(FilterException, match="Invalid rail prefix length /18"):
         spx_subnets(data)
 
 
 def test_l2vni_vrfs() -> None:
-    """L2VNI helper resolves route targets from direct and assignment payload shapes."""
+    """L2VNI helper consumes provider-neutral overlay assignments."""
     data = _render_device(
-        inventory={
-            "vxlans": [
-                {
-                    "id": "vxlan-without-overlay",
-                    "vni_type": "L2",
-                    "vnid": 1000,
-                    "overlay": None,
-                    "export_targets": [],
-                    "import_targets": [],
-                },
-                {
-                    "id": "vxlan-1",
-                    "vni_type": "L2",
-                    "vnid": 1001,
-                    "overlay": {"name": "Vlan101"},
-                    "export_targets": [],
-                    "import_targets": [],
-                },
-                {
-                    "id": "vxlan-2",
-                    "vni_type": "L2",
-                    "vnid": 1002,
-                    "overlay": None,
-                    "export_targets": [],
-                    "import_targets": [],
-                },
-            ],
-            "overlay_assignments": [
-                {
-                    "assigned_object_type": {"app_label": "dcim", "model": "device"},
-                    "assigned_object_id": "vxlan-1",
-                    "overlay": {
+        overlays=RenderOverlayData.model_validate(
+            {
+                "l2_vni_vrfs": [
+                    {
                         "name": "Vlan101",
-                        "assignments": [
-                            {
-                                "assigned_object_id": "vxlan-1",
-                                "export_targets": [{"name": "target:1"}],
-                                "import_targets": [{"name": "target:2"}],
-                            }
-                        ],
+                        "vni": 1001,
+                        "export_targets": [{"name": "target:1"}],
+                        "import_targets": [{"name": "target:2"}],
                     },
-                },
-                {
-                    "assigned_object_type": {"app_label": "dcim", "model": "device"},
-                    "assigned_object_id": "device-1",
-                    "overlay": {
+                    {
                         "name": "Vlan102",
-                        "assignments": [
-                            {
-                                "assigned_object_id": "vxlan-2",
-                                "assigned_object_type": {
-                                    "app_label": "nautobot_app_overlays",
-                                    "model": "vxlan",
-                                },
-                                "export_targets": [{"name": "target:3"}],
-                                "import_targets": [{"name": "target:4"}],
-                            }
-                        ],
+                        "vni": 1002,
+                        "export_targets": [{"name": "target:3"}],
+                        "import_targets": [{"name": "target:4"}],
                     },
-                },
-            ],
-        }
+                ]
+            }
+        )
     )
 
     assert l2vni_vrfs(data) == [
@@ -419,12 +456,21 @@ def test_l2vni_vrfs() -> None:
 
 def test_firmware_cache_fallback_explicit() -> None:
     """firmware_cache falls back to ZTP servers unless explicitly configured."""
-    mock_data = _render_device(intent={"ztp": {"ipv4": ["192.168.1.100", "192.168.1.101"]}})
+    mock_data = _render_device(
+        services=RenderServicesData(ztp=RenderEndpointSet(ipv4=("192.168.1.100", "192.168.1.101")))
+    )
 
     assert firmware_cache(mock_data) == ["192.168.1.100", "192.168.1.101"]
 
-    mock_data_with_cache = deepcopy(mock_data)
-    mock_data_with_cache.intent["firmware_cache"] = {"ipv4": ["192.168.2.100", "192.168.2.101"]}
+    mock_data_with_cache = mock_data.model_copy(
+        update={
+            "services": mock_data.services.model_copy(
+                update={
+                    "firmware_cache": RenderEndpointSet(ipv4=("192.168.2.100", "192.168.2.101"))
+                }
+            )
+        }
+    )
 
     assert firmware_cache(mock_data_with_cache) == ["192.168.2.100", "192.168.2.101"]
 
@@ -438,48 +484,64 @@ def test_breakout_count(public_leaf_data: dict, public_border_leaf_data: dict) -
 def test_firmware_bundle_filters() -> None:
     """Firmware bundle helper filters resolve bundle defaults, overrides, and components."""
     mock_data_with_bundle = _render_device(
-        intent={
-            "firmware_bundle_version": "1.2.2",
-            "firmware_bundles": {
-                "1.2.0": {
-                    "nv_os": {
-                        "version": "25.02.2342",
-                        "image_file": "nvos-amd64-25.02.2342.bin",
+        firmware=RenderFirmwareData.model_validate(
+            {
+                "selected_bundle_version": "1.2.2",
+                "bundles": [
+                    {
+                        "version": "1.2.0",
+                        "operating_system": {
+                            "version": "25.02.2342",
+                            "image_file": "nvos-amd64-25.02.2342.bin",
+                        },
+                        "components": [
+                            {
+                                "name": "bmc",
+                                "artifact": {
+                                    "image_file": "old_bmc.fwpkg",
+                                    "source_path": "nv-os/25.02.2342/old_bmc.fwpkg",
+                                },
+                            }
+                        ],
                     },
-                    "firmware": {
-                        "bmc": {
-                            "file": "old_bmc.fwpkg",
-                            "s3_path": "nv-os/25.02.2342/old_bmc.fwpkg",
+                    {
+                        "version": "1.2.2",
+                        "operating_system": {
+                            "version": "25.02.2344",
+                            "image_file": "nvos-amd64-25.02.2344.bin",
+                        },
+                        "components": [
+                            {
+                                "name": "bmc",
+                                "artifact": {
+                                    "image_file": "new_bmc.fwpkg",
+                                    "source_path": "ytl-bundles/1.2.2/new_bmc.fwpkg",
+                                },
+                            },
+                            {
+                                "name": "cpld",
+                                "artifact": {
+                                    "image_file": "new_cpld.bin",
+                                    "source_path": "ytl-bundles/1.2.2/new_cpld.bin",
+                                },
+                            },
+                        ],
+                    },
+                ],
+                "overrides": {
+                    "skip_components": ["cpld"],
+                    "custom_components": [
+                        {
+                            "name": "bios",
+                            "artifact": {
+                                "image_file": "custom_bios.fwpkg",
+                                "source_path": "custom/custom_bios.fwpkg",
+                            },
                         }
-                    },
+                    ],
                 },
-                "1.2.2": {
-                    "nv_os": {
-                        "version": "25.02.2344",
-                        "image_file": "nvos-amd64-25.02.2344.bin",
-                    },
-                    "firmware": {
-                        "bmc": {
-                            "file": "new_bmc.fwpkg",
-                            "s3_path": "ytl-bundles/1.2.2/new_bmc.fwpkg",
-                        },
-                        "cpld": {
-                            "file": "new_cpld.bin",
-                            "s3_path": "ytl-bundles/1.2.2/new_cpld.bin",
-                        },
-                    },
-                },
-            },
-            "firmware_overrides": {
-                "skip_components": ["cpld"],
-                "custom_components": {
-                    "bios": {
-                        "file": "custom_bios.fwpkg",
-                        "s3_path": "custom/custom_bios.fwpkg",
-                    }
-                },
-            },
-        }
+            }
+        )
     )
     mock_data_no_bundle = _render_device()
 
@@ -489,7 +551,7 @@ def test_firmware_bundle_filters() -> None:
     assert has_firmware_bundle(mock_data_no_bundle) is False
     assert "1.2.2" in firmware_bundles(mock_data_with_bundle)
 
-    with pytest.raises(FilterException, match="No firmware_bundles defined"):
+    with pytest.raises(FilterException, match="device.firmware.bundles"):
         firmware_bundles(mock_data_no_bundle)
 
     assert firmware_bundle(mock_data_with_bundle)["nv_os"]["version"] == "25.02.2344"
@@ -518,16 +580,15 @@ def test_helper_addresses_by_vlan(public_border_leaf_data: dict) -> None:
     """Helper addresses are grouped by VLANs present on the device."""
     location_data_with_vlans = LocationRenderData(
         location=RenderLocation(name="TEST-SITE", kind="Site"),
-        inventory={
-            "vlans": [
-                {
-                    "vid": 101,
-                    "rel_vlan_to_helper_address": [{"host": "192.0.2.8"}, {"host": "192.0.2.9"}],
-                },
-                {"vid": 150, "rel_vlan_to_helper_address": [{"host": "192.0.2.10"}]},
-                {"vid": 999, "rel_vlan_to_helper_address": [{"host": "192.0.2.11"}]},
-            ]
-        },
+        address_space=RenderLocationAddressSpace(
+            vlans=(
+                RenderLocationVlan(
+                    vlan=RenderVlan(vid=101), helper_addresses=("192.0.2.8", "192.0.2.9")
+                ),
+                RenderLocationVlan(vlan=RenderVlan(vid=150), helper_addresses=("192.0.2.10",)),
+                RenderLocationVlan(vlan=RenderVlan(vid=999), helper_addresses=("192.0.2.11",)),
+            )
+        ),
     )
 
     assert helper_addresses_by_vlan(public_border_leaf_data, location_data_with_vlans) == {
@@ -547,15 +608,14 @@ def test_helper_addresses_by_vrf(public_border_leaf_data: dict) -> None:
     """Helper addresses are grouped by attached VRF."""
     location_data_with_vlans = LocationRenderData(
         location=RenderLocation(name="TEST-SITE", kind="Site"),
-        inventory={
-            "vlans": [
-                {
-                    "vid": 101,
-                    "rel_vlan_to_helper_address": [{"host": "192.0.2.8"}, {"host": "192.0.2.9"}],
-                },
-                {"vid": 150, "rel_vlan_to_helper_address": [{"host": "192.0.2.10"}]},
-            ]
-        },
+        address_space=RenderLocationAddressSpace(
+            vlans=(
+                RenderLocationVlan(
+                    vlan=RenderVlan(vid=101), helper_addresses=("192.0.2.8", "192.0.2.9")
+                ),
+                RenderLocationVlan(vlan=RenderVlan(vid=150), helper_addresses=("192.0.2.10",)),
+            )
+        ),
     )
 
     assert helper_addresses_by_vrf(public_border_leaf_data, location_data_with_vlans) == {
@@ -573,20 +633,22 @@ def test_helper_addresses_by_vrf(public_border_leaf_data: dict) -> None:
 def test_users() -> None:
     """Users are converted from password mappings into sorted password keys."""
     mock_data = _render_device(
-        intent={
-            "password_mappings": {
-                "admin": {
-                    "password": "admin_password",
-                    "rotation": "r2",
-                    "role": "system-admin",
-                },
-                "cumulus": {
-                    "password": "root_password",
-                    "rotation": "r1",
-                    "role": "system-admin",
-                },
-            }
-        }
+        access=RenderAccessData(
+            credentials=(
+                RenderCredentialReference(
+                    username="admin",
+                    secret_name="admin_password",
+                    rotation="r2",
+                    role="system-admin",
+                ),
+                RenderCredentialReference(
+                    username="cumulus",
+                    secret_name="root_password",
+                    rotation="r1",
+                    role="system-admin",
+                ),
+            )
+        )
     )
 
     assert users(mock_data) == [
@@ -596,29 +658,9 @@ def test_users() -> None:
 
 
 def test_users_missing_required_key() -> None:
-    """Missing password mapping keys raise clear filter errors."""
-    mock_data = _render_device(
-        name="my-device",
-        intent={
-            "password_mappings": {
-                "admin": {"password": "secret", "rotation": "r1", "role": "admin"},
-                "broken": {"rotation": "r1"},
-            }
-        },
-    )
-
-    with pytest.raises(
-        FilterException,
-        match="password_mappings: user 'broken' is missing required key 'password'",
-    ):
-        users(mock_data)
-
-    mock_data.intent["password_mappings"]["broken"] = {"password": "x"}
-    with pytest.raises(
-        FilterException,
-        match="password_mappings: user 'broken' is missing required key 'rotation'",
-    ):
-        users(mock_data)
+    """Missing credential data raises an actionable template error."""
+    with pytest.raises(FilterException, match="device.access.credentials"):
+        users(_render_device(name="my-device"))
 
 
 def test_l3vni_mappings(public_tor_data: dict) -> None:
@@ -633,9 +675,8 @@ def test_l3vni_mappings(public_tor_data: dict) -> None:
     assert (
         l3vni_mappings(
             _render_device(
-                inventory={
-                    "vxlans": [{"vni_type": "l3", "l3_vlan_id": None, "vrf": {"name": "OOB"}}]
-                }
+                network=RenderNetworkData(vrfs=(RenderVrf(name="OOB"),)),
+                overlays=RenderOverlayData(l3_vnis=(RenderL3Vni(vrf=RenderVrf(name="OOB")),)),
             ),
             "OOB",
         )
@@ -651,16 +692,6 @@ def test_vni_mappings(public_tor_data: dict) -> None:
 
     with pytest.raises(FilterException, match="VLAN 999 not found"):
         vni_mappings(public_tor_data, "999")
-
-
-def test_vni_mapping_filters_accept_nautobot_choice_labels(public_tor_data: dict) -> None:
-    """Overlay VNI filters tolerate Nautobot GraphQL choice labels."""
-    data = deepcopy(public_tor_data)
-    for vxlan in data.inventory["vxlans"]:
-        vxlan["vni_type"] = vxlan["vni_type"].upper()
-
-    assert l3vni_mappings(data, "OOB") == "4002"
-    assert vni_mappings(data, "101") == "1001"
 
 
 def test_mapping_filters_keep_device_name_safe_when_data_is_missing() -> None:
@@ -684,7 +715,7 @@ def test_global_fabric_mac(public_tor_data: dict) -> None:
         == ""
     )
 
-    with pytest.raises(FilterException, match="No fabric-mac found"):
+    with pytest.raises(FilterException, match="device.routing.evpn.fabric_mac"):
         global_fabric_mac(_render_device())
 
 
@@ -692,10 +723,16 @@ def test_evpn_esi_mac(public_tor_data: dict) -> None:
     """ESI MAC math carries across octets and refuses overflow."""
     assert evpn_esi_mac(public_tor_data, 1) == "44:38:39:ff:69:01"
 
-    data = _render_device(name="leaf01", intent={"evpn_esi_base_mac": "00:00:00:00:00:ff"})
+    data = _render_device(
+        name="leaf01",
+        routing=RenderRoutingData(evpn={"esi_base_mac": "00:00:00:00:00:ff"}),
+    )
     assert evpn_esi_mac(data, 1) == "00:00:00:00:01:00"
 
-    overflow_data = _render_device(name="leaf01", intent={"evpn_esi_base_mac": "ff:ff:ff:ff:ff:ff"})
+    overflow_data = _render_device(
+        name="leaf01",
+        routing=RenderRoutingData(evpn={"esi_base_mac": "ff:ff:ff:ff:ff:ff"}),
+    )
     with pytest.raises(FilterException, match="overflow"):
         evpn_esi_mac(overflow_data, 1)
 

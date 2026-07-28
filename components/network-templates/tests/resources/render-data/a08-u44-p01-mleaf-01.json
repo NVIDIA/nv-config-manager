@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "device": {
     "identity": {
       "id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
@@ -24,163 +24,128 @@
     },
     "interfaces": [
       {
-        "role": {
-          "name": "Management-Port-Uplink-1"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": "2C:5E:AB:12:5A:38",
-        "enabled": true,
-        "tags": [],
         "name": "eth0",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Management-Port-Uplink-1",
+        "mac_address": "2C:5E:AB:12:5A:38",
         "vrf": {
           "name": "OOB",
-          "rd": "*:2000",
-          "export_targets": [],
-          "import_targets": []
+          "route_distinguisher": "*:2000",
+          "import_targets": [],
+          "export_targets": []
         },
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": null,
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "192.0.2.139",
-            "mask_length": 23,
             "address": "192.0.2.139/23",
-            "ip_version": 4,
+            "host": "192.0.2.139",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "192.0.2.0/23",
-              "parent": {
-                "prefix": "10.78.144.0/20",
-                "parent": {
-                  "prefix": "0.0.0.0/0"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "192.0.2.0/23",
+              "10.78.144.0/20",
+              "0.0.0.0/0"
+            ]
           }
         ],
         "connected_interface": {
-          "ip_addresses": [],
+          "name": "swp47",
+          "vrf": null,
+          "addresses": [],
           "device": {
+            "id": null,
             "name": "b08-u44-p01-mleaf-02",
+            "role": "Mgmt-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Mgmt-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000028
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "swp47"
+            "routing_asn": "4230000028"
+          }
         }
       },
       {
-        "role": null,
-        "type": "VIRTUAL",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "lo-oob",
+        "type": "VIRTUAL",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": null,
+        "mac_address": null,
         "vrf": {
           "name": "OOB",
-          "rd": "*:2000",
-          "export_targets": [],
-          "import_targets": []
+          "route_distinguisher": "*:2000",
+          "import_targets": [],
+          "export_targets": []
         },
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": null,
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "10.78.154.9",
-            "mask_length": 32,
             "address": "10.78.154.9/32",
-            "ip_version": 4,
+            "host": "10.78.154.9",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "10.78.154.9/32",
-              "parent": {
-                "prefix": "10.78.154.0/27",
-                "parent": {
-                  "prefix": "10.78.154.0/25"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "10.78.154.9/32",
+              "10.78.154.0/27",
+              "10.78.154.0/25"
+            ]
           }
         ],
         "connected_interface": null
       },
       {
-        "role": {
-          "name": "Switch-Loopback"
-        },
-        "type": "VIRTUAL",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "lo",
+        "type": "VIRTUAL",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Switch-Loopback",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": null,
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "10.254.254.13",
-            "mask_length": 32,
             "address": "10.254.254.13/32",
-            "ip_version": 4,
+            "host": "10.254.254.13",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "10.254.254.13/32",
-              "parent": {
-                "prefix": "10.254.254.0/26",
-                "parent": {
-                  "prefix": "10.254.254.0/23"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "10.254.254.13/32",
+              "10.254.254.0/26",
+              "10.254.254.0/23"
+            ]
           }
         ],
         "connected_interface": null
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp1",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -188,42 +153,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.12",
-              "mask_length": 23,
               "address": "192.0.2.12/23",
-              "ip_version": 4
+              "host": "192.0.2.12",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a02-u28-p01-rl00-ibspine-01",
+            "role": "Compute-Spine",
             "tenant": null,
-            "role": {
-              "name": "Compute-Spine"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp2",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -231,42 +194,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.13",
-              "mask_length": 23,
               "address": "192.0.2.13/23",
-              "ip_version": 4
+              "host": "192.0.2.13",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a02-u34-p01-rl00-ibspine-02",
+            "role": "Compute-Spine",
             "tenant": null,
-            "role": {
-              "name": "Compute-Spine"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp3",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -274,42 +235,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.14",
-              "mask_length": 23,
               "address": "192.0.2.14/23",
-              "ip_version": 4
+              "host": "192.0.2.14",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a03-u16-p01-rl01-ibleaf-01",
+            "role": "Compute-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Compute-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp4",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -317,42 +276,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.15",
-              "mask_length": 23,
               "address": "192.0.2.15/23",
-              "ip_version": 4
+              "host": "192.0.2.15",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a03-u28-p01-rl03-ibleaf-01",
+            "role": "Compute-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Compute-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp5",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -360,42 +317,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.16",
-              "mask_length": 23,
               "address": "192.0.2.16/23",
-              "ip_version": 4
+              "host": "192.0.2.16",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a03-u22-p01-rl01-ibleaf-02",
+            "role": "Compute-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Compute-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp6",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -403,42 +358,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.17",
-              "mask_length": 23,
               "address": "192.0.2.17/23",
-              "ip_version": 4
+              "host": "192.0.2.17",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a03-u34-p01-rl03-ibleaf-02",
+            "role": "Compute-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Compute-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp7",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -446,55 +399,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.18",
-              "mask_length": 23,
               "address": "192.0.2.18/23",
-              "ip_version": 4
+              "host": "192.0.2.18",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u32-p01-cleaf-01",
+            "role": "In-Band-Leaf",
             "tenant": null,
-            "role": {
-              "name": "In-Band-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000012
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000012"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp8",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -502,55 +440,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.19",
-              "mask_length": 23,
               "address": "192.0.2.19/23",
-              "ip_version": 4
+              "host": "192.0.2.19",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u36-p01-cleaf-03",
+            "role": "In-Band-Leaf",
             "tenant": null,
-            "role": {
-              "name": "In-Band-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000013
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000013"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp9",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -558,57 +481,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.20",
-              "mask_length": 23,
               "address": "192.0.2.20/23",
-              "ip_version": 4
+              "host": "192.0.2.20",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a04-u44-p01-tor-01",
-            "tenant": {
-              "name": "Example Tenant"
-            },
-            "role": {
-              "name": "OOB-Leaf"
-            },
+            "role": "OOB-Leaf",
+            "tenant": "Example Tenant",
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000004
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000004"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp10",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -616,55 +522,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.21",
-              "mask_length": 23,
               "address": "192.0.2.21/23",
-              "ip_version": 4
+              "host": "192.0.2.21",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a04-u45-p01-tor-02",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000005
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000005"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp11",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -672,55 +563,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.22",
-              "mask_length": 23,
               "address": "192.0.2.22/23",
-              "ip_version": 4
+              "host": "192.0.2.22",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a05-u44-p01-tor-01",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000006
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000006"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp12",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -728,55 +604,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.23",
-              "mask_length": 23,
               "address": "192.0.2.23/23",
-              "ip_version": 4
+              "host": "192.0.2.23",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a05-u45-p01-tor-02",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000007
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000007"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp13",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -784,55 +645,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.24",
-              "mask_length": 23,
               "address": "192.0.2.24/23",
-              "ip_version": 4
+              "host": "192.0.2.24",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a06-u44-p01-tor-01",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000008
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000008"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp14",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -840,55 +686,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.25",
-              "mask_length": 23,
               "address": "192.0.2.25/23",
-              "ip_version": 4
+              "host": "192.0.2.25",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a06-u45-p01-tor-02",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000009
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000009"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp15",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -896,55 +727,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.26",
-              "mask_length": 23,
               "address": "192.0.2.26/23",
-              "ip_version": 4
+              "host": "192.0.2.26",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a07-u44-p01-tor-01",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000010
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000010"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp16",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -952,55 +768,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.27",
-              "mask_length": 23,
               "address": "192.0.2.27/23",
-              "ip_version": 4
+              "host": "192.0.2.27",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a07-u45-p01-tor-02",
+            "role": "OOB-Leaf",
             "tenant": null,
-            "role": {
-              "name": "OOB-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000011
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000011"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp17",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1008,55 +809,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.28",
-              "mask_length": 23,
               "address": "192.0.2.28/23",
-              "ip_version": 4
+              "host": "192.0.2.28",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u36-p01-spine-01",
+            "role": "Converged-Spine",
             "tenant": null,
-            "role": {
-              "name": "Converged-Spine"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000001
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000001"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp18",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1064,55 +850,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.29",
-              "mask_length": 23,
               "address": "192.0.2.29/23",
-              "ip_version": 4
+              "host": "192.0.2.29",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u28-p01-bleaf-01",
+            "role": "Border-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Border-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4265355095
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4265355095"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp19",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1120,55 +891,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.30",
-              "mask_length": 23,
               "address": "192.0.2.30/23",
-              "ip_version": 4
+              "host": "192.0.2.30",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u32-p01-sleaf-01",
+            "role": "Storage-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Storage-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000016
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000016"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp20",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1176,42 +932,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.31",
-              "mask_length": 23,
               "address": "192.0.2.31/23",
-              "ip_version": 4
+              "host": "192.0.2.31",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u04-p01-bcm-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp21",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1219,42 +973,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.32",
-              "mask_length": 23,
               "address": "192.0.2.32/23",
-              "ip_version": 4
+              "host": "192.0.2.32",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u06-p01-k8s-admin-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp22",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1262,42 +1014,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.33",
-              "mask_length": 23,
               "address": "192.0.2.33/23",
-              "ip_version": 4
+              "host": "192.0.2.33",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u08-p01-k8s-runai-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp23",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1305,42 +1055,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.136",
-              "mask_length": 25,
               "address": "10.78.154.136/25",
-              "ip_version": 4
+              "host": "10.78.154.136",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u11-p01-c2-bk-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp24",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1348,42 +1096,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.34",
-              "mask_length": 23,
               "address": "192.0.2.34/23",
-              "ip_version": 4
+              "host": "192.0.2.34",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u04-p01-k8s-admin-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp25",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1391,42 +1137,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.35",
-              "mask_length": 23,
               "address": "192.0.2.35/23",
-              "ip_version": 4
+              "host": "192.0.2.35",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u06-p01-slurm-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp26",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1434,42 +1178,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.36",
-              "mask_length": 23,
               "address": "192.0.2.36/23",
-              "ip_version": 4
+              "host": "192.0.2.36",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u08-p01-k8s-runai-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp27",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1477,42 +1219,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.137",
-              "mask_length": 25,
               "address": "10.78.154.137/25",
-              "ip_version": 4
+              "host": "10.78.154.137",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u11-p01-c2-bk-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp28",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1520,42 +1260,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.138",
-              "mask_length": 25,
               "address": "10.78.154.138/25",
-              "ip_version": 4
+              "host": "10.78.154.138",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u15-p01-2bcm-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp29",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1563,42 +1301,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.139",
-              "mask_length": 25,
               "address": "10.78.154.139/25",
-              "ip_version": 4
+              "host": "10.78.154.139",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u17-p01-2k8s-admin-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp30",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1606,42 +1342,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.140",
-              "mask_length": 25,
               "address": "10.78.154.140/25",
-              "ip_version": 4
+              "host": "10.78.154.140",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u19-p01-2k8s-runai-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp31",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1649,42 +1383,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.141",
-              "mask_length": 25,
               "address": "10.78.154.141/25",
-              "ip_version": 4
+              "host": "10.78.154.141",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u21-p01-2c2-bk-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp32",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1692,42 +1424,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.142",
-              "mask_length": 25,
               "address": "10.78.154.142/25",
-              "ip_version": 4
+              "host": "10.78.154.142",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u15-p01-2k8s-admin-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp33",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1735,42 +1465,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.143",
-              "mask_length": 25,
               "address": "10.78.154.143/25",
-              "ip_version": 4
+              "host": "10.78.154.143",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u17-p01-2slurm-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp34",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1778,42 +1506,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.144",
-              "mask_length": 25,
               "address": "10.78.154.144/25",
-              "ip_version": 4
+              "host": "10.78.154.144",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u19-p01-2k8s-runai-01",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
+        "name": "swp35",
         "type": "A_1000BASE_T",
         "mtu": null,
-        "mac_address": null,
         "enabled": true,
         "tags": [],
-        "name": "swp35",
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1821,42 +1547,40 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.78.154.145",
-              "mask_length": 25,
               "address": "10.78.154.145/25",
-              "ip_version": 4
+              "host": "10.78.154.145",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u21-p01-2c2-bk-03",
+            "role": "Control-Server",
             "tenant": null,
-            "role": {
-              "name": "Control-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp36",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1864,55 +1588,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.37",
-              "mask_length": 23,
               "address": "192.0.2.37/23",
-              "ip_version": 4
+              "host": "192.0.2.37",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a08-u28-p01-oobspine-01",
+            "role": "OOB-Spine",
             "tenant": null,
-            "role": {
-              "name": "OOB-Spine"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4265355097
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4265355097"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp37",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1920,42 +1629,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.38",
-              "mask_length": 23,
               "address": "192.0.2.38/23",
-              "ip_version": 4
+              "host": "192.0.2.38",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a09-u23-p01-ufm-01",
+            "role": "UFM",
             "tenant": null,
-            "role": {
-              "name": "UFM"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp38",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -1963,42 +1670,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "rf0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.39",
-              "mask_length": 23,
               "address": "192.0.2.39/23",
-              "ip_version": 4
+              "host": "192.0.2.39",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "b09-u23-p01-ufm-02",
+            "role": "UFM",
             "tenant": null,
-            "role": {
-              "name": "UFM"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "rf0"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp39",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2006,42 +1711,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "bmc-a",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.40",
-              "mask_length": 23,
               "address": "192.0.2.40/23",
-              "ip_version": 4
+              "host": "192.0.2.40",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u06-p01-hss-01",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "bmc-a"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp40",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2049,42 +1752,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "bmc-b",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.41",
-              "mask_length": 23,
               "address": "192.0.2.41/23",
-              "ip_version": 4
+              "host": "192.0.2.41",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u06-p01-hss-01",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "bmc-b"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp41",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2092,42 +1793,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "osmgmt-a",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.42",
-              "mask_length": 23,
               "address": "192.0.2.42/23",
-              "ip_version": 4
+              "host": "192.0.2.42",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u06-p01-hss-01",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "osmgmt-a"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp42",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2135,42 +1834,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "osmgmt-b",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.43",
-              "mask_length": 23,
               "address": "192.0.2.43/23",
-              "ip_version": 4
+              "host": "192.0.2.43",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u06-p01-hss-01",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "osmgmt-b"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp43",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2178,42 +1875,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "bmc-a",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.44",
-              "mask_length": 23,
               "address": "192.0.2.44/23",
-              "ip_version": 4
+              "host": "192.0.2.44",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u08-p01-hss-02",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "bmc-a"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp44",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2221,42 +1916,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "bmc-b",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.45",
-              "mask_length": 23,
               "address": "192.0.2.45/23",
-              "ip_version": 4
+              "host": "192.0.2.45",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u08-p01-hss-02",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "bmc-b"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Leaf-Mgmt-1"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp45",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Leaf-Mgmt-1",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2264,55 +1957,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "eth0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.46",
-              "mask_length": 23,
               "address": "192.0.2.46/23",
-              "ip_version": 4
+              "host": "192.0.2.46",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "b08-u44-p01-mleaf-02",
+            "role": "Mgmt-Leaf",
             "tenant": null,
-            "role": {
-              "name": "Mgmt-Leaf"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4230000028
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "eth0"
+            "routing_asn": "4230000028"
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp46",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2320,85 +1998,40 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "osmgmt-a",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.47",
-              "mask_length": 23,
               "address": "192.0.2.47/23",
-              "ip_version": 4
+              "host": "192.0.2.47",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u08-p01-hss-02",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "osmgmt-a"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Downlink"
-        },
-        "type": "A_1000BASE_T",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp47",
-        "description": "",
-        "vrf": null,
-        "mgmt_only": false,
-        "member_interfaces": [],
-        "parent_interface": null,
-        "untagged_vlan": {
-          "vid": 201,
-          "name": "Vlan201"
-        },
-        "tagged_vlans": [],
-        "ip_addresses": [],
-        "connected_interface": {
-          "ip_addresses": [
-            {
-              "host": "192.0.2.48",
-              "mask_length": 23,
-              "address": "192.0.2.48/23",
-              "ip_version": 4
-            }
-          ],
-          "device": {
-            "name": "a10-u08-p01-hss-02",
-            "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
-            "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "osmgmt-b"
-        }
-      },
-      {
-        "role": {
-          "name": "Downlink"
-        },
         "type": "A_1000BASE_T",
         "mtu": null,
-        "mac_address": null,
         "enabled": true,
         "tags": [],
-        "name": "swp48",
         "description": "",
+        "role": "Downlink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2406,187 +2039,186 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [],
+        "addresses": [],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "osmgmt-b",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "192.0.2.49",
-              "mask_length": 23,
+              "address": "192.0.2.48/23",
+              "host": "192.0.2.48",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
+            }
+          ],
+          "device": {
+            "id": null,
+            "name": "a10-u08-p01-hss-02",
+            "role": "HighspeedStorage-Server",
+            "tenant": null,
+            "tags": [],
+            "routing_asn": null
+          }
+        }
+      },
+      {
+        "name": "swp48",
+        "type": "A_1000BASE_T",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
+        "description": "",
+        "role": "Downlink",
+        "mac_address": null,
+        "vrf": null,
+        "management_only": false,
+        "member_interfaces": [],
+        "parent_interface": null,
+        "untagged_vlan": {
+          "vid": 201,
+          "name": "Vlan201"
+        },
+        "tagged_vlans": [],
+        "addresses": [],
+        "connected_interface": {
+          "name": "bmc-a",
+          "vrf": null,
+          "addresses": [
+            {
               "address": "192.0.2.49/23",
-              "ip_version": 4
+              "host": "192.0.2.49",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
+            "id": null,
             "name": "a10-u11-p01-hss-03",
+            "role": "HighspeedStorage-Server",
             "tenant": null,
-            "role": {
-              "name": "HighspeedStorage-Server"
-            },
             "tags": [],
-            "bgp_routing_instances": []
-          },
-          "module": null,
-          "name": "bmc-a"
+            "routing_asn": null
+          }
         }
       },
       {
-        "role": {
-          "name": "Uplink"
-        },
-        "type": "A_400GBASE_X_OSFP",
-        "mtu": null,
-        "mac_address": null,
-        "enabled": true,
-        "tags": [],
         "name": "swp49",
-        "description": "",
-        "vrf": null,
-        "mgmt_only": false,
-        "member_interfaces": [],
-        "parent_interface": null,
-        "untagged_vlan": null,
-        "tagged_vlans": [],
-        "ip_addresses": [
-          {
-            "host": "10.254.32.33",
-            "mask_length": 31,
-            "address": "10.254.32.33/31",
-            "ip_version": 4,
-            "role": null,
-            "parent": {
-              "prefix": "10.254.32.32/31",
-              "parent": {
-                "prefix": "10.254.32.0/26",
-                "parent": {
-                  "prefix": "10.254.32.0/23"
-                }
-              }
-            }
-          }
-        ],
-        "connected_interface": {
-          "ip_addresses": [
-            {
-              "host": "10.254.32.32",
-              "mask_length": 31,
-              "address": "10.254.32.32/31",
-              "ip_version": 4
-            }
-          ],
-          "device": {
-            "name": "a08-u28-p01-oobspine-01",
-            "tenant": null,
-            "role": {
-              "name": "OOB-Spine"
-            },
-            "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4265355097
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "swp17s0"
-        }
-      },
-      {
-        "role": {
-          "name": "Uplink"
-        },
         "type": "A_400GBASE_X_OSFP",
         "mtu": null,
-        "mac_address": null,
         "enabled": true,
         "tags": [],
-        "name": "swp51",
         "description": "",
+        "role": "Uplink",
+        "mac_address": null,
         "vrf": null,
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": null,
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "10.254.34.33",
-            "mask_length": 31,
-            "address": "10.254.34.33/31",
-            "ip_version": 4,
+            "address": "10.254.32.33/31",
+            "host": "10.254.32.33",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "10.254.34.32/31",
-              "parent": {
-                "prefix": "10.254.34.0/26",
-                "parent": {
-                  "prefix": "10.254.34.0/23"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "10.254.32.32/31",
+              "10.254.32.0/26",
+              "10.254.32.0/23"
+            ]
           }
         ],
         "connected_interface": {
-          "ip_addresses": [
+          "name": "swp17s0",
+          "vrf": null,
+          "addresses": [
             {
-              "host": "10.254.34.32",
-              "mask_length": 31,
-              "address": "10.254.34.32/31",
-              "ip_version": 4
+              "address": "10.254.32.32/31",
+              "host": "10.254.32.32",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
             }
           ],
           "device": {
-            "name": "b08-u28-p01-oobspine-02",
+            "id": null,
+            "name": "a08-u28-p01-oobspine-01",
+            "role": "OOB-Spine",
             "tenant": null,
-            "role": {
-              "name": "OOB-Spine"
-            },
             "tags": [],
-            "bgp_routing_instances": [
-              {
-                "autonomous_system": {
-                  "asn": 4265355098
-                },
-                "router_id": {
-                  "interfaces": [
-                    {
-                      "vrf": null
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          "module": null,
-          "name": "swp17s0"
+            "routing_asn": "4265355097"
+          }
         }
       },
       {
-        "role": {
-          "name": "VLAN-201"
-        },
+        "name": "swp51",
+        "type": "A_400GBASE_X_OSFP",
+        "mtu": null,
+        "enabled": true,
+        "tags": [],
+        "description": "",
+        "role": "Uplink",
+        "mac_address": null,
+        "vrf": null,
+        "management_only": false,
+        "member_interfaces": [],
+        "parent_interface": null,
+        "untagged_vlan": null,
+        "tagged_vlans": [],
+        "addresses": [
+          {
+            "address": "10.254.34.33/31",
+            "host": "10.254.34.33",
+            "version": 4,
+            "role": null,
+            "parent_prefixes": [
+              "10.254.34.32/31",
+              "10.254.34.0/26",
+              "10.254.34.0/23"
+            ]
+          }
+        ],
+        "connected_interface": {
+          "name": "swp17s0",
+          "vrf": null,
+          "addresses": [
+            {
+              "address": "10.254.34.32/31",
+              "host": "10.254.34.32",
+              "version": 4,
+              "role": null,
+              "parent_prefixes": []
+            }
+          ],
+          "device": {
+            "id": null,
+            "name": "b08-u28-p01-oobspine-02",
+            "role": "OOB-Spine",
+            "tenant": null,
+            "tags": [],
+            "routing_asn": "4265355098"
+          }
+        }
+      },
+      {
+        "name": "vlan201",
         "type": "VIRTUAL",
         "mtu": null,
-        "mac_address": null,
         "enabled": true,
         "tags": [],
-        "name": "vlan201",
         "description": "",
+        "role": "VLAN-201",
+        "mac_address": null,
         "vrf": {
           "name": "OOB",
-          "rd": "*:2000",
-          "export_targets": [],
-          "import_targets": []
+          "route_distinguisher": "*:2000",
+          "import_targets": [],
+          "export_targets": []
         },
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2594,44 +2226,37 @@
           "name": "Vlan201"
         },
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "192.0.2.3",
-            "mask_length": 23,
             "address": "192.0.2.3/23",
-            "ip_version": 4,
+            "host": "192.0.2.3",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "192.0.2.0/23",
-              "parent": {
-                "prefix": "10.78.144.0/20",
-                "parent": {
-                  "prefix": "0.0.0.0/0"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "192.0.2.0/23",
+              "10.78.144.0/20",
+              "0.0.0.0/0"
+            ]
           }
         ],
         "connected_interface": null
       },
       {
-        "role": {
-          "name": "VLAN-203"
-        },
+        "name": "vlan203",
         "type": "VIRTUAL",
         "mtu": null,
-        "mac_address": null,
         "enabled": true,
         "tags": [],
-        "name": "vlan203",
         "description": "",
+        "role": "VLAN-203",
+        "mac_address": null,
         "vrf": {
           "name": "OOB",
-          "rd": "*:2000",
-          "export_targets": [],
-          "import_targets": []
+          "route_distinguisher": "*:2000",
+          "import_targets": [],
+          "export_targets": []
         },
-        "mgmt_only": false,
+        "management_only": false,
         "member_interfaces": [],
         "parent_interface": null,
         "untagged_vlan": {
@@ -2639,445 +2264,285 @@
           "name": "Vlan203"
         },
         "tagged_vlans": [],
-        "ip_addresses": [
+        "addresses": [
           {
-            "host": "10.78.154.131",
-            "mask_length": 25,
             "address": "10.78.154.131/25",
-            "ip_version": 4,
+            "host": "10.78.154.131",
+            "version": 4,
             "role": null,
-            "parent": {
-              "prefix": "10.78.154.128/25",
-              "parent": {
-                "prefix": "10.78.144.0/20",
-                "parent": {
-                  "prefix": "0.0.0.0/0"
-                }
-              }
-            }
+            "parent_prefixes": [
+              "10.78.154.128/25",
+              "10.78.144.0/20",
+              "0.0.0.0/0"
+            ]
           }
         ],
         "connected_interface": null
       }
     ],
-    "inventory": {
-      "vxlans": [
-        {
-          "id": "05df64fa-8c13-5084-ab41-7394e4669865",
-          "name": "Vlan101",
-          "vnid": 1001,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan101"
-          },
-          "vlan": {
-            "vid": 101,
-            "name": "Vlan101"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "1f5b29d1-eb65-53d0-b561-89e81852c4ff",
-          "name": "Vlan150",
-          "vnid": 1050,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan150"
-          },
-          "vlan": {
-            "vid": 150,
-            "name": "Vlan150"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "8477827f-f04e-5ebd-8e41-4ee2e44545bc",
-          "name": "Vlan201",
-          "vnid": 2001,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan201"
-          },
-          "vlan": {
-            "vid": 201,
-            "name": "Vlan201"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "81c5b3d7-13dc-5d38-b685-c06928455ff9",
-          "name": "Vlan202",
-          "vnid": 2002,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan202"
-          },
-          "vlan": {
-            "vid": 202,
-            "name": "Vlan202"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "11207b9b-00eb-5ada-84c6-40b83804474d",
-          "name": "Vlan203",
-          "vnid": 2003,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan203"
-          },
-          "vlan": {
-            "vid": 203,
-            "name": "Vlan203"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "ed78727b-1361-54e0-acf2-a7dd3c08f158",
-          "name": "Vlan301",
-          "vnid": 3001,
-          "vni_type": "l2",
-          "l3_vlan_id": null,
-          "overlay": {
-            "name": "Vlan301"
-          },
-          "vlan": {
-            "vid": 301,
-            "name": "Vlan301"
-          },
-          "vrf": null,
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "e1b3cdef-90ff-5778-a341-a953d5aa5d91",
-          "name": "INBAND-L3",
-          "vnid": 1000,
-          "vni_type": "l3",
-          "l3_vlan_id": 4001,
-          "overlay": {
-            "name": "INBAND-L3"
-          },
-          "vlan": null,
-          "vrf": {
-            "name": "INBAND"
-          },
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "52005215-993a-5b88-9d47-da1dadd3858c",
-          "name": "OOB-L3",
-          "vnid": 2000,
-          "vni_type": "l3",
-          "l3_vlan_id": 4002,
-          "overlay": {
-            "name": "OOB-L3"
-          },
-          "vlan": null,
-          "vrf": {
-            "name": "OOB",
-            "rd": "*:2000",
-            "export_targets": [],
-            "import_targets": []
-          },
-          "import_targets": [],
-          "export_targets": []
-        },
-        {
-          "id": "f907b65b-a677-58b9-8cee-b57ef301bbf7",
-          "name": "STORAGE-L3",
-          "vnid": 3000,
-          "vni_type": "l3",
-          "l3_vlan_id": 4003,
-          "overlay": {
-            "name": "STORAGE-L3"
-          },
-          "vlan": null,
-          "vrf": {
-            "name": "STORAGE"
-          },
-          "import_targets": [],
-          "export_targets": []
-        }
-      ],
-      "overlay_assignments": [
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan101",
-            "assignments": []
-          }
-        },
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan150",
-            "assignments": []
-          }
-        },
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan201",
-            "assignments": []
-          }
-        },
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan202",
-            "assignments": []
-          }
-        },
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan203",
-            "assignments": []
-          }
-        },
-        {
-          "assigned_object_id": "833d1c59-47dc-4fe9-8f7d-245218caaa01",
-          "assigned_object_type": {
-            "app_label": "dcim",
-            "model": "device"
-          },
-          "overlay": {
-            "name": "Vlan301",
-            "assignments": []
-          }
-        }
-      ],
+    "network": {
       "vrfs": [
         {
           "name": "OOB",
-          "rd": "*:2000",
-          "_custom_field_data": {},
+          "route_distinguisher": "*:2000",
           "import_targets": [],
           "export_targets": []
         }
       ],
-      "tenant": null,
-      "serial": "",
-      "nvlink_domain": [],
-      "bgp_routing_instances": [
+      "console_server_ports": [],
+      "nvlink_topology": null
+    },
+    "routing": {
+      "bgp_instances": [
         {
-          "status": {
-            "name": "Active"
-          },
-          "autonomous_system": {
-            "asn": 4230000014
-          },
-          "router_id": {
-            "id": "9189b6a8-4f2b-41d2-8dff-118563ee6041",
-            "interfaces": [
-              {
-                "name": "lo",
-                "vrf": null
-              }
-            ]
-          },
-          "endpoints": [
+          "status": "Active",
+          "asn": "4230000014",
+          "router_id_interface": "lo",
+          "vrfs": [
+            "default"
+          ],
+          "peers": [
             {
-              "source_interface": {
-                "vrf": null
-              },
-              "peer_group": {
-                "name": "UNDERLAY",
-                "extra_attributes": null,
-                "peergroup_template": null
-              },
-              "peer": {
-                "source_ip": null,
-                "source_interface": {
-                  "name": "swp17s0",
-                  "ip_addresses": [
-                    {
-                      "address": "10.254.32.32/31",
-                      "ip_version": 4
-                    }
-                  ]
-                },
-                "routing_instance": {
-                  "device": {
-                    "name": "a08-u28-p01-oobspine-01",
-                    "role": {
-                      "name": "OOB-Spine"
-                    }
-                  },
-                  "status": {
-                    "name": "Active"
-                  },
-                  "autonomous_system": {
-                    "asn": 4265355097
-                  }
-                }
-              }
+              "name": "a08-u28-p01-oobspine-01",
+              "status": "Active",
+              "description": "a08-u28-p01-oobspine-01",
+              "peer_group": "UNDERLAY",
+              "peer_role": "OOB-Spine",
+              "asn": "4265355097",
+              "peer_ipv4": "10.254.32.32",
+              "peer_ipv6": null,
+              "source_interface": "swp17s0",
+              "source_vrf": "default",
+              "ttl": null
             },
             {
-              "source_interface": {
-                "vrf": null
-              },
-              "peer_group": {
-                "name": "EVPN",
-                "extra_attributes": null,
-                "peergroup_template": null
-              },
-              "peer": {
-                "source_ip": null,
-                "source_interface": {
-                  "name": "lo",
-                  "ip_addresses": [
-                    {
-                      "address": "10.254.254.10/32",
-                      "ip_version": 4
-                    }
-                  ]
-                },
-                "routing_instance": {
-                  "device": {
-                    "name": "a08-u28-p01-oobspine-01",
-                    "role": {
-                      "name": "OOB-Spine"
-                    }
-                  },
-                  "status": {
-                    "name": "Active"
-                  },
-                  "autonomous_system": {
-                    "asn": 4265355097
-                  }
-                }
-              }
+              "name": "a08-u28-p01-oobspine-01",
+              "status": "Active",
+              "description": "a08-u28-p01-oobspine-01",
+              "peer_group": "EVPN",
+              "peer_role": "OOB-Spine",
+              "asn": "4265355097",
+              "peer_ipv4": "10.254.254.10",
+              "peer_ipv6": null,
+              "source_interface": "lo",
+              "source_vrf": "default",
+              "ttl": null
             },
             {
-              "source_interface": {
-                "vrf": null
-              },
-              "peer_group": {
-                "name": "UNDERLAY",
-                "extra_attributes": null,
-                "peergroup_template": null
-              },
-              "peer": {
-                "source_ip": null,
-                "source_interface": {
-                  "name": "swp17s0",
-                  "ip_addresses": [
-                    {
-                      "address": "10.254.34.32/31",
-                      "ip_version": 4
-                    }
-                  ]
-                },
-                "routing_instance": {
-                  "device": {
-                    "name": "b08-u28-p01-oobspine-02",
-                    "role": {
-                      "name": "OOB-Spine"
-                    }
-                  },
-                  "status": {
-                    "name": "Active"
-                  },
-                  "autonomous_system": {
-                    "asn": 4265355098
-                  }
-                }
-              }
+              "name": "b08-u28-p01-oobspine-02",
+              "status": "Active",
+              "description": "b08-u28-p01-oobspine-02",
+              "peer_group": "UNDERLAY",
+              "peer_role": "OOB-Spine",
+              "asn": "4265355098",
+              "peer_ipv4": "10.254.34.32",
+              "peer_ipv6": null,
+              "source_interface": "swp17s0",
+              "source_vrf": "default",
+              "ttl": null
             }
           ]
         }
       ],
-      "console_server_ports": []
+      "default_asn": "4230000014",
+      "local_asn": null,
+      "site_asn": null,
+      "isis_interfaces": [],
+      "evpn": {
+        "esi_base_mac": "44:38:39:ff:69:00",
+        "fabric_mac": "00:00:5E:00:01:69",
+        "df_preference": null
+      }
     },
-    "intent": {
-      "intended-firmware": {
-        "version": "5.13.1"
-      },
-      "password_mappings": {
-        "nv-config-manager": {
-          "role": "system-admin",
-          "password": "api_user_key",
-          "rotation": "r1"
+    "overlays": {
+      "l2_vnis": [
+        {
+          "vlan": {
+            "vid": 101,
+            "name": "Vlan101"
+          },
+          "vni": 1001,
+          "overlay_name": "Vlan101",
+          "import_targets": [],
+          "export_targets": []
         },
-        "cumulus": {
-          "role": "system-admin",
-          "password": "root_password",
-          "rotation": "r1"
+        {
+          "vlan": {
+            "vid": 150,
+            "name": "Vlan150"
+          },
+          "vni": 1050,
+          "overlay_name": "Vlan150",
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "vlan": {
+            "vid": 201,
+            "name": "Vlan201"
+          },
+          "vni": 2001,
+          "overlay_name": "Vlan201",
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "vlan": {
+            "vid": 202,
+            "name": "Vlan202"
+          },
+          "vni": 2002,
+          "overlay_name": "Vlan202",
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "vlan": {
+            "vid": 203,
+            "name": "Vlan203"
+          },
+          "vni": 2003,
+          "overlay_name": "Vlan203",
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "vlan": {
+            "vid": 301,
+            "name": "Vlan301"
+          },
+          "vni": 3001,
+          "overlay_name": "Vlan301",
+          "import_targets": [],
+          "export_targets": []
         }
-      },
-      "evpn_esi_base_mac": "44:38:39:ff:69:00",
-      "fabric-mac": "00:00:5E:00:01:69",
+      ],
+      "l3_vnis": [
+        {
+          "vrf": {
+            "name": "INBAND",
+            "route_distinguisher": null,
+            "import_targets": [],
+            "export_targets": []
+          },
+          "l3_vlan_id": 4001,
+          "vni": 1000,
+          "overlay_name": "INBAND-L3"
+        },
+        {
+          "vrf": {
+            "name": "OOB",
+            "route_distinguisher": "*:2000",
+            "import_targets": [],
+            "export_targets": []
+          },
+          "l3_vlan_id": 4002,
+          "vni": 2000,
+          "overlay_name": "OOB-L3"
+        },
+        {
+          "vrf": {
+            "name": "STORAGE",
+            "route_distinguisher": null,
+            "import_targets": [],
+            "export_targets": []
+          },
+          "l3_vlan_id": 4003,
+          "vni": 3000,
+          "overlay_name": "STORAGE-L3"
+        }
+      ],
+      "l2_vni_vrfs": [
+        {
+          "name": "Vlan101",
+          "vni": 1001,
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "name": "Vlan150",
+          "vni": 1050,
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "name": "Vlan201",
+          "vni": 2001,
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "name": "Vlan202",
+          "vni": 2002,
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "name": "Vlan203",
+          "vni": 2003,
+          "import_targets": [],
+          "export_targets": []
+        },
+        {
+          "name": "Vlan301",
+          "vni": 3001,
+          "import_targets": [],
+          "export_targets": []
+        }
+      ]
+    },
+    "firmware": {
+      "desired_version": "5.13.1",
+      "selected_bundle_version": null,
+      "bundles": [],
+      "overrides": {
+        "skip_components": [],
+        "custom_components": []
+      }
+    },
+    "services": {
       "dns": {
         "ipv4": [
           "192.0.2.8",
           "192.0.2.9"
-        ]
+        ],
+        "ipv6": []
       },
       "ntp": {
         "ipv4": [
           "192.0.2.8",
           "192.0.2.9"
-        ]
+        ],
+        "ipv6": []
       },
+      "syslog": null,
+      "tacacs": null,
       "ztp": {
         "ipv4": [
           "192.0.2.10"
-        ]
+        ],
+        "ipv6": []
       },
-      "Dhcp4": {
-        "option-def": [
-          {
-            "code": 239,
-            "name": "cumulus-provision-url",
-            "type": "string",
-            "array": false,
-            "space": "dhcp4",
-            "encapsulate": "",
-            "record-types": ""
-          }
-        ]
-      },
-      "bgp": {
-        "asn": 4230000014
-      }
+      "firmware_cache": null,
+      "provisioning": null,
+      "dhcp": [],
+      "management_prefixes": null
+    },
+    "access": {
+      "credentials": [
+        {
+          "username": "nv-config-manager",
+          "secret_name": "api_user_key",
+          "rotation": "r1",
+          "role": "system-admin"
+        },
+        {
+          "username": "cumulus",
+          "secret_name": "root_password",
+          "rotation": "r1",
+          "role": "system-admin"
+        }
+      ]
     }
   },
   "location": {
@@ -3094,189 +2559,137 @@
         "parent": null
       }
     },
-    "inventory": {
-      "wan_devices": [
-        {
-          "name": "example-wan-1",
-          "intent": {
-            "dns": {
-              "ipv4": [
-                "192.0.2.8",
-                "192.0.2.9"
-              ]
-            },
-            "ntp": {
-              "ipv4": [
-                "192.0.2.8",
-                "192.0.2.9"
-              ]
-            },
-            "ztp": {
-              "ipv4": [
-                "192.0.2.10"
-              ]
-            },
-            "Dhcp4": {
-              "option-def": [
-                {
-                  "code": 239,
-                  "name": "cumulus-provision-url",
-                  "type": "string",
-                  "array": false,
-                  "space": "dhcp4",
-                  "encapsulate": "",
-                  "record-types": ""
-                }
-              ]
-            }
-          },
-          "interfaces": []
-        },
-        {
-          "name": "example-wan-2",
-          "intent": {
-            "dns": {
-              "ipv4": [
-                "192.0.2.8",
-                "192.0.2.9"
-              ]
-            },
-            "ntp": {
-              "ipv4": [
-                "192.0.2.8",
-                "192.0.2.9"
-              ]
-            },
-            "ztp": {
-              "ipv4": [
-                "192.0.2.10"
-              ]
-            },
-            "Dhcp4": {
-              "option-def": [
-                {
-                  "code": 239,
-                  "name": "cumulus-provision-url",
-                  "type": "string",
-                  "array": false,
-                  "space": "dhcp4",
-                  "encapsulate": "",
-                  "record-types": ""
-                }
-              ]
-            }
-          },
-          "interfaces": []
-        }
-      ],
-      "route_servers": [],
-      "fnn_devices": null,
+    "routing": {
+      "site_asn": null
+    },
+    "address_space": {
       "prefixes": [
         {
           "prefix": "10.78.144.0/20",
-          "role": {
-            "name": "Site-Aggregate"
-          },
+          "role": "Site-Aggregate",
           "tags": [
-            {
-              "name": "role-aggregate"
-            }
+            "role-aggregate"
           ]
         }
       ],
       "uc_jumphost_prefixes": [],
       "vlans": [
         {
-          "vid": 11,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 11,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 12,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 12,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 13,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 13,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 14,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 14,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 101,
-          "rel_vlan_to_helper_address": [
-            {
-              "host": "10.78.144.8"
-            },
-            {
-              "host": "10.78.144.9"
-            }
+          "vlan": {
+            "vid": 101,
+            "name": null
+          },
+          "helper_addresses": [
+            "10.78.144.8",
+            "10.78.144.9"
           ]
         },
         {
-          "vid": 102,
-          "rel_vlan_to_helper_address": [
-            {
-              "host": "10.78.144.8"
-            },
-            {
-              "host": "10.78.144.9"
-            }
+          "vlan": {
+            "vid": 102,
+            "name": null
+          },
+          "helper_addresses": [
+            "10.78.144.8",
+            "10.78.144.9"
           ]
         },
         {
-          "vid": 103,
-          "rel_vlan_to_helper_address": [
-            {
-              "host": "10.78.144.8"
-            },
-            {
-              "host": "10.78.144.9"
-            }
+          "vlan": {
+            "vid": 103,
+            "name": null
+          },
+          "helper_addresses": [
+            "10.78.144.8",
+            "10.78.144.9"
           ]
         },
         {
-          "vid": 150,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 150,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 201,
-          "rel_vlan_to_helper_address": [
-            {
-              "host": "192.0.2.8"
-            },
-            {
-              "host": "192.0.2.9"
-            }
+          "vlan": {
+            "vid": 201,
+            "name": null
+          },
+          "helper_addresses": [
+            "192.0.2.8",
+            "192.0.2.9"
           ]
         },
         {
-          "vid": 202,
-          "rel_vlan_to_helper_address": [
-            {
-              "host": "192.0.2.8"
-            },
-            {
-              "host": "192.0.2.9"
-            }
+          "vlan": {
+            "vid": 202,
+            "name": null
+          },
+          "helper_addresses": [
+            "192.0.2.8",
+            "192.0.2.9"
           ]
         },
         {
-          "vid": 203,
-          "rel_vlan_to_helper_address": []
+          "vlan": {
+            "vid": 203,
+            "name": null
+          },
+          "helper_addresses": []
         },
         {
-          "vid": 301,
-          "rel_vlan_to_helper_address": []
-        }
-      ],
-      "locations": [
-        {
-          "tags": []
+          "vlan": {
+            "vid": 301,
+            "name": null
+          },
+          "helper_addresses": []
         }
       ]
     },
-    "intent": {}
+    "topology": {
+      "route_servers": [],
+      "wan_routers": [
+        {
+          "name": "example-wan-1",
+          "routing_asn": null,
+          "loopback_addresses": []
+        },
+        {
+          "name": "example-wan-2",
+          "routing_asn": null,
+          "loopback_addresses": []
+        }
+      ]
+    }
   },
   "plugin_data": {}
 }

@@ -226,6 +226,8 @@ navigation:
         path: ../render/render-service.mdx
       - page: Filter Quick Reference
         path: ../render/filter-quick-reference.mdx
+      - page: Nautobot Data Mapping
+        path: ../render/nautobot-data-mapping.mdx
       - page: Template Expansion
         path: ../render/template-expansion.mdx
       - api: Render Service API

@@ -298,9 +298,13 @@ class Renderer:
             "location_data": render_data.location,
         }
 
-        # Add plugin data to context if available
+        # Templates receive each extension's declared data.  The schema and
+        # version remain part of the provider/cache envelope, not a new
+        # provider-specific template object.
         if render_data.plugin_data:
-            context["plugin_data"] = dict(render_data.plugin_data)
+            context["plugin_data"] = {
+                name: extension.data for name, extension in render_data.plugin_data.items()
+            }
 
         output = template_obj.render(**context)
         return re.sub(r"\n+", "\n", output).strip()

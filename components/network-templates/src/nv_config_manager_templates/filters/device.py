@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Custom Jinja2 Filters for nautobot Device GraphQL data."""
+"""Custom Jinja2 filters for provider-neutral device render data."""
 
 # pylint: disable=too-many-lines
 import ipaddress
@@ -29,14 +29,14 @@ from nv_config_manager_templates.filters import FilterException
 from nv_config_manager_templates.filters.ip import gateway as gateway_filter
 
 
-def _inventory(value: DeviceRenderData, key: str, default: Any = None) -> Any:
-    """Read one provider-neutral inventory collection."""
-    return value.inventory.get(key, default)
-
-
-def _intent(value: DeviceRenderData, key: str) -> Any:
-    """Read one provider-neutral desired-configuration value."""
-    return value.intent[key]
+def _required(value: Any, field: str, device: DeviceRenderData) -> Any:
+    """Return a required modeled field or raise a template-actionable error."""
+    if value is None:
+        raise FilterException(
+            f"Device {device.identity.name} is missing required render field '{field}'. "
+            "Set the corresponding value in the DCIM provider."
+        )
+    return value
 
 
 def hostname(value: DeviceRenderData) -> str:
@@ -88,10 +88,11 @@ def role(value: DeviceRenderData) -> str:
 
 def desired_firmware(value: DeviceRenderData) -> str:
     """Return the desired firmware image version for this device."""
-    try:
-        return _intent(value, "intended-firmware")["version"]
-    except KeyError as exc:
-        raise FilterException("No intended firmware image set for device.") from exc
+    return _required(
+        value.firmware.desired_version,
+        "device.firmware.desired_version",
+        value,
+    )
 
 
 def router_id(value: DeviceRenderData) -> str:
@@ -106,7 +107,12 @@ def router_id(value: DeviceRenderData) -> str:
 
     intf = interface_by_name(value, ifname)
     # Return primary IPv4 with prefix length stripped
-    return re.sub(r"\/\d+$", "", intf.primary_ipv4)
+    primary_ipv4 = _required(
+        intf.primary_ipv4,
+        f"device.interfaces[name={ifname}].primary_ipv4",
+        value,
+    )
+    return re.sub(r"\/\d+$", "", primary_ipv4)
 
 
 def uuid(value: DeviceRenderData) -> str:
@@ -116,19 +122,10 @@ def uuid(value: DeviceRenderData) -> str:
 
 def asn(value: DeviceRenderData, vrf: str = "default") -> str:
     """Return the ASN for the device."""
-    routing_instances = _inventory(value, "bgp_routing_instances", [])
-    if routing_instances:
-        for instance in routing_instances:
-            vrf_entry = instance["router_id"]["interfaces"][0]["vrf"]
-            vrf_name = vrf_entry["name"] if vrf_entry else "default"
-            if vrf_name == vrf:
-                return str(instance["autonomous_system"]["asn"])
-    # Fallback to desired configuration intent if no routing data is modeled.
-    try:
-        # cast to str for consistent return type between asdot and asplain
-        return str(_intent(value, "bgp")["asn"])
-    except KeyError as exc:
-        raise FilterException("No ASN defined for device.") from exc
+    for instance in value.routing.bgp_instances:
+        if vrf in instance.vrfs:
+            return instance.asn
+    return _required(value.routing.default_asn, "device.routing.default_asn", value)
 
 
 def interface_by_name(
@@ -138,9 +135,7 @@ def interface_by_name(
     interface_entries = value.interfaces
     try:
         interface_entry = next(
-            interface
-            for interface in interface_entries
-            if interface["name"].lower() == name.lower()
+            interface for interface in interface_entries if interface.name.lower() == name.lower()
         )
         return Interface.from_render_data(interface_entry)
     except StopIteration as exc:
@@ -173,12 +168,14 @@ def loopback_prefix(value: DeviceRenderData) -> str:
     try:
         interface_entries = value.interfaces
         interface_entry = next(
-            interface for interface in interface_entries if interface["name"] == "lo"
+            interface for interface in interface_entries if interface.name == "lo"
         )
-        try:
-            return interface_entry["ip_addresses"][0]["parent"]["parent"]["prefix"]
-        except KeyError as exc:
-            raise FilterException("Unable to calculate loopback prefix.") from exc
+        if not interface_entry.addresses or len(interface_entry.addresses[0].parent_prefixes) < 2:
+            raise FilterException(
+                f"Device {hostname(value)} interface lo is missing the parent-prefix hierarchy "
+                "required to calculate the loopback prefix."
+            )
+        return str(interface_entry.addresses[0].parent_prefixes[1])
     except StopIteration as exc:
         raise FilterException("No interface found with name lo.") from exc
 
@@ -197,7 +194,7 @@ def interfaces(  # pylint: disable=too-many-arguments,too-many-branches
     """Return a list of interface objects with optional filtering."""
     interface_records = []
     for interface_entry in value.interfaces:
-        if include_mgmt or not interface_entry["mgmt_only"]:
+        if include_mgmt or not interface_entry.management_only:
             interface_records.append(Interface.from_render_data(interface_entry))
 
     if prefix:
@@ -298,16 +295,26 @@ def default_gateways(value: DeviceRenderData, version: int = 4) -> list[str]:
         return result
     mgmt_interface = management_interface(value)
     if version == 4:
-        return [gateway_filter(mgmt_interface.primary_ipv4)]
-    return [gateway_filter(mgmt_interface.primary_ipv6)]
+        primary_address = _required(
+            mgmt_interface.primary_ipv4,
+            f"device.interfaces[name={mgmt_interface.name}].primary_ipv4",
+            value,
+        )
+    else:
+        primary_address = _required(
+            mgmt_interface.primary_ipv6,
+            f"device.interfaces[name={mgmt_interface.name}].primary_ipv6",
+            value,
+        )
+    return [gateway_filter(primary_address)]
 
 
 def attached_vrfs(value: DeviceRenderData) -> list[VRF]:
     """Return the list of attached VRFs."""
     vrfs = set()
     for interface in value.interfaces:
-        if interface["vrf"]:
-            vrf = VRF.from_render_data(interface["vrf"])
+        if interface.vrf:
+            vrf = VRF.from_render_data(interface.vrf)
             if vrf:
                 vrfs.add(vrf)
     return sorted(list(vrfs), key=lambda x: x.name)
@@ -323,8 +330,7 @@ def console_server_ports(
 ) -> list[ConsoleServerPort]:
     """Return list of console server ports optionally filtered by connection status."""
     ports = [
-        ConsoleServerPort.from_render_data(entry)
-        for entry in _inventory(value, "console_server_ports", [])
+        ConsoleServerPort.from_render_data(entry) for entry in value.network.console_server_ports
     ]
     if connected_only:
         ports = [port for port in ports if port.connected]
@@ -335,215 +341,143 @@ def console_server_ports(
 # pylint: disable=too-many-statements
 def bgp_routing_instance(value: DeviceRenderData, vrf: str = "default") -> BGPLocalConfig:
     """Return a local BGP configuration with its peers."""
-    routing_instances = _inventory(value, "bgp_routing_instances", [])
-    if routing_instances:
-        for instance in routing_instances:
-            peers = []
-            for endpoint in instance.get("endpoints", []):
-                source_vrf = "default"
-
-                if endpoint.get("source_interface", {}).get("vrf"):
-                    source_vrf = endpoint["source_interface"]["vrf"]["name"]
-                    # Strip off site name and fabric if _ present
-                    # to account for uniqueness constraints
-                    # and Cumulus VRF name limitations
-                    # e.g. SITEA-TAN1_SCP1 -> SCP1
-                    # we should evaluate modeling this in NB long term
-                    if "_" in source_vrf:
-                        source_vrf = source_vrf.split("_")[1]
-
-                if source_vrf != vrf:
-                    continue
-
-                peer_group = None
-                ttl = None
-                # Use peer_group from the endpoint if available
-                if endpoint.get("peer_group") and endpoint["peer_group"].get("name"):
-                    peer_group = endpoint["peer_group"]["name"]
-                    peer_group_data = endpoint["peer_group"]
-                    extra_attrs = peer_group_data.get("extra_attributes")
-                    if isinstance(extra_attrs, dict) and "ttl" in extra_attrs:
-                        ttl = extra_attrs["ttl"]
-                    elif ttl is None:
-                        pg_tpl = peer_group_data.get("peergroup_template") or {}
-                        tpl_attrs = pg_tpl.get("extra_attributes")
-                        if isinstance(tpl_attrs, dict) and "ttl" in tpl_attrs:
-                            ttl = tpl_attrs["ttl"]
-
-                peer = endpoint.get("peer")
-                if peer:
-                    v4_address = next(
-                        (
-                            ip_address["address"].replace("/32", "").replace("/31", "")
-                            for ip_address in peer["source_interface"]["ip_addresses"]
-                            if ip_address["ip_version"] == 4
-                        ),
-                        None,
-                    )
-                    v6_address = next(
-                        (
-                            ip_address["address"].replace("/128", "")
-                            for ip_address in peer["source_interface"]["ip_addresses"]
-                            if ip_address["ip_version"] == 6
-                        ),
-                        None,
-                    )
-                    # Use the peer device role if peer_group is not set
-                    peer_routing_instance = peer["routing_instance"]
-                    if not peer_group:
-                        peer_group = peer_routing_instance["device"]["role"]["name"].upper()
-
-                    peer_source_interface = None
-                    if peer.get("source_interface") and peer["source_interface"].get("name"):
-                        peer_source_interface = peer["source_interface"]["name"]
-
-                    peers.append(
-                        {
-                            "name": peer_routing_instance["device"]["name"],
-                            "status": peer_routing_instance["status"]["name"],
-                            "description": peer_routing_instance["device"]["name"],
-                            "peer_group": peer_group,
-                            "peer_role": (peer_routing_instance["device"]["role"]["name"]),
-                            "asn": peer_routing_instance["autonomous_system"]["asn"],
-                            "peer_ipv4": v4_address,
-                            "peer_ipv6": v6_address,
-                            "source_interface": peer_source_interface,
-                            "source_vrf": source_vrf,
-                            "ttl": ttl,
-                        }
-                    )
-            if peers:
-                # We found peers within this VRF
-                local_config = {
-                    "status": instance["status"]["name"],
-                    "asn": instance["autonomous_system"]["asn"],
-                    "interface": instance["router_id"]["interfaces"][0]["name"],
-                    "vrf": vrf,
-                    "peers": [BGPPeer(**peer) for peer in peers],
-                }
-                return BGPLocalConfig(**local_config)
-
-        if vrf == "default" and len(routing_instances) == 1:
-            instance = routing_instances[0]
-            # No matches found within the BGP plugin data
-            # But we can still return the local BGP data with an
-            # empty list of peers
-            local_config = {
-                "status": instance["status"]["name"],
-                "asn": instance["autonomous_system"]["asn"],
-                "interface": instance["router_id"]["interfaces"][0]["name"],
-                "vrf": vrf,
-                "peers": [],
-            }
-            return BGPLocalConfig(**local_config)
-        raise FilterException(
-            f"Routing instance for VRF {vrf} not found on device {hostname(value)}."
+    routing_instances = value.routing.bgp_instances
+    for instance in routing_instances:
+        if vrf not in instance.vrfs and not (vrf == "default" and len(routing_instances) == 1):
+            continue
+        peers = tuple(peer for peer in instance.peers if peer.source_vrf == vrf)
+        interface = _required(
+            instance.router_id_interface,
+            "device.routing.bgp_instances[].router_id_interface",
+            value,
+        )
+        return BGPLocalConfig(
+            status=instance.status,
+            asn=int(instance.asn),
+            interface=interface,
+            vrf=vrf,
+            peers=[
+                BGPPeer(
+                    name=peer.name,
+                    status=peer.status,
+                    description=peer.description,
+                    peer_group=peer.peer_group,
+                    peer_role=peer.peer_role,
+                    asn=int(peer.asn),
+                    peer_ipv4=str(peer.peer_ipv4) if peer.peer_ipv4 else None,
+                    peer_ipv6=str(peer.peer_ipv6) if peer.peer_ipv6 else None,
+                    source_interface=peer.source_interface,
+                    source_vrf=peer.source_vrf,
+                    ttl=peer.ttl,
+                )
+                for peer in peers
+            ],
         )
 
-    # Fallback for providers that express BGP only as configuration intent.
-    instance_asn = _intent(value, "bgp")["asn"]
-    instance_status = "Active"
+    if routing_instances:
+        raise FilterException(
+            f"Device {hostname(value)} has no BGP routing instance for VRF '{vrf}'."
+        )
+
+    instance_asn = _required(value.routing.default_asn, "device.routing.default_asn", value)
     if platform(value) == "Cumulus Linux":
-        lo_if = interface_by_name(value, "lo")
+        loopback = interface_by_name(value, "lo")
     elif platform(value) == "Arista EOS":
-        lo_if = interface_by_name(value, "Loopback0")
+        loopback = interface_by_name(value, "Loopback0")
     else:
         raise FilterException(f"Unsupported platform: {platform(value)}")
-    peers = []
-    interface = lo_if.name
+    return BGPLocalConfig(
+        status="Active",
+        asn=int(instance_asn),
+        interface=loopback.name,
+        vrf=vrf,
+        peers=[],
+    )
 
-    local_config = {
-        "status": instance_status,
-        "asn": instance_asn,
-        "interface": interface,
-        "vrf": vrf,
-        "peers": [BGPPeer(**peer) for peer in peers],
-    }
-    return BGPLocalConfig(**local_config)
+
+def _service_endpoints(
+    value: DeviceRenderData,
+    endpoints: Any,
+    service_name: str,
+    optional: bool,
+) -> list[str]:
+    """Return one service's IPv4 endpoints with a clear missing-field error."""
+    if endpoints is None:
+        if optional:
+            return []
+        raise FilterException(
+            f"Device {hostname(value)} is missing required render field "
+            f"'device.services.{service_name.lower().replace('+', '')}'."
+        )
+    return [str(address) for address in endpoints.ipv4]
 
 
 def dns_servers(value: DeviceRenderData, optional: bool = True) -> list[str]:
     """Return a list of DNS servers for the device."""
-    try:
-        return _intent(value, "dns")["ipv4"]
-    except KeyError as exc:
-        if optional:
-            return []
-        raise FilterException(f"No DNS servers defined for site {site_name(value)}.") from exc
+    return _service_endpoints(value, value.services.dns, "DNS", optional)
 
 
 def ntp_servers(value: DeviceRenderData, optional: bool = True) -> list[str]:
     """Return a list of NTP servers for the device."""
-    try:
-        return _intent(value, "ntp")["ipv4"]
-    except KeyError as exc:
-        if optional:
-            return []
-        raise FilterException(f"No NTP servers defined for site {site_name(value)}.") from exc
+    return _service_endpoints(value, value.services.ntp, "NTP", optional)
 
 
 def syslog_servers(value: DeviceRenderData, optional: bool = True) -> list[str]:
     """Return a list of Syslog servers for the device."""
-    try:
-        return _intent(value, "syslog")["ipv4"]
-    except KeyError as exc:
-        if optional:
-            return []
-        raise FilterException(f"No Syslog servers defined for site {site_name(value)}.") from exc
+    return _service_endpoints(value, value.services.syslog, "syslog", optional)
 
 
 def tacacs_servers(value: DeviceRenderData, optional: bool = True) -> list[str]:
     """Return a list of TACACS+ servers for the device."""
-    try:
-        return _intent(value, "tacacs")["ipv4"]
-    except KeyError as exc:
-        if optional:
-            return []
-        raise FilterException(f"No tacacs servers defined for site {site_name(value)}.") from exc
+    return _service_endpoints(value, value.services.tacacs, "TACACS+", optional)
 
 
 def ztp_servers(value: DeviceRenderData) -> list[str]:
     """Return a list of ZTP servers for the device."""
-    try:
-        return _intent(value, "ztp")["ipv4"]
-    except KeyError as exc:
-        raise FilterException(f"No ZTP servers defined for site {site_name(value)}.") from exc
+    return _service_endpoints(value, value.services.ztp, "ZTP", optional=False)
 
 
 def firmware_cache(value: DeviceRenderData) -> list[str]:
     """Return a list of firmware cache servers, fall back to ZTP servers."""
-    try:
-        return _intent(value, "firmware_cache")["ipv4"]
-    except KeyError:
-        # Fallback to ZTP servers if firmware_cache is not present
+    if value.services.firmware_cache is None:
         return ztp_servers(value)
+    return [str(address) for address in value.services.firmware_cache.ipv4]
 
 
 def nvlink_topology(value: DeviceRenderData) -> str:
     """Return the NVLink topology for the device."""
-    try:
-        return _inventory(value, "nvlink_domain", [])[0]["topology"].lower()
-    except KeyError as exc:
-        raise FilterException(f"No NVLink topology defined for device {hostname(value)}.") from exc
+    topology = _required(value.network.nvlink_topology, "device.network.nvlink_topology", value)
+    return topology.lower()
 
 
 def firmware_bundle_version(value: DeviceRenderData) -> str:
     """Return the firmware bundle version for this device."""
-    try:
-        return _intent(value, "firmware_bundle_version")
-    except KeyError:
-        # Default to 1.2.0 if not specified for backward compatibility
-        return "1.2.0"
+    return value.firmware.selected_bundle_version or "1.2.0"
 
 
 def firmware_bundles(value: DeviceRenderData) -> dict[str, Any]:
-    """Return the firmware bundles mapping from normalized intent."""
-    try:
-        return _intent(value, "firmware_bundles")
-    except KeyError as exc:
+    """Return the legacy template view of typed firmware bundles."""
+    if not value.firmware.bundles:
         raise FilterException(
-            f"No firmware_bundles defined in intent for device {hostname(value)}."
-        ) from exc
+            f"Device {hostname(value)} is missing required render field 'device.firmware.bundles'."
+        )
+    return {
+        bundle.version: {
+            "nv_os": {
+                "version": bundle.operating_system.version or "",
+                "image_file": bundle.operating_system.image_file or "",
+            },
+            "firmware": {
+                component.name: {
+                    "version": component.artifact.version,
+                    "file": component.artifact.image_file,
+                    "s3_path": component.artifact.source_path,
+                }
+                for component in bundle.components
+            },
+        }
+        for bundle in value.firmware.bundles
+    }
 
 
 def firmware_bundle(value: DeviceRenderData, bundle_version: str = None) -> dict[str, Any]:
@@ -564,11 +498,17 @@ def firmware_bundle(value: DeviceRenderData, bundle_version: str = None) -> dict
 
 def firmware_overrides(value: DeviceRenderData) -> dict[str, Any]:
     """Return firmware overrides for this device."""
-    try:
-        return _intent(value, "firmware_overrides")
-    except KeyError:
-        # Return empty overrides if not specified
-        return {"skip_components": [], "custom_components": {}}
+    return {
+        "skip_components": list(value.firmware.overrides.skip_components),
+        "custom_components": {
+            component.name: {
+                "version": component.artifact.version,
+                "file": component.artifact.image_file,
+                "s3_path": component.artifact.source_path,
+            }
+            for component in value.firmware.overrides.custom_components
+        },
+    }
 
 
 def firmware_component(
@@ -651,17 +591,13 @@ def helper_addresses_by_vlan(
     device_vlan_ids = {intf.vlan_number for intf in vlan_interfaces if intf.vlan_number}
     result: dict[int, list[str]] = {}
 
-    # From location: vlans with rel_vlan_to_helper_address
-    if "vlans" in location_value.inventory:
-        for vlan in location_value.inventory["vlans"]:
-            vlan_id = vlan["vid"]
-            if vlan_id in device_vlan_ids:
-                helpers = set()
-                for helper in vlan.get("rel_vlan_to_helper_address", []):
-                    if "host" in helper:
-                        helpers.add(helper["host"])
-                if helpers:
-                    result[vlan_id] = sorted(list(helpers), key=ipaddress.ip_address)
+    for location_vlan in location_value.address_space.vlans:
+        vlan_id = location_vlan.vlan.vid
+        if vlan_id in device_vlan_ids and location_vlan.helper_addresses:
+            result[vlan_id] = sorted(
+                {str(address) for address in location_vlan.helper_addresses},
+                key=ipaddress.ip_address,
+            )
 
     return result
 
@@ -713,30 +649,19 @@ def helper_addresses_by_vrf(
 
 def users(value: DeviceRenderData) -> list[dict[str, str]]:
     """Return username/role/password_key for each user."""
-    try:
-        user_mappings = _intent(value, "password_mappings")
-    except KeyError as err:
-        raise FilterException(f"Error accessing password mappings: {err}") from err
-
-    if not user_mappings:
-        raise FilterException(f"password_mappings is empty for device {hostname(value)}")
-
-    result = []
-    for username, user_config in user_mappings.items():
-        for key in ("password", "rotation"):
-            if key not in user_config:
-                raise FilterException(
-                    f"password_mappings: user '{username}' is missing required "
-                    f"key '{key}' (device {hostname(value)})"
-                )
-        result.append(
-            {
-                "username": username,
-                "role": (user_config.get("role") or "").strip(),
-                "password_key": f"{user_config['password']}_{user_config['rotation']}",
-            }
+    if not value.access.credentials:
+        raise FilterException(
+            f"Device {hostname(value)} is missing required render field "
+            "'device.access.credentials'."
         )
-    return sorted(result, key=lambda x: x["username"])
+    return [
+        {
+            "username": credential.username,
+            "role": (credential.role or "").strip(),
+            "password_key": f"{credential.secret_name}_{credential.rotation}",
+        }
+        for credential in sorted(value.access.credentials, key=lambda item: item.username)
+    ]
 
 
 def _vrf_name_matches(actual: str | None, expected: Any) -> bool:
@@ -750,13 +675,12 @@ def _vrf_name_matches(actual: str | None, expected: Any) -> bool:
 
 def _device_has_vrf(value: DeviceRenderData, vrf_name: Any) -> bool:
     """Return true if the device render data has the requested VRF attached."""
-    for vrf in _inventory(value, "vrfs", []):
-        if _vrf_name_matches(vrf.get("name"), vrf_name):
+    for vrf in value.network.vrfs:
+        if _vrf_name_matches(vrf.name, vrf_name):
             return True
 
     for interface in value.interfaces:
-        vrf = interface.get("vrf")
-        if vrf and _vrf_name_matches(vrf.get("name"), vrf_name):
+        if interface.vrf and _vrf_name_matches(interface.vrf.name, vrf_name):
             return True
     return False
 
@@ -764,16 +688,11 @@ def _device_has_vrf(value: DeviceRenderData, vrf_name: Any) -> bool:
 def l3vni_mappings(value: DeviceRenderData, vrf_name: Any) -> str:
     """Return the L3 VLAN value for a VRF from overlay plugin VXLAN data."""
     device_name = value.identity.name
-    for vxlan in _inventory(value, "vxlans", []):
-        if str(vxlan.get("vni_type", "")).lower() != "l3":
-            continue
-
-        vrf = vxlan.get("vrf") or {}
-        if _vrf_name_matches(vrf.get("name"), vrf_name):
-            l3_vlan = vxlan.get("l3_vlan_id")
-            if l3_vlan in (None, ""):
+    for vxlan in value.overlays.l3_vnis:
+        if _vrf_name_matches(vxlan.vrf.name, vrf_name):
+            if vxlan.l3_vlan_id is None:
                 return ""
-            return str(l3_vlan)
+            return str(vxlan.l3_vlan_id)
 
     if _device_has_vrf(value, vrf_name):
         return ""
@@ -793,19 +712,14 @@ def vni_mappings(value: DeviceRenderData, vlan_id: Any) -> str:
             f"Invalid VLAN ID '{vlan_id}' for overlay VXLAN lookup on device {device_name}"
         ) from exc
 
-    for vxlan in _inventory(value, "vxlans", []):
-        if str(vxlan.get("vni_type", "")).lower() != "l2":
-            continue
-
-        vlan = vxlan.get("vlan") or {}
-        if vlan.get("vid") == vlan_key:
-            vnid = vxlan.get("vnid")
-            if vnid in (None, ""):
+    for vxlan in value.overlays.l2_vnis:
+        if vxlan.vlan.vid == vlan_key:
+            if vxlan.vni is None:
                 raise FilterException(
-                    f"No VNID found for VLAN {vlan_id} in overlay VXLAN data "
-                    f"for device {device_name}"
+                    f"Device {device_name} is missing required render field "
+                    f"'device.overlays.l2_vnis[vlan={vlan_id}].vni'."
                 )
-            return str(vnid)
+            return str(vxlan.vni)
 
     raise FilterException(
         f"VLAN {vlan_id} not found in overlay VXLAN data for device {device_name}"
@@ -815,12 +729,11 @@ def vni_mappings(value: DeviceRenderData, vlan_id: Any) -> str:
 def evpn_esi_mac(value: DeviceRenderData, local_id: int | str) -> str:
     """Compute EVPN ESI MAC address from evpn_esi_base_mac and bond local-id."""
     hostname_val = value.identity.name
-    try:
-        base_mac = _intent(value, "evpn_esi_base_mac")
-    except (KeyError, TypeError) as exc:
-        raise FilterException(
-            f"No evpn_esi_base_mac found in intent for device {hostname_val}"
-        ) from exc
+    base_mac = _required(
+        value.routing.evpn.esi_base_mac,
+        "device.routing.evpn.esi_base_mac",
+        value,
+    )
     try:
         octets = base_mac.split(":")
         if len(octets) != 6:
@@ -843,49 +756,45 @@ def evpn_esi_mac(value: DeviceRenderData, local_id: int | str) -> str:
 
 
 def global_fabric_mac(value: DeviceRenderData, fail_if_missing: bool = True) -> str:
-    """Get global fabric MAC address from device intent."""
-    try:
-        fabric_mac = _intent(value, "fabric-mac")
-        return fabric_mac if fabric_mac is not None else ""
-    except (KeyError, TypeError) as exc:
-        if fail_if_missing:
-            hostname_val = value.identity.name
-            raise FilterException(
-                f"No fabric-mac found in intent for device {hostname_val}"
-            ) from exc
-        return ""
+    """Get the global fabric MAC address from typed EVPN routing data."""
+    fabric_mac = value.routing.evpn.fabric_mac
+    if fabric_mac is not None:
+        return fabric_mac
+    if fail_if_missing:
+        raise FilterException(
+            f"Device {value.identity.name} is missing required render field "
+            "'device.routing.evpn.fabric_mac'."
+        )
+    return ""
 
 
 def evpn_df_preference(value: DeviceRenderData) -> int:
-    """Return EVPN df-preference from intent, defaulting to 50000."""
-    try:
-        result = _intent(value, "evpn")["df-preference"]
-    except (KeyError, TypeError):
-        result = 50000
-    return result
+    """Return EVPN DF preference, defaulting to 50000."""
+    if value.routing.evpn.df_preference is None:
+        return 50000
+    return value.routing.evpn.df_preference
 
 
 def spx_subnets(value: DeviceRenderData, ip_version: int = 4) -> list[dict[str, str]]:
     """List Spectrum-X /31 downlink subnets with their rail prefix."""
     results = []
     for intf in value.interfaces:
-        if not intf["role"] or intf["role"]["name"] != "Downlink":
+        if intf.role != "Downlink":
             continue
-        if not intf["ip_addresses"]:
+        if not intf.addresses:
             continue
 
-        for ip_entry in intf["ip_addresses"]:
-            if ip_entry["ip_version"] != ip_version:
+        for ip_entry in intf.addresses:
+            if ip_entry.version != ip_version:
                 continue
 
-            try:
-                subnet = ip_entry["parent"]["prefix"]
-                rail_prefix = ip_entry["parent"]["parent"]["parent"]["prefix"]
-            except (KeyError, TypeError) as exc:
+            if len(ip_entry.parent_prefixes) < 3:
                 raise FilterException(
-                    f"Incomplete parent hierarchy for interface {intf['name']}. "
+                    f"Incomplete parent hierarchy for interface {intf.name}. "
                     f"Expected /31 -> device prefix -> rail prefix structure."
-                ) from exc
+                )
+            subnet = ip_entry.parent_prefixes[0]
+            rail_prefix = ip_entry.parent_prefixes[2]
 
             rail_network = ipaddress.ip_network(rail_prefix)
             if rail_network.prefixlen not in [16, 17]:
@@ -894,7 +803,7 @@ def spx_subnets(value: DeviceRenderData, ip_version: int = 4) -> list[dict[str, 
                     f"{rail_prefix}. Expected /16 (4-rail) or /17 (8-rail)."
                 )
 
-            results.append({"subnet": subnet, "rail_prefix": rail_prefix})
+            results.append({"subnet": str(subnet), "rail_prefix": str(rail_prefix)})
 
     return results
 
@@ -913,7 +822,7 @@ def get_vrf(
 def has_vrf_interfaces(value: DeviceRenderData) -> bool:
     """Return True if the device has any interfaces in non-default VRFs."""
     for interface in value.interfaces:
-        if interface["vrf"] and interface["vrf"]["name"].lower() != "default":
+        if interface.vrf and interface.vrf.name.lower() != "default":
             return True
     return False
 
@@ -924,15 +833,15 @@ def device_aggregate(
     """Aggregate all p2p interfaces."""
     supernets = set()
     for intf in value.interfaces:
-        if not intf["role"] or intf["role"]["name"] != "Downlink":
+        if intf.role != "Downlink":
             continue
-        if not intf["ip_addresses"]:
+        if not intf.addresses:
             continue
         supernets.update(
             {
-                ipaddress.ip_network(ip_entry["parent"]["parent"]["prefix"])
-                for ip_entry in intf["ip_addresses"]
-                if ip_entry["ip_version"] == ip_version
+                ip_entry.parent_prefixes[1]
+                for ip_entry in intf.addresses
+                if ip_entry.version == ip_version and len(ip_entry.parent_prefixes) >= 2
             }
         )
 
@@ -948,11 +857,13 @@ def device_aggregate(
         and intf.connected_interface.device.role.lower() == peer_role.lower()
     ]
     for peer_intf in peer_interfaces:
-        peer_net_if = (
-            ipaddress.ip_interface(peer_intf.primary_ipv4)
-            if ip_version == 4
-            else ipaddress.ip_interface(peer_intf.primary_ipv6)
-        )
+        peer_address = peer_intf.primary_ipv4 if ip_version == 4 else peer_intf.primary_ipv6
+        if peer_address is None:
+            raise FilterException(
+                f"Connected peer on interface {peer_intf.name} is missing "
+                f"an IPv{ip_version} address."
+            )
+        peer_net_if = ipaddress.ip_interface(peer_address)
         contained = False
         for supernet in supernets:
             if peer_net_if.network.subnet_of(supernet):
@@ -991,134 +902,67 @@ def peer_group_ttl(value: DeviceRenderData, peer_group: str, vrf: str = "default
 
 def isis_metric(value: DeviceRenderData, interface_name: str) -> int | None:
     """Retrieve the ISIS metric for the given interface."""
-    isis_interfaces = _intent(value, "isis")["interfaces"]
-    return isis_interfaces.get(interface_name)
-
-
-def dhcp_servers(value: DeviceRenderData, provider: str, optional: bool = True) -> list[str]:
-    """Return a list of DHCP servers for the device."""
-    try:
-        return _intent(value, "dhcp")[provider]["ipv4"]
-    except KeyError as exc:
-        if optional:
-            return []
+    if not value.routing.isis_interfaces:
         raise FilterException(
-            f"No {provider} DHCP servers defined for site {site_name(value)}."
-        ) from exc
-
-
-def management_prefixes(value: DeviceRenderData) -> list[str]:
-    """Return a list of remote prefixes for management traffic."""
-    try:
-        return _intent(value, "management_prefixes")["ipv4"]
-    except KeyError as exc:
-        raise FilterException(
-            f"No management prefixes defined for site {site_name(value)}."
-        ) from exc
-
-
-def provisioning_servers(value: DeviceRenderData, fail_if_missing: bool = True) -> list[str]:
-    """Return a list of provisioning servers."""
-    try:
-        return _intent(value, "provisioning_servers")["ipv4"]
-    except KeyError as exc:
-        if fail_if_missing:
-            raise FilterException(
-                f"No provisioning servers defined for site {site_name(value)}."
-            ) from exc
-        return []
-
-
-def _is_device_overlay_assignment(entry: dict[str, Any]) -> bool:
-    """Return true if an overlay assignment points at a Nautobot device."""
-    object_type = entry.get("assigned_object_type")
-    if not object_type:
-        return True
-    return (
-        object_type.get("app_label") == "dcim" and object_type.get("model", "").lower() == "device"
-    )
-
-
-def _vxlan_route_targets(
-    overlay: dict[str, Any], vxlan: dict[str, Any]
-) -> tuple[list[str], list[str]]:
-    """Return export/import route target names for an L2 VXLAN overlay."""
-    export_targets = [target["name"] for target in vxlan.get("export_targets", [])]
-    import_targets = [target["name"] for target in vxlan.get("import_targets", [])]
-    if export_targets or import_targets:
-        return export_targets, import_targets
-
-    vxlan_id = vxlan.get("id")
-    for assignment in overlay.get("assignments", []):
-        if assignment.get("assigned_object_id") != vxlan_id:
-            continue
-        return (
-            [target["name"] for target in assignment.get("export_targets", [])],
-            [target["name"] for target in assignment.get("import_targets", [])],
+            f"Device {hostname(value)} is missing required render field "
+            "'device.routing.isis_interfaces'."
         )
-
-    return [], []
-
-
-def _overlay_vxlan_assignment(overlay: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the VXLAN object assignment for an overlay entry."""
-    assignments = overlay.get("assignments", [])
-    for assignment in assignments:
-        object_type = assignment.get("assigned_object_type") or {}
-        if object_type.get("app_label") == "nautobot_app_overlays" and (
-            object_type.get("model", "").lower() == "vxlan"
-        ):
-            return assignment
-
     return next(
         (
-            assignment
-            for assignment in assignments
-            if assignment.get("export_targets") or assignment.get("import_targets")
+            interface.metric
+            for interface in value.routing.isis_interfaces
+            if interface.interface_name == interface_name
         ),
         None,
     )
 
 
+def dhcp_servers(value: DeviceRenderData, provider: str, optional: bool = True) -> list[str]:
+    """Return a list of DHCP servers for the device."""
+    endpoints = next(
+        (entry.endpoints for entry in value.services.dhcp if entry.name == provider), None
+    )
+    if endpoints is None:
+        if optional:
+            return []
+        raise FilterException(
+            f"Device {hostname(value)} is missing required render field "
+            f"'device.services.dhcp[{provider}]'."
+        )
+    return [str(address) for address in endpoints.ipv4]
+
+
+def management_prefixes(value: DeviceRenderData) -> list[str]:
+    """Return a list of remote prefixes for management traffic."""
+    prefixes = _required(
+        value.services.management_prefixes,
+        "device.services.management_prefixes",
+        value,
+    )
+    return [str(prefix) for prefix in prefixes.ipv4]
+
+
+def provisioning_servers(value: DeviceRenderData, fail_if_missing: bool = True) -> list[str]:
+    """Return a list of provisioning servers."""
+    endpoints = value.services.provisioning
+    if endpoints is None:
+        if fail_if_missing:
+            raise FilterException(
+                f"Device {hostname(value)} is missing required render field "
+                "'device.services.provisioning'."
+            )
+        return []
+    return [str(address) for address in endpoints.ipv4]
+
+
 def l2vni_vrfs(value: DeviceRenderData) -> list[dict[str, Any]]:
     """Return per-LG L2VNI overlays for the device, sourced from the overlays plugin."""
-    data = value.inventory
-    l2_vxlans_by_id = {}
-    l2_vxlans_by_overlay = {}
-    for vxlan in data.get("vxlans", []):
-        if str(vxlan.get("vni_type", "")).lower() != "l2":
-            continue
-
-        vxlan_id = vxlan.get("id")
-        if vxlan_id:
-            l2_vxlans_by_id[vxlan_id] = vxlan
-
-        overlay_name = (vxlan.get("overlay") or {}).get("name")
-        if overlay_name:
-            l2_vxlans_by_overlay[overlay_name] = vxlan
-
-    result = []
-    for entry in data.get("overlay_assignments", []):
-        if not _is_device_overlay_assignment(entry):
-            continue
-
-        overlay = entry.get("overlay") or {}
-        overlay_name = overlay.get("name", "")
-        vxlan = l2_vxlans_by_overlay.get(overlay_name)
-        if not vxlan:
-            vxlan_assignment = _overlay_vxlan_assignment(overlay)
-            if vxlan_assignment:
-                vxlan = l2_vxlans_by_id.get(vxlan_assignment.get("assigned_object_id"))
-        if not vxlan:
-            continue
-
-        export_targets, import_targets = _vxlan_route_targets(overlay, vxlan)
-        result.append(
-            {
-                "name": overlay_name,
-                "vni": str(vxlan.get("vnid", "")),
-                "export_targets": export_targets,
-                "import_targets": import_targets,
-            }
-        )
-    return sorted(result, key=lambda x: x["name"])
+    return [
+        {
+            "name": overlay.name,
+            "vni": str(overlay.vni) if overlay.vni is not None else "",
+            "export_targets": [target.name for target in overlay.export_targets],
+            "import_targets": [target.name for target in overlay.import_targets],
+        }
+        for overlay in sorted(value.overlays.l2_vni_vrfs, key=lambda item: item.name)
+    ]
