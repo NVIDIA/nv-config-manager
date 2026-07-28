@@ -1,0 +1,86 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+      - "pull-request/*"
+  schedule:
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: TruffleHog
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          version: 3.96.0
+          extra_args: --results=verified,unknown
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: linux-amd64-cpu8
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@14229018fe157c83e03c008f27d183d8e99bc67c
+      - name: Setup Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: components/temporal/go.mod
+          cache: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Build Go modules
+        if: matrix.language == 'go'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          (cd bindings/go && go build -mod=readonly ./...)
+          (cd components/nats-ready && go build -mod=readonly ./...)
+          (cd components/temporal && go build -mod=readonly -o "${RUNNER_TEMP}/temporal-bootstrap" ./...)
+      - name: Analyze
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
