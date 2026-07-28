@@ -78,8 +78,6 @@ class NatsClient:
             user: Username for password auth
             password: Password for password auth
             creds_path: Path to credentials file for JWT auth
-            default_stream_name: Stream backing this client
-            default_stream_subjects: Subjects to create the stream with when local
             api_prefix: JetStream API prefix. Use the exporting account's rewritten
                 prefix when the stream is imported from another NATS account.
         """

@@ -82,9 +82,6 @@ class PullConsumer:
         # Flow control settings
         self.idle_wait = 1.0  # Wait time when no messages available
         self.error_backoff = 2.0  # Wait time after errors
-        # Consecutive cycles that failed before a subscription could be established
-        self._consecutive_failures = 0
-        self.max_consecutive_failures = 3
         # Heartbeat interval for consumer health detection
         # Must be < FetchMaxWait/2 (default FetchMaxWait=5s, so heartbeat must be < 2.5s)
         self.heartbeat_interval = 1.0
@@ -206,21 +203,7 @@ class PullConsumer:
                 break
             except Exception as e:
                 # Any exception bubbling up from fetch indicates we need to recreate
-                self._consecutive_failures += 1
-                # A consumer that never reaches a subscription keeps this process alive
-                # while consuming nothing, so escalate instead of retrying at warning
-                # level indefinitely.
-                log = (
-                    self.logger.error
-                    if self._consecutive_failures >= self.max_consecutive_failures
-                    else self.logger.warning
-                )
-                log(
-                    "Consumer %s cycle failed (%d consecutive), recreating: %s",
-                    self.queue,
-                    self._consecutive_failures,
-                    str(e),
-                )
+                self.logger.warning("Consumer %s cycle failed, recreating: %s", self.queue, str(e))
                 await asyncio.sleep(self.error_backoff)
 
         self.running = False
@@ -240,7 +223,6 @@ class PullConsumer:
         )
 
         self.logger.info("Pull subscription created for consumer %s", self.queue)
-        self._consecutive_failures = 0
 
         try:
             # Message processing loop

@@ -106,14 +106,7 @@ class NatsConsumer(BaseNatsConsumer):
         queue_suffix: str,
         handler: Callable[[Msg], Awaitable[None]],
     ) -> None:
-        """Initialize the consumer from config.
-
-        Args:
-            stream: Stream to consume from
-            subject: Subject to consume
-            queue_suffix: Suffix appended to the configured queue prefix
-            handler: Coroutine invoked per message
-        """
+        """Initialize the consumer from config."""
         config = load_config()
         nats_config = config["nats"]
 
