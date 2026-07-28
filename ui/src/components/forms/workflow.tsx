@@ -50,6 +50,7 @@ type WorkflowFormProps = {
   title: string;
   onSubmit: SubmitHandler<DeviceWorkflowFormSchema>;
   deviceFilterParams?: string[][];
+  destructiveWarning?: string;
   /** When true, show the commit-confirm checkbox (for deploy workflow) */
   showCommitConfirm?: boolean;
   /**
@@ -143,6 +144,7 @@ export const DeviceWorkflowForm = ({
   title,
   onSubmit,
   deviceFilterParams = [],
+  destructiveWarning,
   showCommitConfirm = false,
   managedOnly = true,
 }: WorkflowFormProps) => {
@@ -405,6 +407,14 @@ export const DeviceWorkflowForm = ({
                   )}
                 />
               )}
+              {destructiveWarning ? (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {destructiveWarning}
+                </div>
+              ) : null}
               <Button
                 type="submit"
                 disabled={

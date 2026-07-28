@@ -74,6 +74,58 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 )
 
 
+def _format_device_list(device_names: list[str]) -> str:
+    """Format a compact device preview for a batch link."""
+    device_list = ", ".join(device_names[:3])
+    if len(device_names) > 3:
+        device_list += f" +{len(device_names) - 3} more"
+    return device_list
+
+
+def _format_batch_status(result: dict[str, Any], device_count: int) -> tuple[str, str]:
+    """Format the icon and compact terminal status for a batch result."""
+    if "error" in result:
+        return "❌", "Workflow failed"
+    if not result.get("approved", False):
+        return "⛔", "Rejected"
+
+    successful = len(result.get("successful_devices") or [])
+    failed = len(result.get("failed_devices") or {})
+    backups = result.get("backups") or {}
+    successful_backups = backups.get("successful", 0)
+    failed_backups = backups.get("failed", 0)
+    total_backups = backups.get("total", successful_backups + failed_backups)
+    icon = "✅" if failed == 0 and failed_backups == 0 else "⚠️"
+
+    backup_status = (
+        f"Backups **{successful_backups}/{total_backups}**"
+        if total_backups
+        else "Backups **not run**"
+    )
+    return icon, f"Configured **{successful}/{device_count}** · {backup_status}"
+
+
+def _format_backup_workflow_links(
+    ui_base_url: str,
+    backup_handles: dict[str, Any],
+    backup_results: dict[str, Any],
+) -> str:
+    """Format backup child workflow links with their current status."""
+    links = []
+    for device_name, handle in backup_handles.items():
+        result = backup_results.get(device_name)
+        if result is None:
+            icon, status = "⏳", "In progress"
+        elif result.success:
+            icon, status = "✅", "Successful"
+        else:
+            icon, status = "❌", "Failed"
+
+        workflow_url = build_workflow_url(ui_base_url, handle.id)
+        links.append(f"- {icon} [{device_name} backup]({workflow_url}) — {status}")
+    return "\n".join(links) or "*No backup workflows were started.*"
+
+
 class MultiDeployInput(BaseModel):
     """Multi-Deploy Workflow Input Definition."""
 
@@ -133,6 +185,15 @@ class BatchDeployInput(BaseModel):
         default=True,
         description="Whether to use commit-confirmed mode when the platform supports it.",
     )
+
+
+class BatchBackupResultData(BaseModel):
+    """Completion data for one backup child workflow in a deployment batch."""
+
+    success: bool
+    changed: bool | None = None
+    error: str | None = None
+    child_workflow_id: str
 
 
 @workflow.defn
@@ -318,10 +379,19 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class BackupsStageOutput(StageOutput):
         """Backups Stage Output."""
 
+        backup_results: dict[str, BatchBackupResultData]
+        successful_backups: int
+        failed_backups: int
+
     @stage_executor("perform_backups")
     async def perform_backups(self, stage_input: BackupsStageInput) -> BackupsStageOutput:
         """Perform backups for all successfully configured devices."""
-        backup_handles = []
+        ui_base_url = await workflow.execute_activity(
+            get_ui_base_url,
+            start_to_close_timeout=timedelta(seconds=30),
+            retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+        )
+        backup_handles: dict[str, Any] = {}
 
         for device_data in stage_input.successful_devices:
             backup_input = BackupInput(
@@ -337,13 +407,89 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 BackupWorkflow.run, backup_input, run_timeout=timedelta(minutes=10)
             )
             self.append_child_workflow("perform_backups", backup_handle.id)
-            backup_handles.append(backup_handle)
+            backup_handles[device_data.device.name] = backup_handle
 
-        # Wait for all backups to complete
-        await asyncio.gather(*backup_handles, return_exceptions=True)
+        backup_results: dict[str, BatchBackupResultData] = {}
+        remaining_items = list(backup_handles.items())
+        total_backups = len(backup_handles)
+        initial_links = _format_backup_workflow_links(ui_base_url, backup_handles, backup_results)
+        self.set_stage_output(
+            "perform_backups",
+            BatchDeployWorkflow.BackupsStageOutput(
+                backup_results={},
+                successful_backups=0,
+                failed_backups=0,
+                display=(
+                    f"**Backups in progress** — 0/{total_backups} complete\n\n"
+                    f"**Devices:** 0 successful · 0 failed · {total_backups} in progress\n\n"
+                    f"**Backup workflows**\n{initial_links}"
+                ),
+            ),
+        )
+
+        while remaining_items:
+            remaining_handles = [handle for _, handle in remaining_items]
+            done, _ = await workflow.wait(remaining_handles, return_when=asyncio.FIRST_COMPLETED)
+
+            for completed_handle in done:
+                device_name = None
+                for index, (name, handle) in enumerate(remaining_items):
+                    if handle is completed_handle:
+                        device_name = name
+                        remaining_items.pop(index)
+                        break
+
+                if device_name is None:
+                    continue
+
+                try:
+                    changed = completed_handle.result()
+                    backup_results[device_name] = BatchBackupResultData(
+                        success=True,
+                        changed=changed,
+                        child_workflow_id=completed_handle.id,
+                    )
+                except ChildWorkflowError as exc:
+                    backup_results[device_name] = BatchBackupResultData(
+                        success=False,
+                        error=str(exc.cause),
+                        child_workflow_id=completed_handle.id,
+                    )
+
+            successful_backups = sum(result.success for result in backup_results.values())
+            failed_backups = len(backup_results) - successful_backups
+            completed_backups = len(backup_results)
+            backup_links = _format_backup_workflow_links(
+                ui_base_url, backup_handles, backup_results
+            )
+            self.set_stage_output(
+                "perform_backups",
+                BatchDeployWorkflow.BackupsStageOutput(
+                    backup_results=backup_results.copy(),
+                    successful_backups=successful_backups,
+                    failed_backups=failed_backups,
+                    display=(
+                        f"**Backups in progress** — {completed_backups}/{total_backups} complete\n\n"
+                        f"**Devices:** {successful_backups} successful · {failed_backups} failed · "
+                        f"{total_backups - completed_backups} in progress\n\n"
+                        f"**Backup workflows**\n{backup_links}"
+                    ),
+                ),
+            )
+
+        successful_backups = sum(result.success for result in backup_results.values())
+        failed_backups = len(backup_results) - successful_backups
+        backup_links = _format_backup_workflow_links(ui_base_url, backup_handles, backup_results)
 
         return BatchDeployWorkflow.BackupsStageOutput(
-            display=f"Initiated backups for {len(backup_handles)} devices."
+            backup_results=backup_results,
+            successful_backups=successful_backups,
+            failed_backups=failed_backups,
+            display=(
+                f"**Backups complete**\n\n"
+                f"**Devices:** {successful_backups} successful · {failed_backups} failed\n\n"
+                f"**Backup workflows**\n{backup_links}"
+            ),
         )
 
     @run_nv_config_manager_workflow
@@ -365,6 +511,12 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             "approved": review_output.approved,
             "successful_devices": [],
             "failed_devices": {},
+            "backups": {
+                "total": 0,
+                "successful": 0,
+                "failed": 0,
+                "results": {},
+            },
         }
 
         if review_output.approved:
@@ -387,12 +539,20 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 if device.device.name in apply_output.successful_devices
             ]
 
-            if successful_device_data:
-                await self.perform_backups(
-                    BatchDeployWorkflow.BackupsStageInput(
-                        successful_devices=successful_device_data,
-                    )
+            backups_output = await self.perform_backups(
+                BatchDeployWorkflow.BackupsStageInput(
+                    successful_devices=successful_device_data,
                 )
+            )
+            result["backups"] = {
+                "total": len(backups_output.backup_results),
+                "successful": backups_output.successful_backups,
+                "failed": backups_output.failed_backups,
+                "results": {
+                    device_name: backup_result.model_dump()
+                    for device_name, backup_result in backups_output.backup_results.items()
+                },
+            }
         else:
             # Mark stages as unreachable
             self.set_stage_state("apply_configurations", StateEnum.UNREACHABLE)
@@ -701,23 +861,21 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         child_workflow_links = []
         for batch_id, handle in batch_handles.items():
             batch_index = int(batch_id.split("_")[1])
-            device_count = len(stage_input.batches[batch_index])
             device_names = [d.device.name for d in stage_input.batches[batch_index]]
-            device_list = ", ".join(device_names[:3])
-            if len(device_names) > 3:
-                device_list += f" and {len(device_names) - 3} more"
+            device_list = _format_device_list(device_names)
 
             child_workflow_url = build_workflow_url(ui_base_url, handle.id)
 
             child_workflow_links.append(
-                f"- [Batch {batch_index + 1}]({child_workflow_url}) - {device_count} devices ({device_list})"
+                f"- ⏳ [Batch {batch_index + 1}]({child_workflow_url}) — {device_list}"
             )
 
         # Update the stage output with links while workflows are running
+        batch_label = "batch" if len(batch_handles) == 1 else "batches"
         initial_display = (
-            f"**Started {len(batch_handles)} batch workflows for approval:**\n\n"
+            f"**{len(batch_handles)} {batch_label} awaiting approval**\n\n"
             + "\n".join(child_workflow_links)
-            + "\n\n*Click on the batch links above to review and approve configuration diffs.*"
+            + "\n\n*Select a batch to review and approve its shared diff.*"
         )
 
         initial_output = MultiDeployWorkflow.ExecuteBatchesStageOutput(
@@ -740,9 +898,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 batch_index = int(batch_id.split("_")[1])
                 device_count = len(stage_input.batches[batch_index])
                 device_names = [d.device.name for d in stage_input.batches[batch_index]]
-                device_list = ", ".join(device_names[:3])
-                if len(device_names) > 3:
-                    device_list += f" and {len(device_names) - 3} more"
+                device_list = _format_device_list(device_names)
 
                 child_workflow_url = build_workflow_url(ui_base_url, handle.id)
 
@@ -750,25 +906,16 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 if batch_id in batch_results:
                     result = batch_results[batch_id]
                     if isinstance(result, dict):
-                        if "error" in result:
-                            status = "❌ Failed"
-                        elif result.get("approved", False):
-                            successful_devices = result.get("successful_devices", [])
-                            failed_devices = result.get("failed_devices", {})
-                            successful = len(successful_devices) if successful_devices else 0
-                            failed = len(failed_devices) if failed_devices else 0
-                            status = f"✅ Completed ({successful} success, {failed} failed)"
-                        else:
-                            status = "⛔ Rejected"
+                        icon, status = _format_batch_status(result, device_count)
                     else:
-                        status = "❓ Unknown result"
+                        icon, status = "❓", "Unknown result"
                 elif completed_batches and batch_id in completed_batches:
-                    status = "⏳ Processing result..."
+                    icon, status = "⏳", "Processing result"
                 else:
-                    status = "⏳ Waiting for approval..."
+                    icon, status = "⏳", "Awaiting approval"
 
                 batch_links.append(
-                    f"- [Batch {batch_index + 1}]({child_workflow_url}) - {device_count} devices ({device_list}) - {status}"
+                    f"- {icon} [Batch {batch_index + 1}]({child_workflow_url}) — {device_list} · {status}"
                 )
 
             return batch_links
@@ -844,21 +991,21 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
 
             if completed_count < total_count:
                 # Still in progress
+                batch_label = "batch" if total_count == 1 else "batches"
                 display = (
-                    f"**Batch deployment in progress ({completed_count}/{total_count} completed):**\n"
-                    f"- {total_successful} devices configured successfully\n"
-                    f"- {total_failed} devices failed\n"
-                    f"- {total_rejected} devices rejected (not configured)\n\n"
-                    f"**Child Workflows (click to view details):**\n" + "\n".join(batch_links)
+                    f"**Deployment in progress** — {completed_count}/{total_count} "
+                    f"{batch_label} complete\n\n"
+                    f"**Devices:** {total_successful} configured · {total_failed} failed · "
+                    f"{total_rejected} rejected\n\n"
+                    f"**Batches**\n" + "\n".join(batch_links)
                 )
             else:
                 # All completed
                 display = (
-                    f"**Batch deployment completed:**\n"
-                    f"- {total_successful} devices configured successfully\n"
-                    f"- {total_failed} devices failed\n"
-                    f"- {total_rejected} devices rejected (not configured)\n\n"
-                    f"**Child Workflows (click to view details):**\n" + "\n".join(batch_links)
+                    f"**Deployment complete**\n\n"
+                    f"**Devices:** {total_successful} configured · {total_failed} failed · "
+                    f"{total_rejected} rejected\n\n"
+                    f"**Batches**\n" + "\n".join(batch_links)
                 )
 
             # Update the stage output with current progress
@@ -875,11 +1022,10 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         # to ensure consistency
         final_batch_links = generate_batch_links(batch_results)
         display = (
-            f"**Batch deployment completed:**\n"
-            f"- {total_successful} devices configured successfully\n"
-            f"- {total_failed} devices failed\n"
-            f"- {total_rejected} devices rejected (not configured)\n\n"
-            f"**Child Workflows (click to view details):**\n" + "\n".join(final_batch_links)
+            f"**Deployment complete**\n\n"
+            f"**Devices:** {total_successful} configured · {total_failed} failed · "
+            f"{total_rejected} rejected\n\n"
+            f"**Batches**\n" + "\n".join(final_batch_links)
         )
 
         return MultiDeployWorkflow.ExecuteBatchesStageOutput(
@@ -913,6 +1059,9 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 "successful_devices": 0,
                 "failed_devices": 0,
                 "rejected_devices": 0,
+                "total_backups": 0,
+                "successful_backups": 0,
+                "failed_backups": 0,
                 "discovery_failures": {},
                 "message": f"No devices found with role '{workflow_input.role}'",
             }
@@ -928,6 +1077,9 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 "successful_devices": 0,
                 "failed_devices": 0,
                 "rejected_devices": 0,
+                "total_backups": 0,
+                "successful_backups": 0,
+                "failed_backups": 0,
                 "discovery_failures": diffs_output.failed_devices,
                 "message": "No devices have configuration changes to deploy",
             }
@@ -951,11 +1103,20 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
 
         await self.archive_results()
 
+        backup_summaries = [
+            batch_result.get("backups", {})
+            for batch_result in execute_output.batch_results.values()
+            if "error" not in batch_result
+        ]
+
         return {
             "total_devices": len(discover_output.devices),
             "successful_devices": execute_output.total_successful,
             "failed_devices": execute_output.total_failed + len(diffs_output.failed_devices),
             "rejected_devices": execute_output.total_rejected,
+            "total_backups": sum(summary.get("total", 0) for summary in backup_summaries),
+            "successful_backups": sum(summary.get("successful", 0) for summary in backup_summaries),
+            "failed_backups": sum(summary.get("failed", 0) for summary in backup_summaries),
             "discovery_failures": diffs_output.failed_devices,
             "batch_results": execute_output.batch_results,
             "diff_groups": len(batch_output.diff_groups),

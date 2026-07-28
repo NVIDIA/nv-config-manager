@@ -48,6 +48,51 @@ imageTag chart-version fallback. Takes the same dict as imageTag:
 {{- end }}
 
 {{/*
+Resolve the Temporal gRPC endpoint.  When the project-owned server is
+disabled, a user-managed Temporal endpoint is required instead.
+*/}}
+{{- define "nv-config-manager.temporalGrpcAddress" -}}
+{{- if .Values.temporal.server.enabled -}}
+{{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
+{{ printf "%s-frontend-service.%s.svc.cluster.local:%v" $temporalName .Values.global.namespace .Values.temporal.services.frontend.port }}
+{{- else -}}
+{{- required "temporal.client.address is required when temporal.server.enabled=false" .Values.temporal.client.address -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Render a Temporal TLS server name as a single raw INI value.  Helm's `quote`
+helper produces YAML quotes, which ConfigParser preserves as part of the TLS
+domain name.  Limit the value to DNS-name/IP-literal characters so direct
+Helm values cannot add another INI setting.
+*/}}
+{{- define "nv-config-manager.temporalTLSServerName" -}}
+{{- $serverName := .Values.temporal.client.tls.serverName | default "" -}}
+{{- if $serverName -}}
+{{- if not (regexMatch `^[A-Za-z0-9:.-]+$` $serverName) -}}
+{{- fail "temporal.client.tls.serverName may contain only DNS-name or IP-literal characters" -}}
+{{- end -}}
+{{- $serverName -}}
+{{- end -}}
+{{- end }}
+
+{{- define "nv-config-manager.temporalClientTLSVolumeMount" -}}
+{{- if .Values.temporal.client.tls.enabled }}
+- name: temporal-client-tls
+  mountPath: /var/run/secrets/temporal-client-tls
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "nv-config-manager.temporalClientTLSVolume" -}}
+{{- if .Values.temporal.client.tls.enabled }}
+- name: temporal-client-tls
+  secret:
+    secretName: {{ required "temporal.client.tls.secretName is required when TLS is enabled" .Values.temporal.client.tls.secretName }}
+{{- end }}
+{{- end }}
+
+{{/*
 Selector labels
 */}}
 {{- define "nv-config-manager.selectorLabels" -}}
@@ -553,12 +598,15 @@ checksum/auth-ini: {{ include "nv-config-manager.authIniSections" . | sha256sum 
 {{- end -}}
 
 {{/*
-Opt out of AWS CloudWatch Application Signals / OTel auto-instrumentation on
-Temporal server pods. The Go Temporal server only supports OTLP over gRPC; EKS
-Application Signals injects http/protobuf env vars that prevent startup.
-Usage: {{ include "nv-config-manager.temporalServerOtelOptOutAnnotations" . | nindent 8 }}
+Opt out of AWS CloudWatch Application Signals / OTel operator auto-instrumentation.
+Config Manager instruments its services with the OTel SDK directly, so the
+platform auto-injector must not inject its own env vars: on the Go Temporal
+server the injected http/protobuf vars prevent startup, and on the Python
+services they collide with the SDK's OTLP export. Apply to any pod that sets up
+manual OTel export (guard with `if .Values.observability.enabled`).
+Usage: {{ include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
 */}}
-{{- define "nv-config-manager.temporalServerOtelOptOutAnnotations" -}}
+{{- define "nv-config-manager.otelOptOutAnnotations" -}}
 instrumentation.opentelemetry.io/inject-java: "false"
 instrumentation.opentelemetry.io/inject-python: "false"
 instrumentation.opentelemetry.io/inject-dotnet: "false"
@@ -782,7 +830,7 @@ Usage: {{ include "nv-config-manager.waitForNats" . | nindent 6 }}
 
 {{/*
 Wait-for-Temporal-namespace init container
-Polls the Temporal frontend until the default namespace is registered.
+Polls the Temporal frontend until the configured namespace is registered.
 This must run after the nv-config-manager-worker "temporal-setup" init container has
 created the namespace; use it in deployments that depend on the namespace
 existing (e.g. the scheduler).
@@ -791,20 +839,14 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
 {{- define "nv-config-manager.waitForTemporalNamespace" -}}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") -}}
 - name: wait-for-temporal-namespace
-  image: "{{ .Values.global.images.temporalAdminTools.repository }}:{{ .Values.global.images.temporalAdminTools.tag }}"
-  imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
-  command:
-    - /bin/bash
-    - -c
-    - |
-      TEMPORAL_ADDR="{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
-
-      echo "Waiting for Temporal default namespace..."
-      until tctl --address "$TEMPORAL_ADDR" --namespace default namespace describe >/dev/null 2>&1; do
-        echo "Temporal default namespace not ready yet, retrying in 5s..."
-        sleep 5
-      done
-      echo "Temporal default namespace is available."
+  image: "{{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.temporalBootstrap) }}"
+  imagePullPolicy: {{ .Values.global.images.temporalBootstrap.pullPolicy }}
+  command: ["/usr/local/bin/temporal-bootstrap", "wait-namespace"]
+  env:
+  - name: TEMPORAL_ADDR
+    value: "{{ $temporalName }}-frontend-service.{{ .Values.global.namespace }}.svc.cluster.local:{{ .Values.temporal.services.frontend.port }}"
+  - name: TEMPORAL_NAMESPACE
+    value: {{ .Values.temporal.client.namespace | default "default" | quote }}
   resources:
     requests:
       cpu: 10m
@@ -812,6 +854,7 @@ Usage: {{ include "nv-config-manager.waitForTemporalNamespace" . | nindent 6 }}
     limits:
       cpu: 50m
       memory: 64Mi
+  {{- include "nv-config-manager.containerSecurityContext" . | nindent 2 }}
 {{- end -}}
 
 {{/*
@@ -1303,6 +1346,20 @@ s3_region = {{ $s3.region }}
 {{ end -}}
 {{- end -}}
 
+{{/*
+Network ZTP download settings rendered into the main INI.
+*/}}
+{{- define "nv-config-manager.networkZtpIniDownloadConfig" -}}
+{{- $downloads := .Values.networkZtp.downloads | default dict -}}
+{{- $http := $downloads.http | default dict -}}
+{{- $sftp := $downloads.sftp | default dict -}}
+http_stream_chunk_bytes = {{ $http.chunkSizeBytes | default 67108864 | int }}
+http_max_concurrent_downloads = {{ $http.maxConcurrentDownloads | default 16 | int }}
+sftp_read_ahead_bytes = {{ $sftp.readAheadBytes | default 16777216 | int }}
+sftp_max_concurrent_downloads = {{ $sftp.maxConcurrentDownloads | default 32 | int }}
+sftp_metrics_port = {{ $sftp.metricsPort | default 9100 | int }}
+{{- end -}}
+
 {{- define "nv-config-manager.networkZtpExistingSecretIniConfig" -}}
 {{- if eq (include "nv-config-manager.networkZtp.s3ExistingSecretIniEnabled" .) "true" -}}
 {{- $s3 := .Values.networkZtp.storage.s3 | default dict -}}
@@ -1504,22 +1561,26 @@ Usage: {{ include "nv-config-manager.externalDnsHostname" .Values.networkZtp.ing
 {{- end -}}
 
 {{/*
-OTel app-container env shared by every Temporal pod (worker, api, scheduler,
-archive). Call sites guard the include with
-`if .Values.temporal.observability.enabled`.
+OTel app-container env shared by every instrumented service (the HTTP APIs
+config-store/dhcp/ztp/render/mcp and the Temporal worker/api/scheduler/archive).
+Call sites guard the include with `if .Values.observability.enabled`.
 
-temporal.observability.otlpEndpoint is optional. When unset the endpoint
-defaults to the in-cluster Alloy receiver in the release namespace:
-  http://alloy.<namespace>.svc.cluster.local:4317
-Set it explicitly to target a different collector (e.g. the managed cluster
-OTLP collector on ngcops-eks).
+Points the OTel SDK at an existing OTLP collector:
+  - observability.otlpEndpoint when set (managed or external collector), else
+  - the in-cluster Grafana Alloy service, but only when the bundled Alloy is
+    enabled (alloy.enabled, e.g. via values-observability.yaml).
+Fails fast when neither is available so pods never point at a dead OTLP target.
 
   Context: (dict "root" $ "serviceName" "<service.name>").
 */}}
-{{- define "nv-config-manager.temporal.otelAppEnv" -}}
-{{- $endpoint := .root.Values.temporal.observability.otlpEndpoint -}}
-{{- if not $endpoint -}}
+{{- define "nv-config-manager.otelAppEnv" -}}
+{{- $endpoint := .root.Values.observability.otlpEndpoint -}}
+{{- $alloy := .root.Values.alloy | default dict -}}
+{{- if and (not $endpoint) ($alloy.enabled | default false) -}}
 {{- $endpoint = printf "http://alloy.%s.svc.cluster.local:4317" .root.Values.global.namespace -}}
+{{- end -}}
+{{- if not $endpoint -}}
+{{- fail "observability.enabled=true requires observability.otlpEndpoint to be set, or the bundled Alloy collector enabled (alloy.enabled=true, e.g. values-observability.yaml)" -}}
 {{- end -}}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ $endpoint | quote }}

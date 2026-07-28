@@ -15,11 +15,7 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
-import {
-  SITES_LIST,
-  FORBIDDEN_SITE_ID,
-  SPX_OVERLAY_LIST,
-} from "@/mocks/data";
+import { SITES_LIST, FORBIDDEN_SITE_ID, SPX_OVERLAY_LIST } from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
 
 // Sample VPC data for testing
@@ -75,13 +71,22 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: VPC_DATA.overlay_id, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.overlay_id}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
     await expect(
-      page.getByRole("button", { name: VPC_DATA.namespace_tag, exact: true })
+      page.getByRole("button", {
+        name: `${VPC_DATA.namespace_tag}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Set up a listener for the request (after page is loaded)
@@ -122,7 +127,10 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
 
     // Verify initial values are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Change the site
@@ -135,10 +143,7 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters", () => {
 
     // Change the overlay ID
     await page.getByRole("button", { name: "Overlay ID" }).click();
-    await page
-      .getByRole("dialog")
-      .getByText(SPX_OVERLAY_LIST.modified)
-      .click();
+    await page.getByRole("dialog").getByText(SPX_OVERLAY_LIST.modified).click();
 
     // Change the namespace tag
     await page.getByRole("button", { name: VPC_DATA.namespace_tag }).click();
@@ -236,16 +241,19 @@ test.describe("New SpX Overlay Deletion Workflow - Standard Tests", () => {
 
     // Verify all form elements are disabled during submission
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
-    ).toBeDisabled();
-    await expect(
       page.getByRole("button", {
-        name: SPX_OVERLAY_LIST.submission,
+        name: `${SITES_LIST.pdx01}. Open options`,
         exact: true,
       })
     ).toBeDisabled();
     await expect(
-      page.getByRole("button", { name: "spectrumx", exact: true })
+      page.getByRole("button", {
+        name: `${SPX_OVERLAY_LIST.submission}. Open options`,
+        exact: true,
+      })
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "spectrumx. Open options", exact: true })
     ).toBeDisabled();
     await expect(
       page.getByRole("button", { name: "Submitting..." })
@@ -295,7 +303,10 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters 2", () => {
 
     // Verify all fields are pre-populated
     await expect(
-      page.getByRole("button", { name: SITES_LIST.pdx01, exact: true })
+      page.getByRole("button", {
+        name: `${SITES_LIST.pdx01}. Open options`,
+        exact: true,
+      })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Set up a listener for the request (after page is loaded)
@@ -329,7 +340,7 @@ test.describe("New SpX Overlay Deletion Workflow - URL Parameters 2", () => {
 
     // Verify that namespace tag has the default value "spectrumx"
     await expect(
-      page.getByRole("button", { name: "spectrumx", exact: true })
+      page.getByRole("button", { name: "spectrumx. Open options", exact: true })
     ).toBeVisible({ timeout: TEST_TIMEOUT });
 
     // Verify that Site and VPC are empty (no defaults)

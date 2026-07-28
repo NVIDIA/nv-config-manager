@@ -1079,24 +1079,22 @@ pull_docker_images() {
                 export_exit=$?
                 
                 # If export failed, try re-pulling
-                if [[ $export_exit -ne 0 ]]; then
-                    if echo "$export_err" | grep -q "content digest.*not found\|not found"; then
-                        log_info "  Export failed, re-pulling image..."
-                        # Remove the image first to ensure clean state
-                        ctr image rm "$image" &> /dev/null || true
-                        # Re-pull (use native snapshotter to avoid whiteout issues)
-                        if [[ "$image" == nvcr.io/* && -n "$NGC_API_KEY" ]]; then
-                            ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" &> /dev/null || true
-                        else
-                            ctr image pull --snapshotter=native --platform linux/$arch "$image" &> /dev/null || true
-                        fi
-                        # Wait a moment for content to be available
-                        sleep 2
-                        # Try export again with platform filter
-                        rm -f "$images_dir/$filename"
-                        export_err=$(ctr image export --platform linux/$arch "$images_dir/$filename" "$image" 2>&1)
-                        export_exit=$?
+                if [[ $export_exit -ne 0 ]] && echo "$export_err" | grep -q "content digest.*not found"; then
+                    log_info "  Export failed, re-pulling image..."
+                    # Remove the image first to ensure clean state
+                    ctr image rm "$image" &> /dev/null || true
+                    # Re-pull (use native snapshotter to avoid whiteout issues)
+                    if [[ "$image" == nvcr.io/* && -n "$NGC_API_KEY" ]]; then
+                        ctr image pull --snapshotter=native --platform linux/$arch -u '$oauthtoken:'"$NGC_API_KEY" "$image" &> /dev/null || true
+                    else
+                        ctr image pull --snapshotter=native --platform linux/$arch "$image" &> /dev/null || true
                     fi
+                    # Wait a moment for content to be available
+                    sleep 2
+                    # Try export again with platform filter
+                    rm -f "$images_dir/$filename"
+                    export_err=$(ctr image export --platform linux/$arch "$images_dir/$filename" "$image" 2>&1)
+                    export_exit=$?
                 fi
                 set -e  # Re-enable exit on error
                 

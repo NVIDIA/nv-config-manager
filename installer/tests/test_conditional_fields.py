@@ -58,6 +58,8 @@ async def test_vault_fields_shown_when_eso():
         app.switch_section("secrets")
         vault_fields = app.query_one("#vault-fields")
         assert vault_fields.display is True
+        assert app.query_one("#k8s-secrets-section").display is False
+        assert app.query_one("#vp-value-redis-password", Input) is not None
 
 
 @pytest.mark.asyncio

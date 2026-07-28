@@ -52,6 +52,14 @@ network_secrets:
     rotation: r1
     required: true
 
+# Dummy git token so the --ci git-token tests (TestNautobotGitTokens) have the
+# GIT_TOKEN_TESTGIT / GIT_USERNAME_TESTGIT env vars to assert. Kept in sync with
+# deploy/configs/ci-integration-test.yaml so both deploy paths behave the same.
+git_tokens:
+  - name: testgit
+    token: dummy-token-value
+    username: dummy-user
+
 sites:
   - name: test-site
 
@@ -79,9 +87,8 @@ content:
   jobs:
     - path: development/mock_topology
   template_plugins: []
-  include_bootstrap_jobs: true
   run_after_deploy:
-    - job: mock_topology.jobs.mock_topology_design.MockTopologyDesign
+    - job: custom.mock_topology.jobs.mock_topology_design.MockTopologyDesign
       input: '{"blueprint": "superpod", "deployment_name": "test"}'
 
 services:

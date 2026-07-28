@@ -28,12 +28,22 @@ export const siteConfig = {
       title: "Configs",
       href: "/configs",
     },
+    {
+      title: "DHCP",
+      href: "/dhcp",
+    },
   ],
   workflows: [
     {
       title: "Configuration Backup",
       workflowName: "BackupWorkflow",
       slug: "backupworkflow",
+      enabled: true,
+    },
+    {
+      title: "Site Configuration Backup",
+      workflowName: "SiteBackupWorkflow",
+      slug: "sitebackupworkflow",
       enabled: true,
     },
     {

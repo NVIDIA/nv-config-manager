@@ -119,18 +119,17 @@ The **Scan Plugin Templates** button inspects Jinja2 templates from Content plug
 
 ## 6. Ingest Data
 
-Configure custom Nautobot jobs, bootstrap jobs, and post-deploy job execution. Use this section to stage a Design Builder topology loader, include the standard bootstrap jobs, or run other Nautobot jobs after Helm deployment.
+Configure custom Nautobot jobs and post-deploy job execution. Bundled bootstrap jobs are always available from the Nautobot image. Use this section to stage a Design Builder topology loader or run other Nautobot jobs after Helm deployment.
 
 | Field | Description |
 | :---- | :---------- |
-| Include Bootstrap Jobs | Ship standard bootstrap jobs |
 | Custom Nautobot Jobs | Paths to job directories or tarballs |
-| Post-Deploy Jobs | Nautobot jobs to run after deployment, including class name and JSON input |
+| Post-Deploy Jobs | Nautobot jobs to run after deployment, including class name and JSON input (local Nautobot only) |
 | Jobs PVC Storage Class | Kubernetes storage class for the Nautobot jobs PVC |
 | Jobs PVC Access Mode | `ReadWriteOnce` or `ReadWriteMany` |
 | Node Selector | Node label selector for loader and Nautobot pods that mount the jobs PVC |
 
-Custom jobs and bootstrap jobs require local Nautobot (`services.nautobot: true`). If Nautobot is remote, validation shows a warning.
+Custom and post-deploy jobs require local Nautobot (`services.nautobot: true`). If Nautobot is remote, configure and run those jobs directly on that instance.
 
 For a concrete Design Builder example, see [Design Builder Data Loading](../nautobot/design-builder-data-loading.mdx).
 
@@ -269,6 +268,7 @@ Configure gateway behavior, TLS, database backups, monitoring resources, and loa
 | Enable TLS | Use self-signed TLS certificates for public endpoints |
 | CNPG S3 Backup | CloudNativePG PostgreSQL backups to S3 |
 | Monitoring | PodMonitors and monitoring resources |
+| Prometheus namespace | Namespace allowed through network policy for Prometheus scraping (defaults to `monitoring`) |
 | Enable local observability stack | Enable Grafana and Loki for local development |
 
 Load balancer providers include None, MetalLB, Cilium, and AWS NLB. MetalLB and Cilium use static IPs and optional DNS names for ZTP and DHCP. AWS NLB can be configured separately for Gateway, ZTP, and DHCP.

@@ -87,6 +87,24 @@ def test_temporal_ui_workflow_href_uses_ini(monkeypatch):
     )
 
 
+def test_temporal_ui_workflow_href_uses_configured_namespace():
+    """Verify Workflow API href generation uses the configured Temporal namespace."""
+    config = ConfigParser()
+    config.read_dict(
+        {
+            "temporal": {
+                "temporal_ui_url": "https://temporal-ui.example.com",
+                "namespace": "network automation",
+            }
+        }
+    )
+
+    assert (
+        temporal_ui_workflow_href("workflow-id", config=config)
+        == "https://temporal-ui.example.com/namespaces/network%20automation/workflows/workflow-id"
+    )
+
+
 def test_temporal_ui_workflow_href_returns_empty_without_ini_url():
     """Verify missing Temporal UI URL does not raise after workflow start."""
     config = ConfigParser()
@@ -192,8 +210,9 @@ async def test_cache_workflow_input(mock_redis, mock_load_config):
 @patch("nv_config_manager.temporal.api.workflow_v1.get_client")
 @patch("nv_config_manager.temporal.api.workflow_v1.uuid4", return_value="mockuuid")
 @patch("nv_config_manager.temporal.api.workflow_v1.RBACConfig")
-async def test_hello_world_workflow(mock_rbac_config, mock_uuid, mock_get_client):
+async def test_hello_world_workflow(mock_rbac_config, mock_uuid, mock_get_client, mocker):
     """Verify HelloWorld Workflow API."""
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
     # Mock Temporal client
     handle = MagicMock()
     handle.id = "mockuuid"
@@ -213,6 +232,11 @@ async def test_hello_world_workflow(mock_rbac_config, mock_uuid, mock_get_client
         "id": "mockuuid",
         "href": f"{TEMPORAL_UI_WORKFLOW_BASE}/mockuuid",
     }
+    audit_fields = audit_logger.info.call_args.kwargs["extra"]
+    assert audit_fields["action"] == "hello_world"
+    assert audit_fields["outcome"] == "success"
+    assert audit_fields["workflow_id"] == "mockuuid"
+    assert audit_fields["workflow_type"] == "HelloWorld"
 
 
 @pytest.mark.asyncio
@@ -261,6 +285,32 @@ async def test_approve(mock_signal):
         "approve",
         ReviewSignalInput(stage_name="prompt", user="anonymous"),
     )
+
+
+@pytest.mark.asyncio
+async def test_approve_emits_identity_aware_audit_log(mocker):
+    """Identity-aware audit fields guard the required middleware ordering."""
+    mocker.patch("nv_config_manager.temporal.api.workflow_v1.signal_workflow")
+    audit_logger = mocker.patch("nv_config_manager.temporal.api.audit.logger")
+    workflow_id = str(uuid4())
+
+    rsp = TestClient(app).post(
+        f"/v1/workflow/{workflow_id}/approve/prompt",
+        headers={
+            "X-Auth-Request-Email": "operator@example.com",
+            "X-Auth-Request-User": "operator",
+            "X-Auth-Request-Groups": "nvcm-network",
+        },
+    )
+
+    assert rsp.status_code == 200
+    audit_fields = audit_logger.info.call_args.kwargs["extra"]
+    assert audit_fields["action"] == "approve"
+    assert audit_fields["actor"] == "operator"
+    assert audit_fields["roles"] == ["all", "nvcm-network"]
+    assert audit_fields["source"] == "sso"
+    assert audit_fields["workflow_id"] == workflow_id
+    assert audit_fields["stage_name"] == "prompt"
 
 
 @pytest.mark.asyncio

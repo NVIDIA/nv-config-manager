@@ -120,6 +120,10 @@ class ConfigApplyFailureException(NetworkDeviceException):
 class ConfigSyntaxException(ApplicationError):
     """To be thrown for syntactically invalid config."""
 
+    def __init__(self, message: str) -> None:
+        """Initialize with a stable Temporal failure type for retry policies."""
+        super().__init__(message, type="ConfigSyntaxException")
+
     @staticmethod
     def format_nvue_error(error_json: dict[str, Any]) -> str:
         """Formats an NVUE API error response into a human-readable string."""
@@ -2055,18 +2059,18 @@ class CumulusConnection(NetworkConnection):
         """Open a fresh paramiko SSH connection and download remote_path over SFTP."""
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(
-            hostname=self._host,
-            port=22,
-            username=self._username,
-            password=password,
-            timeout=30,
-            banner_timeout=30,
-            auth_timeout=30,
-            allow_agent=False,
-            look_for_keys=False,
-        )
         try:
+            ssh.connect(
+                hostname=self._host,
+                port=22,
+                username=self._username,
+                password=password,
+                timeout=30,
+                banner_timeout=30,
+                auth_timeout=30,
+                allow_agent=False,
+                look_for_keys=False,
+            )
             last_hb = [time.monotonic()]
 
             def _progress(transferred: int, total: int) -> None:

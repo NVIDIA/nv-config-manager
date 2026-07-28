@@ -31,10 +31,10 @@ INI sections::
     claim_user = preferred_username
     claim_groups = roles
 
-    [auth.jwt.ssa]
-    issuer = https://example.ssa.nvidia.com
-    audiences = s:my-audience
-    jwks_uri = https://example.ssa.nvidia.com/.well-known/jwks.json
+    [auth.jwt.service]
+    issuer = https://service-idp.example.com
+    audiences = service-api
+    jwks_uri = https://service-idp.example.com/.well-known/jwks.json
     claim_email = sub
     claim_user = sub
     claim_groups = scopes
@@ -103,6 +103,7 @@ from fastapi.responses import JSONResponse
 from jwt.types import Options as JWTDecodeOptions
 from pydantic import BaseModel
 
+from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 
 logger = get_logger(__name__, category=LogCategory.AUTH)
@@ -230,6 +231,8 @@ ANONYMOUS_IDENTITY = SSOIdentity(
 
 _auth_config: AuthConfig | None = None
 _auth_config_lock = threading.Lock()
+_auth_config_source: ConfigParser | None = None
+_auth_config_tracks_file = False
 
 _JWT_SECTION_PREFIX = "auth.jwt."
 
@@ -298,24 +301,29 @@ def _load_spiffe_from_ini(config: ConfigParser) -> SpiffeConfig | None:
 def load_auth_config(config: ConfigParser | None = None) -> AuthConfig:
     """Load auth configuration from ``nv-config-manager.ini``.
 
-    The result is cached for the lifetime of the process.  Call
-    :func:`reload_auth_config` to force a re-read.
+    File-backed configuration is rebuilt automatically when ``load_config``
+    observes a new INI version. Explicitly supplied configuration remains
+    pinned until :func:`reload_auth_config` is called.
     """
-    global _auth_config
-    if _auth_config is not None:
+    global _auth_config, _auth_config_source, _auth_config_tracks_file
+    tracks_file = config is None
+
+    if config is None:
+        if _auth_config is not None and not _auth_config_tracks_file:
+            return _auth_config
+        try:
+            config = load_config()
+        except Exception:
+            config = ConfigParser()
+    elif _auth_config is not None:
+        return _auth_config
+
+    if _auth_config is not None and _auth_config_source is config:
         return _auth_config
 
     with _auth_config_lock:
-        if _auth_config is not None:
+        if _auth_config is not None and (not tracks_file or _auth_config_source is config):
             return _auth_config
-
-        if config is None:
-            try:
-                from nv_config_manager.common.config import load_config
-
-                config = load_config()
-            except Exception:
-                config = ConfigParser()
 
         auth_section = "auth"
 
@@ -342,13 +350,17 @@ def load_auth_config(config: ConfigParser | None = None) -> AuthConfig:
             spiffe=_load_spiffe_from_ini(config),
             allowed_groups=allowed_groups,
         )
+        _auth_config_source = config
+        _auth_config_tracks_file = tracks_file
         return _auth_config
 
 
 def reload_auth_config() -> AuthConfig:
     """Force-reload the auth configuration (clears cache)."""
-    global _auth_config
+    global _auth_config, _auth_config_source, _auth_config_tracks_file
     _auth_config = None
+    _auth_config_source = None
+    _auth_config_tracks_file = False
     return load_auth_config()
 
 
@@ -379,10 +391,56 @@ def _extract_bearer_token(request: Request) -> str | None:
     return request.cookies.get(cfg.cookie_name)
 
 
+def _unverified_jwt_claims(token: str) -> dict[str, Any] | None:
+    """Return unverified claims used only to select a configured validator.
+
+    The returned claims must never grant access.  Signature, issuer, audience,
+    and expiry validation still happens in the selected provider below.  Reading
+    the issuer first prevents a token from causing PyJWT to refresh every
+    unrelated provider's JWKS key set when its ``kid`` is absent there.
+    """
+    try:
+        claims = pyjwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_iss": False,
+                "verify_nbf": False,
+            },
+        )
+    except pyjwt.exceptions.PyJWTError:
+        return None
+    return claims if isinstance(claims, dict) else None
+
+
+def _unverified_jwt_issuer(token: str) -> str | None:
+    """Return a token issuer for provider selection, without trusting it."""
+    claims = _unverified_jwt_claims(token)
+    issuer = claims.get("iss") if claims else None
+    return issuer if isinstance(issuer, str) and issuer else None
+
+
+def _is_spiffe_jwt(token: str) -> bool:
+    """Return whether an unverified token has the required SPIFFE subject shape."""
+    claims = _unverified_jwt_claims(token)
+    subject = claims.get("sub") if claims else None
+    return isinstance(subject, str) and subject.startswith("spiffe://")
+
+
 # ── OIDC / JWT validation (multi-issuer) ─────────────────────────────────
 
 _jwks_clients: dict[str, pyjwt.PyJWKClient] = {}
 _jwks_lock = threading.Lock()
+_jwks_signing_key_locks: dict[str, threading.Lock] = {}
+
+# PyJWT owns the cached response and refreshes immediately for a previously
+# unseen key ID, so key rotation does not wait for this normal cache lifetime.
+# A per-URI lock prevents a cold or expired cache from stampeding a rate-limited
+# issuer before its first response repopulates the shared key-set cache.
+JWKS_KEYSET_CACHE_LIFESPAN_SECONDS = 600
 
 _JWT_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
 
@@ -396,9 +454,23 @@ def _get_jwks_client(jwks_uri: str) -> pyjwt.PyJWKClient:
         client = _jwks_clients.get(jwks_uri)
         if client is not None:
             return client
-        client = pyjwt.PyJWKClient(jwks_uri, cache_jwk_set=True, lifespan=600)
+        client = pyjwt.PyJWKClient(
+            jwks_uri,
+            cache_jwk_set=True,
+            lifespan=JWKS_KEYSET_CACHE_LIFESPAN_SECONDS,
+        )
         _jwks_clients[jwks_uri] = client
         return client
+
+
+def _get_jwks_signing_key_lock(jwks_uri: str) -> threading.Lock:
+    """Return the lock that serializes signing-key resolution for one URI."""
+    with _jwks_lock:
+        lock = _jwks_signing_key_locks.get(jwks_uri)
+        if lock is None:
+            lock = threading.Lock()
+            _jwks_signing_key_locks[jwks_uri] = lock
+        return lock
 
 
 def _try_jwt_provider(
@@ -407,8 +479,7 @@ def _try_jwt_provider(
 ) -> SSOIdentity | None:
     """Attempt to validate *token* against a single JWT provider."""
     try:
-        jwks_client = _get_jwks_client(provider.jwks_uri)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        signing_key = _get_signing_key_from_jwks(provider.jwks_uri, token)
 
         options = JWTDecodeOptions()
         if not provider.audiences:
@@ -450,9 +521,10 @@ def _try_jwt_provider(
 def identity_from_jwt(request: Request) -> SSOIdentity | None:
     """Validate JWT from Authorization header or cookie against all providers.
 
-    Iterates through every configured ``[auth.jwt.*]`` provider and returns
-    the first successful match.  Returns ``None`` when no provider is
-    configured, no token is present, or no provider accepts the token.
+    The unverified issuer selects a configured ``[auth.jwt.*]`` provider;
+    that provider then verifies the token and returns the identity.  Returns
+    ``None`` when no provider is configured, no token is present, or no
+    provider accepts the token.
     """
     cfg = load_auth_config()
     if not cfg.jwt_providers:
@@ -462,7 +534,13 @@ def identity_from_jwt(request: Request) -> SSOIdentity | None:
     if not token:
         return None
 
+    issuer = _unverified_jwt_issuer(token)
+    if issuer is None:
+        return None
+
     for provider in cfg.jwt_providers:
+        if provider.issuer != issuer:
+            continue
         identity = _try_jwt_provider(token, provider)
         if identity is not None:
             return identity
@@ -479,7 +557,9 @@ def _get_signing_key_from_jwks(jwks_uri: str, token: str) -> pyjwt.PyJWK:
     re-read on each call so key rotations are picked up immediately.
     """
     if jwks_uri.startswith(("http://", "https://")):
-        return _get_jwks_client(jwks_uri).get_signing_key_from_jwt(token)
+        client = _get_jwks_client(jwks_uri)
+        with _get_jwks_signing_key_lock(jwks_uri):
+            return client.get_signing_key_from_jwt(token)
 
     bundle_path = Path(jwks_uri)
     jwks_data = json.loads(bundle_path.read_text())
@@ -535,6 +615,8 @@ def identity_from_spiffe(request: Request) -> SSOIdentity | None:
 
     token = _extract_bearer_token(request)
     if not token:
+        return None
+    if not _is_spiffe_jwt(token):
         return None
 
     try:
@@ -886,7 +968,7 @@ async def require_sso_or_device(request: Request) -> SSOIdentity | None:
 #
 # Installs a ``GET /whoami`` endpoint plus the ``normalize_auth_data``
 # middleware on a FastAPI app.  Shared across nv-config-manager FastAPI services so the
-# identity contract (request.state.user/roles, /whoami response
+# identity contract (request.state.user/roles/auth_source, /whoami response
 # shape) is guaranteed identical — regressions in one service can't diverge
 # from the others.  Used both by operational diagnostics ("who does X see me
 # as?") and by the SPIFFE client-injection integration tests.
@@ -917,10 +999,11 @@ def install_identity_probe(
       unless the path is in ``unauthenticated_paths``.  This keeps healthchecks
       as the explicit unauthenticated exception instead of requiring every route
       author to remember an auth dependency.
-    - Every request has ``request.state.user`` (str) and ``request.state.roles``
-      (set[str]) populated from :func:`extract_identity`, falling back to
-      ``user="anonymous"`` when auth is disabled and ``user="unknown"`` when
-      auth is enabled but no identity can be derived.
+    - Every request has ``request.state.user`` (str), ``request.state.roles``
+      (set[str]), and ``request.state.auth_source`` (str) populated from
+      :func:`extract_identity`, falling back to ``user="anonymous"`` and
+      ``auth_source="anonymous"`` when auth is disabled, or ``user="unknown"``
+      and ``auth_source="unknown"`` when auth is enabled but no identity can be derived.
     - ``GET /whoami`` returns the current caller's identity. By default this
       endpoint requires a trusted identity, matching the rest of the API
       surface; set ``require_auth=False`` only for local diagnostics.
@@ -975,7 +1058,7 @@ def install_identity_probe(
     async def normalize_auth_data(
         request: Request, call_next: Callable[[Request], Any]
     ) -> Response:
-        """Populate ``request.state.user`` / ``request.state.roles``.
+        """Populate the request's normalized user, roles, and authentication source.
 
         Uses the consolidated :func:`extract_identity` so mTLS, SPIFFE
         JWT-SVIDs, OIDC JWTs, and trusted OIDC proxy identity headers are
@@ -985,12 +1068,15 @@ def install_identity_probe(
         if identity is not None:
             request.state.user = identity.user
             request.state.roles = identity.groups
+            request.state.auth_source = identity.source
         elif not auth_required():
             request.state.user = ANONYMOUS_IDENTITY.user
             request.state.roles = ANONYMOUS_IDENTITY.groups
+            request.state.auth_source = ANONYMOUS_IDENTITY.source
         else:
             request.state.user = "unknown"
             request.state.roles = {"all"}
+            request.state.auth_source = "unknown"
 
         response: Response = await call_next(request)
         return response

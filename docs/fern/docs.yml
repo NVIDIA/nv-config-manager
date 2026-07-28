@@ -91,6 +91,8 @@ navigation:
       contents:
       - page: Configuration Backup
         path: ../user-guides/configuration-backup/index.mdx
+      - page: Site Configuration Backup
+        path: ../user-guides/site-configuration-backup/index.mdx
       - page: Configuration Deploy
         path: ../user-guides/configuration-deploy/index.mdx
       - page: Multi-Device Deploy
@@ -242,6 +244,8 @@ navigation:
         path: ../temporal/index.mdx
       - page: Deployment
         path: ../temporal/temporal-deployment.mdx
+      - page: External Temporal
+        path: ../temporal/external-temporal.mdx
       - page: CLI Reference
         path: ../temporal/temporal-cli.mdx
       - folder: ../temporal/workflows

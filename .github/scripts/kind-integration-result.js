@@ -66,8 +66,9 @@ module.exports = async ({ github, context, core, run: explicitRun }) => {
     }
 
     const conclusion = run.conclusion ?? "unknown";
-    const shortSha = run.head_sha.slice(0, 12);
-    const resultLine = `Kind integration completed with **${conclusion}** for [\`${shortSha}\`](${run.html_url}).`;
+    const shortSha = run.head_sha.slice(0, 7);
+    const commitUrl = `${context.serverUrl}/${owner}/${repo}/commit/${run.head_sha}`;
+    const resultLine = `Kind integration completed with **${conclusion}** for [\`${shortSha}\`](${commitUrl}) in [this workflow run](${run.html_url}).`;
 
     await github.rest.pulls.update({
       owner,

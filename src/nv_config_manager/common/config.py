@@ -26,7 +26,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from configparser import ConfigParser, SectionProxy
 from enum import Enum
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import certifi
 import nats
@@ -52,6 +52,7 @@ from nv_config_manager.common.client import (
 # =============================================================================
 # LOGGING (re-exported from nv_config_manager.common.log to avoid circular imports)
 # =============================================================================
+from nv_config_manager.common.ini import FileFingerprint, file_fingerprint
 from nv_config_manager.common.log import (  # noqa: F401, E402
     LogCategory,
     configure_logging,
@@ -83,6 +84,16 @@ class ConfigStoreType(Enum):
 
 
 @lru_cache(maxsize=1)
+def _load_config(
+    config_path: str,
+    _fingerprint: FileFingerprint | None,
+) -> ConfigParser:
+    """Parse one version of the unified INI file."""
+    config = ConfigParser(interpolation=None, delimiters=("=",))
+    config.read(config_path)
+    return config
+
+
 def load_config() -> ConfigParser:
     """Load the unified nv-config-manager.ini configuration.
 
@@ -90,18 +101,24 @@ def load_config() -> ConfigParser:
     1. NV_CONFIG_MANAGER_INI environment variable
     2. Default: /etc/vault/nv-config-manager.ini
 
+    The parsed result is reused while the file is unchanged. Direct writes and
+    Kubernetes Secret-volume symlink swaps invalidate the cache automatically.
+
     Returns:
-        Loaded ConfigParser instance (cached)
+        Loaded ConfigParser instance for the current file version
     """
-    config = ConfigParser(interpolation=None, delimiters=("=",))
     config_path = os.getenv("NV_CONFIG_MANAGER_INI", "/etc/vault/nv-config-manager.ini")
-    config.read(config_path)
-    return config
+    return _load_config(config_path, file_fingerprint(config_path))
+
+
+def clear_config_cache() -> None:
+    """Clear the parsed INI cache without reading the file again."""
+    _load_config.cache_clear()
 
 
 def reload_config() -> ConfigParser:
     """Force reload the configuration (clears cache)."""
-    load_config.cache_clear()
+    clear_config_cache()
     return load_config()
 
 
@@ -636,7 +653,13 @@ def pynautobot_client() -> Any:
         kwargs["verify"] = nb_config["ca_cert_path"]
 
     connection = pynautobot.api(**kwargs)
-    connection.http_session.mount("https://", TimeoutHTTPAdapter(timeout=10))
+    for protocol in ("http://", "https://"):
+        existing_adapter = cast(HTTPAdapter, connection.http_session.get_adapter(protocol))
+        retry_policy = existing_adapter.max_retries
+        connection.http_session.mount(
+            protocol,
+            TimeoutHTTPAdapter(timeout=10, max_retries=retry_policy),
+        )
     return connection
 
 

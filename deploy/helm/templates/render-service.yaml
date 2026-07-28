@@ -13,6 +13,7 @@ metadata:
     component: api
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.renderService.api.replicas }}
   selector:
@@ -34,6 +35,9 @@ spec:
         {{- end }}
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $renderName) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -74,6 +78,9 @@ spec:
         {{- if .Values.renderService.templatePlugins.enabled }}
         - name: PYTHONPATH
           value: "/opt/plugins:${PYTHONPATH:-}"
+        {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-render") | nindent 8 }}
         {{- end }}
         ports:
         - containerPort: 9000
@@ -142,6 +149,9 @@ metadata:
   labels:
     app: {{ $renderName }}
     component: consumer-nautobot
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.nautobot.enabled) }}
   replicas: {{ .Values.renderService.consumers.nautobot.replicas }}
@@ -249,6 +259,9 @@ metadata:
   labels:
     app: {{ $renderName }}
     component: consumer-device
+    app.kubernetes.io/name: nv-config-manager
+    app.kubernetes.io/component: render-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   {{- if not (and .Values.renderService.autoscaling.enabled .Values.renderService.autoscaling.consumers.device.enabled) }}
   replicas: {{ .Values.renderService.consumers.device.replicas }}

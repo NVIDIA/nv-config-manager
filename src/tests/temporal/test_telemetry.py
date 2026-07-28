@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the Temporal OpenTelemetry bootstrap."""
+"""Tests for the Temporal telemetry layer."""
 
 from unittest import mock
 
@@ -21,8 +21,6 @@ import pytest
 from nv_config_manager.temporal import telemetry
 
 OTLP_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
-SERVICE_ENV = "OTEL_SERVICE_NAME"
-ENVIRONMENT_ENV = "ENVIRONMENT"
 
 
 @pytest.fixture(autouse=True)
@@ -35,33 +33,22 @@ def _reset_runtime():
 
 @pytest.fixture
 def _clean_env(monkeypatch):
-    """Remove telemetry env vars so each test controls them explicitly."""
-    for name in (OTLP_ENV, SERVICE_ENV, ENVIRONMENT_ENV):
-        monkeypatch.delenv(name, raising=False)
+    """Remove the OTLP endpoint so each test controls it explicitly."""
+    monkeypatch.delenv(OTLP_ENV, raising=False)
     return monkeypatch
 
 
 @pytest.fixture
 def otel_mocks():
-    """Patch the OTel/Temporal constructors used by setup_telemetry()."""
+    """Patch the Temporal Runtime constructors and the shared tracer setup."""
     with (
-        mock.patch.object(telemetry, "TracerProvider") as provider_cls,
-        mock.patch.object(telemetry, "BatchSpanProcessor") as span_processor_cls,
-        mock.patch.object(telemetry, "OTLPSpanExporter") as exporter_cls,
-        mock.patch.object(telemetry, "Resource") as resource_cls,
-        # Patch the real function on opentelemetry.trace (not the whole module) so a
-        # wrong attribute name fails at patch time instead of silently auto-mocking.
-        mock.patch.object(telemetry.trace, "set_tracer_provider") as set_tracer_provider,
+        mock.patch.object(telemetry, "setup_tracing") as setup_tracing,
         mock.patch.object(telemetry, "Runtime") as runtime_cls,
         mock.patch.object(telemetry, "TelemetryConfig") as telemetry_config_cls,
         mock.patch.object(telemetry, "OpenTelemetryConfig") as otel_config_cls,
     ):
         yield {
-            "provider_cls": provider_cls,
-            "span_processor_cls": span_processor_cls,
-            "exporter_cls": exporter_cls,
-            "resource_cls": resource_cls,
-            "set_tracer_provider": set_tracer_provider,
+            "setup_tracing": setup_tracing,
             "runtime_cls": runtime_cls,
             "telemetry_config_cls": telemetry_config_cls,
             "otel_config_cls": otel_config_cls,
@@ -69,15 +56,13 @@ def otel_mocks():
 
 
 class TestSetupTelemetryDisabled:
-    """setup_telemetry() must no-op when no endpoint is configured."""
+    """setup_telemetry() must return a plain Runtime when no endpoint is set."""
 
     def test_no_endpoint_returns_plain_runtime(self, _clean_env, otel_mocks):
-        """Missing endpoint skips exporter wiring and returns a plain Runtime."""
+        """Missing endpoint skips the metrics config and returns a plain Runtime."""
         result = telemetry.setup_telemetry("svc")
 
-        otel_mocks["exporter_cls"].assert_not_called()
-        otel_mocks["provider_cls"].assert_not_called()
-        otel_mocks["set_tracer_provider"].assert_not_called()
+        otel_mocks["setup_tracing"].assert_called_once_with("svc")
         otel_mocks["otel_config_cls"].assert_not_called()
         otel_mocks["telemetry_config_cls"].assert_called_once_with()
         assert result is otel_mocks["runtime_cls"].return_value
@@ -90,30 +75,23 @@ class TestSetupTelemetryDisabled:
 
         telemetry.setup_telemetry("svc")
 
-        otel_mocks["exporter_cls"].assert_not_called()
         otel_mocks["otel_config_cls"].assert_not_called()
 
 
 class TestSetupTelemetryEnabled:
-    """setup_telemetry() wires exporters when an endpoint is configured."""
+    """setup_telemetry() wires OTel metrics when an endpoint is configured."""
 
-    def test_endpoint_configures_tracing_and_metrics(self, _clean_env, otel_mocks):
-        """A configured endpoint builds the span exporter and metrics runtime."""
+    def test_endpoint_configures_metrics_runtime(self, _clean_env, otel_mocks):
+        """A configured endpoint sets up tracing and a metrics-exporting Runtime."""
         _clean_env.setenv(OTLP_ENV, "http://collector:4317")
 
         result = telemetry.setup_telemetry("svc")
 
-        otel_mocks["exporter_cls"].assert_called_once_with(endpoint="http://collector:4317")
-        otel_mocks["provider_cls"].assert_called_once_with(
-            resource=otel_mocks["resource_cls"].create.return_value
-        )
-        otel_mocks["provider_cls"].return_value.add_span_processor.assert_called_once_with(
-            otel_mocks["span_processor_cls"].return_value
-        )
-        otel_mocks["set_tracer_provider"].assert_called_once_with(
-            otel_mocks["provider_cls"].return_value
-        )
+        otel_mocks["setup_tracing"].assert_called_once_with("svc")
         otel_mocks["otel_config_cls"].assert_called_once_with(url="http://collector:4317")
+        otel_mocks["telemetry_config_cls"].assert_called_once_with(
+            metrics=otel_mocks["otel_config_cls"].return_value
+        )
         assert result is otel_mocks["runtime_cls"].return_value
         assert telemetry._runtime is result
 
@@ -123,29 +101,7 @@ class TestSetupTelemetryEnabled:
 
         telemetry.setup_telemetry("svc")
 
-        otel_mocks["exporter_cls"].assert_called_once_with(endpoint="http://collector:4317")
-
-    def test_service_name_argument_used_as_default(self, _clean_env, otel_mocks):
-        """The service_name argument seeds the service.name resource attribute."""
-        _clean_env.setenv(OTLP_ENV, "http://collector:4317")
-
-        telemetry.setup_telemetry("worker-svc")
-
-        attrs = otel_mocks["resource_cls"].create.call_args.args[0]
-        assert attrs["service.name"] == "worker-svc"
-        assert attrs["deployment.environment"] == "unknown"
-
-    def test_env_overrides_service_name_and_environment(self, _clean_env, otel_mocks):
-        """OTEL_SERVICE_NAME and ENVIRONMENT override defaults."""
-        _clean_env.setenv(OTLP_ENV, "http://collector:4317")
-        _clean_env.setenv(SERVICE_ENV, "override-svc")
-        _clean_env.setenv(ENVIRONMENT_ENV, "staging")
-
-        telemetry.setup_telemetry("worker-svc")
-
-        attrs = otel_mocks["resource_cls"].create.call_args.args[0]
-        assert attrs["service.name"] == "override-svc"
-        assert attrs["deployment.environment"] == "staging"
+        otel_mocks["otel_config_cls"].assert_called_once_with(url="http://collector:4317")
 
 
 class TestGetRuntime:

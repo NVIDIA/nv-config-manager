@@ -43,10 +43,29 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_info() {
+    local message="$1"
+    echo -e "${BLUE}[INFO]${NC} $message"
+    return 0
+}
+
+log_success() {
+    local message="$1"
+    echo -e "${GREEN}[SUCCESS]${NC} $message"
+    return 0
+}
+
+log_warning() {
+    local message="$1"
+    echo -e "${YELLOW}[WARNING]${NC} $message"
+    return 0
+}
+
+log_error() {
+    local message="$1"
+    echo -e "${RED}[ERROR]${NC} $message" >&2
+    return 0
+}
 
 # Defaults
 IMAGES_PATH=""
@@ -220,10 +239,11 @@ run_on_node() {
     
     if $USE_SSH; then
         # -n prevents ssh from reading stdin (important when called in a while-read loop)
-        ssh -n $SSH_OPTS "${SSH_USER}@${node_ip}" "$cmd"
+        ssh -n $SSH_OPTS "${SSH_USER}@${node_ip}" "$cmd" || return $?
     else
-        docker exec "$node_name" bash -c "$cmd"
+        docker exec "$node_name" bash -c "$cmd" || return $?
     fi
+    return 0
 }
 
 # Function to copy files to node
@@ -234,10 +254,11 @@ copy_to_node() {
     local dst="$4"
     
     if $USE_SSH; then
-        scp $SSH_OPTS -r "$src" "${SSH_USER}@${node_ip}:${dst}"
+        scp $SSH_OPTS -r "$src" "${SSH_USER}@${node_ip}:${dst}" || return $?
     else
-        docker cp "$src" "${node_name}:${dst}"
+        docker cp "$src" "${node_name}:${dst}" || return $?
     fi
+    return 0
 }
 
 # Function to detect ctr binary path on a node
@@ -255,7 +276,8 @@ detect_ctr_path() {
         elif [ -x /usr/bin/ctr ]; then
             echo /usr/bin/ctr
         fi
-    "
+    " || return $?
+    return 0
 }
 
 # =============================================================================

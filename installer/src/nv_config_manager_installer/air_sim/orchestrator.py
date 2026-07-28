@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import logging
-import shlex
 import shutil
 import tempfile
 from collections.abc import Callable
@@ -65,6 +64,14 @@ STEPS: list[tuple[str, str]] = [
     ("run-deploy", "Run nvcm installer"),
     ("post-deploy", "Post-deploy setup"),
 ]
+
+
+def _monitor_setup_command(host: str, port: int) -> str:
+    """Return a monitor command that is safe to display or persist."""
+    return (
+        f"sshpass -p '<password>' ssh -p {port} "
+        f"{NVCM_BOX_USER}@{host} 'sudo tail -f /var/log/nvcm-setup.log'"
+    )
 
 
 class OrchestratorCallback(Protocol):
@@ -278,10 +285,7 @@ class SimOrchestrator:
         if not full_setup or cfg.wait_timeout == 0:
             for step_id in ("wait-setup", "upload-files", "run-deploy", "post-deploy"):
                 self._step(step_id, StepStatus.SKIPPED)
-            self._log(
-                f"\nMonitor setup: sshpass -p {shlex.quote(cfg.oob_ssh_password)} ssh -p {port} "
-                f"{NVCM_BOX_USER}@{host} 'sudo tail -f /var/log/nvcm-setup.log'"
-            )
+            self._log(f"\nMonitor setup: {_monitor_setup_command(host, port)}")
             return host, port
 
         self._step("wait-setup", StepStatus.RUNNING)
@@ -290,10 +294,7 @@ class SimOrchestrator:
             self._step("wait-setup", StepStatus.FAILED)
             for step_id in ("upload-files", "run-deploy", "post-deploy"):
                 self._step(step_id, StepStatus.SKIPPED)
-            self._log(
-                f"\nSetup timed out. Check: sshpass -p {shlex.quote(cfg.oob_ssh_password)} ssh -p {port} "
-                f"{NVCM_BOX_USER}@{host} 'sudo tail -f /var/log/nvcm-setup.log'"
-            )
+            self._log(f"\nSetup timed out. Check: {_monitor_setup_command(host, port)}")
             return host, port
         self._step("wait-setup", StepStatus.SUCCESS)
 

@@ -96,6 +96,14 @@ export type SiteCableValidationWorkflowInput = {
   raise_for_invalid: boolean;
 };
 
+export type SiteBackupWorkflowInput = {
+  site: string;
+  roles: string[];
+  status: string[];
+  tenant?: string;
+  backup_enabled_only: boolean;
+};
+
 export type CumulusHardwareValidationWorkflowInput = {
   site: string;
   roles: string[];

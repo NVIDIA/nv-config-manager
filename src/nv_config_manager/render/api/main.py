@@ -23,11 +23,14 @@ from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.common.telemetry import instrument_fastapi_app, setup_tracing
 from nv_config_manager.render.api import admin_v1, render_v1
 
 configure_logging(service="render")
+setup_tracing("render")
 
 app = FastAPI()
+instrument_fastapi_app(app)
 
 
 def main() -> None:
@@ -38,6 +41,7 @@ def main() -> None:
         port=9000,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )
 
 

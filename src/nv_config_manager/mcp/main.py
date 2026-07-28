@@ -26,6 +26,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.common.telemetry import instrument_asgi_app, setup_tracing
 from nv_config_manager.mcp.auth import (
     DEFAULT_MCP_UNAUTHENTICATED_PATHS,
     RequestAuthMiddleware,
@@ -51,6 +52,7 @@ from nv_config_manager.mcp.settings import (
 from nv_config_manager.mcp.tools import register_tools
 
 configure_logging(service="mcp")
+setup_tracing("nv-config-manager-mcp")
 
 
 def create_mcp_server(
@@ -61,7 +63,7 @@ def create_mcp_server(
     resolved_settings = settings or MCPSettings.from_config()
     resolved_oauth_settings = oauth_settings or MCPOAuthSettings.from_config()
     server = FastMCP(
-        "nvidia-config-manager-mcp",
+        "nv-config-manager-mcp",
         instructions=(
             "Read-only NVIDIA Config Manager operator tools plus explicitly "
             "enabled safe diagnostic workflow starters. When auth is enabled, tools "
@@ -106,12 +108,14 @@ def create_app(
             | resolved_oauth_settings.well_known_paths
             | resolved_oauth_settings.oauth_proxy_paths
         )
-    return ServiceAuthMiddleware(
-        RequestAuthMiddleware(
-            create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
-        ),
-        unauthenticated_paths=unauthenticated_paths,
-        resource_metadata_url=resource_metadata_url,
+    return instrument_asgi_app(
+        ServiceAuthMiddleware(
+            RequestAuthMiddleware(
+                create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
+            ),
+            unauthenticated_paths=unauthenticated_paths,
+            resource_metadata_url=resource_metadata_url,
+        )
     )
 
 
@@ -188,4 +192,5 @@ def main() -> None:
         port=args.port,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )

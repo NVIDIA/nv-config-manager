@@ -268,6 +268,61 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
+      - name: Temporal codec CORS render
+        run: |
+          expected="cors_origins = https://ci.config-manager.example.com,https://temporal.ci.config-manager.example.com"
+          if ! grep -qF "$expected" /tmp/nvcm-helm.yaml; then
+            echo "ERROR: rendered Temporal API CORS allowlist is missing the Temporal Web origin"
+            grep -nE 'temporal\.api|cors_origins' /tmp/nvcm-helm.yaml || true
+            exit 1
+          fi
+      - name: Project-owned image pull secrets render
+        run: |
+          set -euo pipefail
+          image_args=()
+          for image_name in nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady temporalServer temporalBootstrap temporalUi; do
+            image_args+=(--set-string "global.images.${image_name}.repository=private.registry.test/${image_name}")
+          done
+          helm template test deploy/helm/ \
+            --values deploy/helm/values-ci.yaml \
+            --set-string 'global.imagePullSecrets[0]=image-pull-secret-test' \
+            "${image_args[@]}" >/tmp/nvcm-private-images.yaml
+          awk '
+            BEGIN { RS = "---"; checked = 0; failed = 0 }
+            {
+              if ($0 !~ /kind: (Pod|Deployment|StatefulSet|DaemonSet|Job|CronJob)/) next
+              if ($0 !~ /image:[[:space:]]*"?private\.registry\.test\//) next
+              checked++
+              kind = "unknown"
+              name = "unknown"
+              line_count = split($0, lines, "\n")
+              in_metadata = 0
+              for (i = 1; i <= line_count; i++) {
+                if (lines[i] ~ /^kind:[[:space:]]+/) {
+                  kind = lines[i]
+                  sub(/^kind:[[:space:]]+/, "", kind)
+                }
+                if (lines[i] == "metadata:") {
+                  in_metadata = 1
+                  continue
+                }
+                if (in_metadata && lines[i] ~ /^  name:[[:space:]]+/) {
+                  name = lines[i]
+                  sub(/^  name:[[:space:]]+/, "", name)
+                  break
+                }
+                if (in_metadata && lines[i] ~ /^[^[:space:]]/) in_metadata = 0
+              }
+              if ($0 !~ /imagePullSecrets:/ || $0 !~ /- name: image-pull-secret-test/) {
+                printf "ERROR: %s/%s uses a project-owned image without imagePullSecrets\n", kind, name
+                failed++
+              }
+            }
+            END {
+              printf "%d workload(s) using project-owned images checked; %d missing imagePullSecrets\n", checked, failed
+              if (checked == 0 || failed != 0) exit 1
+            }
+          ' /tmp/nvcm-private-images.yaml
       - name: Probe SLO customLabels render
         run: |
           # Blackbox Probe samples don't inherit the CR's metadata.labels, so
@@ -296,25 +351,34 @@ jobs:
           # fall back to repository:tag. Render-time check only (no cluster) so
           # it stays out of the slow kind-integration path.
           set -euo pipefail
-          names="nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady"
+          names="nvConfigManager nvConfigManagerUi kea keaAdmin nautobot natsReady temporalServer temporalBootstrap temporalUi"
           r_nvConfigManager=registry.ci.example/nvcm/main
           r_nvConfigManagerUi=registry.ci.example/nvcm/ui
           r_kea=registry.ci.example/nvcm/kea
           r_keaAdmin=registry.ci.example/nvcm/kea-admin
           r_nautobot=registry.ci.example/nvcm/nautobot
           r_natsReady=registry.ci.example/nvcm/nats-ready
+          r_temporalServer=registry.ci.example/nvcm/temporal-server
+          r_temporalBootstrap=registry.ci.example/nvcm/temporal-bootstrap
+          r_temporalUi=registry.ci.example/nvcm/temporal-ui
           t_nvConfigManager=9.0.1-nvcm
           t_nvConfigManagerUi=9.0.1-ui
           t_kea=9.0.1-kea
           t_keaAdmin=9.0.1-kea-admin
           t_nautobot=9.0.1-nautobot
           t_natsReady=9.0.1-nats-ready
+          t_temporalServer=9.0.1-temporal-server
+          t_temporalBootstrap=9.0.1-temporal-bootstrap
+          t_temporalUi=9.0.1-temporal-ui
           d_nvConfigManager=sha256:1111111111111111111111111111111111111111111111111111111111111111
           d_nvConfigManagerUi=sha256:2222222222222222222222222222222222222222222222222222222222222222
           d_kea=sha256:3333333333333333333333333333333333333333333333333333333333333333
           d_keaAdmin=sha256:4444444444444444444444444444444444444444444444444444444444444444
           d_nautobot=sha256:5555555555555555555555555555555555555555555555555555555555555555
           d_natsReady=sha256:6666666666666666666666666666666666666666666666666666666666666666
+          d_temporalServer=sha256:7777777777777777777777777777777777777777777777777777777777777777
+          d_temporalBootstrap=sha256:8888888888888888888888888888888888888888888888888888888888888888
+          d_temporalUi=sha256:9999999999999999999999999999999999999999999999999999999999999999
 
           base_set_args=""
           for n in $names; do
@@ -366,7 +430,7 @@ jobs:
             fi
           done
           [ "$fail" -eq 0 ] || exit 1
-          echo "All 6 built-service images render exact repository:tag or repository@digest references"
+          echo "All 9 built-service images render exact repository:tag or repository@digest references"
 
   openapi:
     name: OpenAPI And Go Bindings Check

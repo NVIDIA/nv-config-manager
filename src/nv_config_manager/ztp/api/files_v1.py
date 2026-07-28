@@ -14,7 +14,7 @@
 # limitations under the License.
 """S3 File Endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from nv_config_manager.common.auth import SSOIdentity, require_authenticated_identity
@@ -31,12 +31,19 @@ router = APIRouter(prefix="/files", tags=["files"], responses={404: {"descriptio
 
 
 @router.get("/{platform}/{version}/{filename}", response_class=StreamingResponse)
-async def load_object(platform: str, version: str, filename: str) -> StreamingResponse:
+async def load_object(
+    platform: str, version: str, filename: str, request: Request
+) -> StreamingResponse:
     """Load the firmware by platform and version."""
     storage_client = get_storage_client()
     try:
         return await create_object_storage_streaming_response(
-            storage_client, storage_client.get_object, platform, version, filename
+            storage_client,
+            storage_client.get_object,
+            platform,
+            version,
+            filename,
+            request=request,
         )
     except ObjectStorageNotFoundException as exc:
         raise HTTPException(status_code=404, detail="File not found in S3.") from exc

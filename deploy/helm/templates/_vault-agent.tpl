@@ -365,7 +365,15 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           [temporal]
           # Internal: Temporal gRPC frontend (for workers, SDK clients)
-          grpc_service = {{ $temporalName }}-frontend-service.{{ $root.Values.global.namespace }}.svc.cluster.local:{{ $root.Values.temporal.services.frontend.port }}
+          grpc_service = {{ include "nv-config-manager.temporalGrpcAddress" $root }}
+          namespace = {{ $root.Values.temporal.client.namespace | default "default" }}
+          tls_enabled = {{ $root.Values.temporal.client.tls.enabled | default false }}
+          {{- if $root.Values.temporal.client.tls.serverName }}
+          tls_server_name = {{ include "nv-config-manager.temporalTLSServerName" $root }}
+          {{- end }}
+          tls_ca_cert_path = /var/run/secrets/temporal-client-tls/ca.crt
+          tls_client_cert_path = /var/run/secrets/temporal-client-tls/tls.crt
+          tls_client_key_path = /var/run/secrets/temporal-client-tls/tls.key
           # Internal: NVIDIA Config Manager Temporal API (for internal service calls)
           # Uses sidecar port when auth sidecars are enabled for header injection
           api_service = http://{{ $temporalName }}-api:{{ $internalPort }}
@@ -389,7 +397,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # -----------------------------------------------------------------
           [temporal.api]
           # CORS origins allowed to make cross-origin requests with credentials
-          cors_origins = https://{{ $root.Values.gateway.baseHostname }}
+          cors_origins = https://{{ $root.Values.gateway.baseHostname }},https://{{ tpl $root.Values.temporal.gateway.devUi.hostname $root }}
           {{- if $root.Values.temporal.gateway.api.allowedGroups }}
           allowed_groups = {{ $root.Values.temporal.gateway.api.allowedGroups | join "," }}
           {{- end }}
@@ -459,6 +467,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           api_service = http://{{ $dhcpName }}-internal:{{ $internalPort }}
           # External URL for user-facing links
           api_url = https://{{ tpl $root.Values.networkDhcp.gateway.hostname $root }}
+          cors_origins = https://{{ $root.Values.gateway.baseHostname }}
           {{- if $root.Values.networkDhcp.gateway.allowedGroups }}
           allowed_groups = {{ $root.Values.networkDhcp.gateway.allowedGroups | join "," }}
           {{- end }}
@@ -495,6 +504,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           allowed_groups = {{ $root.Values.networkZtp.gateway.allowedGroups | join "," }}
           {{- end }}
 {{ include "nv-config-manager.networkZtpIniStorageConfig" $root | indent 10 }}
+{{ include "nv-config-manager.networkZtpIniDownloadConfig" $root | indent 10 }}
 {{ include "nv-config-manager.vaultAgent.ztpS3IniConfig" $root | indent 10 }}
 
           {{- end }}

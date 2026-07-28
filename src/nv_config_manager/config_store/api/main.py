@@ -25,11 +25,13 @@ from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
+from nv_config_manager.common.telemetry import instrument_fastapi_app, setup_tracing
 from nv_config_manager.config_store.api.admin_v1 import router as admin_router
 from nv_config_manager.config_store.api.config_v1 import router as config_router
 from nv_config_manager.config_store.config import settings
 
 configure_logging(service="config-store")
+setup_tracing("config-store")
 logger = get_logger(__name__, category=LogCategory.CONFIG_STORE_API)
 
 
@@ -77,6 +79,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+instrument_fastapi_app(app)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,  # type: ignore[arg-type]
@@ -120,4 +124,5 @@ def main() -> None:
         host="0.0.0.0",
         port=9000,
         log_config=None,
+        loop="asyncio",
     )

@@ -32,6 +32,9 @@ spec:
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $dhcpName) | nindent 8 }}
         {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
       {{- if .Values.global.imagePullSecrets }}
@@ -148,6 +151,9 @@ spec:
         - name: ACCEPT_REQUEST_HEADERS
           value: "true"
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-dhcp") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: api

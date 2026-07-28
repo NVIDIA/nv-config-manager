@@ -15,7 +15,14 @@
  * limitations under the License.
  */
 import * as React from "react";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
   formatTimestamp,
@@ -37,6 +44,11 @@ export const StagesList: React.FC<StagesListProps> = ({
 
   return (
     <Table>
+      <TableHeader>
+        <TableRow className="sr-only">
+          <TableHead>Workflow stage</TableHead>
+        </TableRow>
+      </TableHeader>
       <TableBody className="cursor-pointer">
         {stages.length > 0 ? (
           stages.map((stage) => (
@@ -47,34 +59,45 @@ export const StagesList: React.FC<StagesListProps> = ({
                   ? "bg-blue-100 dark:bg-blue-700"
                   : ""
               }`}
-              onClick={() => handleSelect(stage)}
             >
-              <TableCell className="text-center py-4">
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="font-semibold text-base text-foreground">
-                      {stage.description}
-                    </h3>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatTimestamp(
-                        stage.state_history[stage.state_history.length - 1].time
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex space-x-2 justify-center">
-                    <Badge
-                      className={handleBadgeClassName(
-                        stage.state as StateHistory["state"]
-                      )}
-                    >
-                      {stage.state}
-                    </Badge>
-                    {stage.requires_approval &&
-                      stage.state == "PENDING_APPROVAL" && (
-                        <Badge>Requires Approval</Badge>
-                      )}
+              <TableCell className="p-0 text-center">
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="absolute inset-0 w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label={`Select ${stage.description}`}
+                    aria-pressed={selectedName === stage.name}
+                    onClick={() => handleSelect(stage)}
+                  />
+                  <div className="pointer-events-none relative py-4">
+                    <div className="space-y-3">
+                      <div>
+                        <h3 className="font-semibold text-base text-foreground">
+                          {stage.description}
+                        </h3>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          {formatTimestamp(
+                            stage.state_history[stage.state_history.length - 1]
+                              .time,
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex space-x-2 justify-center">
+                        <Badge
+                          className={handleBadgeClassName(
+                            stage.state as StateHistory["state"],
+                          )}
+                        >
+                          {stage.state}
+                        </Badge>
+                        {stage.requires_approval &&
+                          stage.state == "PENDING_APPROVAL" && (
+                            <Badge>Requires Approval</Badge>
+                          )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </TableCell>

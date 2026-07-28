@@ -225,7 +225,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal UI Probe */}}
-{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.probes.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Probe
@@ -383,6 +383,14 @@ spec:
       metricRelabelings:
         {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
       {{- end }}
+    - port: sftp-metrics
+      path: /metrics
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
 {{- end }}
 
 {{- /* Network DHCP PodMonitor */}}
@@ -495,7 +503,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Frontend PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -529,7 +537,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal History PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -563,7 +571,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Matching PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -597,7 +605,7 @@ spec:
 {{- end }}
 
 {{- /* Temporal Worker PodMonitor */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.temporal.enabled .Values.temporal.server.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -680,6 +688,10 @@ metadata:
     {{- end }}
 spec:
   {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  {{- with .Values.monitoring.podMonitors.nautobot.scrapeProtocols }}
+  scrapeProtocols:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   namespaceSelector:
     matchNames:
       - {{ $namespace }}
@@ -688,7 +700,8 @@ spec:
       app.kubernetes.io/name: {{ $nautobotName }}
   podMetricsEndpoints:
     - port: http
-      path: /metrics
+      # Nautobot serves metrics at /metrics/ (trailing slash); /metrics 404s.
+      path: /metrics/
       interval: {{ $scrapeInterval }}
       scrapeTimeout: {{ $scrapeTimeout }}
       {{- if .Values.global.customLabels }}

@@ -35,6 +35,7 @@ const DEMO_VPC_ID = "vpc-demo-101";
 
 const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
   BackupWorkflow: "Configuration Backup",
+  SiteBackupWorkflow: "Site Configuration Backup",
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
   DeployWorkflow: "Configuration Deploy",
   TenantDeployWorkflow: "Tenant Deploy",
@@ -63,6 +64,7 @@ const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
 
 const DOC_WORKFLOW_ENDPOINTS: Record<string, string> = {
   BackupWorkflow: "/ngc/backup",
+  SiteBackupWorkflow: "/ngc/site_backup",
   ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
   DeployWorkflow: "/ngc/deploy",
   TenantDeployWorkflow: "/ngc/tenant-deploy",
@@ -497,6 +499,12 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     path: "/workflows/sitecablevalidationworkflow/form",
     query: SITE_SCOPE_QUERY,
     title: "New Site Cable Validation Workflow",
+  },
+  {
+    fileName: "sitebackupworkflow-form.png",
+    path: "/workflows/sitebackupworkflow/form",
+    query: SITE_SCOPE_QUERY,
+    title: "New Site Configuration Backup Workflow",
   },
   {
     fileName: "sitepasswordrotationworkflow-form.png",

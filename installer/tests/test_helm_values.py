@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
+    ExternalTemporalConfig,
     GatewayType,
     GitTokenEntry,
     ImageOverride,
@@ -263,7 +264,7 @@ class TestGenerateHelmValues:
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -295,6 +296,25 @@ class TestGenerateHelmValues:
         assert values["cnpg"]["configStore"]["enabled"] is False
         assert values["cnpg"]["dhcp"]["enabled"] is False
         assert values["cnpg"]["nautobot"]["enabled"] is True
+
+    def test_external_temporal_keeps_workloads_and_disables_managed_server(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                temporal=ExternalTemporalConfig(
+                    address="temporal.example.com:7233",
+                    namespace="network-automation",
+                )
+            )
+        )
+
+        values = _gen(config)
+
+        assert values["temporal"]["enabled"] is True
+        assert values["temporal"]["server"]["enabled"] is False
+        assert values["temporal"]["client"]["address"] == "temporal.example.com:7233"
+        assert values["temporal"]["client"]["namespace"] == "network-automation"
+        assert values["cnpg"]["temporal"]["enabled"] is False
+        assert values["cnpg"]["temporalVisibility"]["enabled"] is False
 
     def test_network_policy(self):
         values = _gen(_make_config())
@@ -359,6 +379,26 @@ class TestGenerateHelmValues:
         assert nb["path"] == "custom/nb"
         assert nb["keys"]["token"] == "token"
 
+    def test_eso_partial_key_override_preserves_default_keys(self):
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(
+                    server="https://vault.test",
+                    secrets_path="nv-config-manager",
+                    paths=VaultPathsConfig(
+                        nautobot=VaultPathConfig(keys={"token": "api_token"}),
+                    ),
+                ),
+            ),
+        )
+
+        values = _gen(config)
+        keys = values["secrets"]["vault"]["paths"]["nautobot"]["keys"]
+
+        assert keys["token"] == "api_token"
+        assert keys["readOnlyToken"] == "read_only_token"
+
     def test_eso_ztp_s3_path(self):
         config = _make_config(
             secrets=SecretsConfig(
@@ -390,6 +430,9 @@ class TestGenerateHelmValues:
         assert images["nvConfigManager"]["pullPolicy"] == "IfNotPresent"
         assert images["nautobot"]["repository"] == "nv-config-manager-nautobot"
         assert images["natsReady"]["repository"] == "nv-config-manager-nats-ready"
+        assert images["temporalServer"]["repository"] == "nv-config-manager-temporal"
+        assert images["temporalBootstrap"]["repository"] == "nv-config-manager-temporal-bootstrap"
+        assert images["temporalUi"]["repository"] == "nv-config-manager-temporal-ui"
 
     def test_registry_images_present_by_default(self):
         values = _gen(_make_config())
@@ -677,7 +720,6 @@ class TestGenerateHelmValues:
         config = _make_config(
             content=ContentConfig(
                 jobs=[JobPath(path="/opt/jobs/custom")],
-                include_bootstrap_jobs=True,
             ),
         )
         values = _gen(config)
@@ -685,6 +727,11 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["customJobs"]["enabled"] is True
         assert values["nautobot"]["customJobs"]["createPvc"] is False
         assert values["nautobot"]["customJobs"]["pvcName"] == "nautobot-custom-jobs"
+
+    def test_no_custom_jobs_omits_custom_jobs_values(self):
+        values = _gen(_make_config(content=ContentConfig()))
+
+        assert "customJobs" not in values["nautobot"]
 
     def test_custom_jobs_node_selector_in_values(self):
         config = _make_config(
@@ -728,7 +775,7 @@ class TestGenerateHelmValues:
                 nautobot=False,
                 external_nautobot_url="https://nb.prod.example.com",
             ),
-            content=ContentConfig(jobs=[], include_bootstrap_jobs=False),
+            content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
@@ -792,6 +839,28 @@ class TestImagesInHelmValues:
         assert images["nvConfigManager"]["tag"] == "dev-branch"
         assert images["nautobot"]["tag"] == "v1.0"
 
+    def test_temporal_server_and_ui_overrides_keep_project_bootstrap(self):
+        config = _make_config(
+            images=ImagesConfig(
+                source=ImageSource.REGISTRY,
+                registry="registry.example.com/nvcm",
+                tag="v1.29",
+                overrides={
+                    "temporalServer": ImageOverride(repository="temporalio/server"),
+                    "temporalUi": ImageOverride(repository="temporalio/ui"),
+                },
+            )
+        )
+
+        images = _gen(config)["global"]["images"]
+
+        assert images["temporalServer"]["repository"] == "temporalio/server"
+        assert images["temporalUi"]["repository"] == "temporalio/ui"
+        assert (
+            images["temporalBootstrap"]["repository"]
+            == "registry.example.com/nvcm/nv-config-manager-temporal-bootstrap"
+        )
+
     def test_pull_secret_name_from_config(self):
         config = _make_config(
             images=ImagesConfig(
@@ -847,6 +916,9 @@ class TestImagesInHelmValues:
         assert images["nvConfigManager"]["tag"] == "a1b2c3d4e5f6"
         assert images["nautobot"]["tag"] == "deadbeef0123"
         assert images["nvConfigManagerUi"]["tag"] == "111222333444"
+        assert images["temporalServer"]["tag"] == "local"
+        assert images["temporalBootstrap"]["tag"] == "local"
+        assert images["temporalUi"]["tag"] == "local"
         # Images not in local_tags fall back to "local"
         assert images["kea"]["tag"] == "local"
         assert images["keaAdmin"]["tag"] == "local"
@@ -889,7 +961,7 @@ class TestImagesInHelmValues:
         )
         assert (
             images["temporalServer"]["repository"]
-            == "registry.example.com/nv-config-manager/temporalio/server"
+            == "registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal"
         )
         assert (
             values["nautobot"]["nginx"]["image"]["repository"]
@@ -932,6 +1004,48 @@ class TestImagesInHelmValues:
         assert values["alloy"]["configReloader"]["image"]["tag"] == "v0.90.1"
         assert values.get("grafana", {}).get("enabled") is not True
         assert values.get("loki", {}).get("enabled") is not True
+        assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager"
+
+
+class TestMonitoringHelmValues:
+    def test_monitoring_enabled_sets_default_prometheus_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(enabled=True),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["enabled"] is True
+        assert values["monitoring"]["prometheus"]["namespace"] == "monitoring"
+
+    def test_monitoring_enabled_honors_custom_prometheus_namespace(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    enabled=True,
+                    prometheus_namespace="kiwi-prometheus",
+                ),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["prometheus"]["namespace"] == "kiwi-prometheus"
+
+    def test_observability_enabled_uses_release_namespace_for_prometheus(self):
+        config = _make_config(
+            cluster=ClusterConfig(
+                hostname="test.example.com",
+                environment="local",
+                namespace="nv-config-manager-dev",
+            ),
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    prometheus_namespace="monitoring",
+                    observability_enabled=True,
+                ),
+            ),
+        )
+        values = _gen(config)
+        assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager-dev"
 
 
 class TestGitTokensInHelmValues:

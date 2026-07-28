@@ -48,11 +48,17 @@ from nv_config_manager_installer.helm_values import generate_helm_values
 from nv_config_manager_installer.k8s import (
     LOADER_POD_IMAGE,
     K8sClient,
-    ServiceProxy,
     kubectl_current_context,
     pin_kubeconfig_to_current_context,
 )
+from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
+from nv_config_manager_installer.openbao import OpenBaoClient, OpenBaoPopulator
 from nv_config_manager_installer.operator_versions import load_operator_versions
+from nv_config_manager_installer.pvc_updater import (
+    CUSTOM_JOBS_PACKAGE_MARKER,
+    normalize_ztp_platform,
+    validate_ztp_path_component,
+)
 from nv_config_manager_installer.schema import (
     GatewayType,
     ImageSource,
@@ -166,6 +172,8 @@ class DeployOptions:
     recreate_secrets: bool = False
     run_tests: bool = False
     dry_run: bool = False
+    vault_token_file: Path | None = None
+    populate_vault: bool = True
 
 
 @dataclass
@@ -181,10 +189,25 @@ _CONTENT_HASH_ANNOTATION = "nv-config-manager.nvidia.com/content-sha256"
 _IGNORE_COMMON = (".venv", "__pycache__", ".git", "*.pyc")
 _IGNORE_TEMPLATES = (".venv", "__pycache__", ".git", "tests")
 _SKIP_REASON = "Not requested"
-_BOOTSTRAP_JOBS_PATH = Path("components/nautobot/nv_config_manager_jobs")
 _CI_ENV_VAR = "CI"
 _DOCKER_SYSTEM_PRUNE_COMMAND = ("docker", "system", "prune", "-af")
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+_LOCAL_IMAGE_BUILDS: tuple[tuple[str, str, str, str | None], ...] = (
+    ("nv-config-manager-nautobot", "build/nautobot.Dockerfile", "components/nautobot", None),
+    ("nv-config-manager-nats-ready", "build/nats-ready.Dockerfile", "components/nats-ready", None),
+    ("nv-config-manager", "build/nv-config-manager.Dockerfile", ".", None),
+    ("nv-config-manager-ui", "build/ui.Dockerfile", "ui", None),
+    ("nv-config-manager-kea", "build/kea.Dockerfile", ".", None),
+    ("nv-config-manager-kea-admin", "build/kea-admin.Dockerfile", ".", None),
+    ("nv-config-manager-temporal", "build/temporal.Dockerfile", ".", "server"),
+    (
+        "nv-config-manager-temporal-bootstrap",
+        "build/temporal.Dockerfile",
+        ".",
+        "bootstrap",
+    ),
+    ("nv-config-manager-temporal-ui", "build/temporal.Dockerfile", ".", "ui"),
+)
 
 
 def _is_ci_environment() -> bool:
@@ -193,11 +216,8 @@ def _is_ci_environment() -> bool:
 
 
 def _build_job_paths(config: NVConfigManagerInstallConfig) -> list[Path]:
-    """Return the list of job source paths for PVC upload and content hashing."""
-    paths = [Path(j.path) for j in config.content.jobs]
-    if config.content.include_bootstrap_jobs and _BOOTSTRAP_JOBS_PATH.is_dir():
-        paths.append(_BOOTSTRAP_JOBS_PATH)
-    return paths
+    """Return custom job paths; bootstrap jobs remain available from the image."""
+    return [Path(j.path) for j in config.content.jobs]
 
 
 def _hash_content_dir(
@@ -1037,7 +1057,7 @@ class Deployer:
         options: DeployOptions,
         callback: DeployCallback | None = None,
     ) -> None:
-        self.config = config
+        self.config = NVConfigManagerInstallConfig.model_validate(config.model_dump())
         self.options = options
         self.callback = callback or _NoopCallback()
         self._secrets_state: dict[str, str] = {}
@@ -1052,6 +1072,7 @@ class Deployer:
             DeployStep("install-crds", "Install CRDs / operators"),
             DeployStep("create-namespace", "Create namespace"),
             DeployStep("create-secrets", "Create Kubernetes secrets"),
+            DeployStep("populate-vault", "Populate Vault secrets"),
             DeployStep("setup-jobs-pvc", "Setup custom jobs PVC"),
             DeployStep("setup-templates-pvc", "Setup template plugins PVC"),
             DeployStep("setup-ztp-pvc", "Setup ZTP images PVC"),
@@ -1133,6 +1154,7 @@ class Deployer:
             self._install_crds()
             self._create_namespace()
             self._create_secrets()
+            self._populate_vault()
             self._setup_jobs_pvc()
             self._setup_templates_pvc()
             self._setup_ztp_pvc()
@@ -1238,11 +1260,28 @@ class Deployer:
             raise RuntimeError("kind is required for --load-kind")
 
         self._validate_required_config(step)
+        if self.config.secrets.method == SecretsMethod.ESO:
+            self._validate_vault_config(step)
 
         if sys.platform == "linux":
             self._check_inotify_limits(step)
 
         self._finish_step(step)
+
+    def _validate_vault_config(self, step: DeployStep) -> None:
+        """Validate the Vault connection required for ESO population."""
+        vault = self.config.secrets.vault
+        missing = [
+            name
+            for name, value in (
+                ("secrets.vault.server", vault.server),
+                ("secrets.vault.secrets_path", vault.secrets_path),
+            )
+            if not value.strip()
+        ]
+        if missing:
+            raise RuntimeError("Vault population requires ESO configuration: " + ", ".join(missing))
+        step.output.append(f"Vault server: {vault.server}")
 
     def _validate_required_config(self, step: Any) -> None:
         """Fail fast on config that would crash mid-deploy with a confusing error.
@@ -1327,7 +1366,7 @@ class Deployer:
         else:
             self.callback.on_log("Fresh install: no existing Helm release found")
 
-        if self.config.content.jobs or self.config.content.include_bootstrap_jobs:
+        if self.config.content.jobs:
             self._rerun.jobs_changed = self._check_content_diff(
                 _build_job_paths(self.config), "nautobot-custom-jobs", ns, "Jobs content"
             )
@@ -1344,18 +1383,6 @@ class Deployer:
             return
 
         step = self._start_step("build-images")
-        images = [
-            ("nv-config-manager-nautobot", "build/nautobot.Dockerfile", "components/nautobot"),
-            (
-                "nv-config-manager-nats-ready",
-                "build/nats-ready.Dockerfile",
-                "components/nats-ready",
-            ),
-            ("nv-config-manager", "build/nv-config-manager.Dockerfile", "."),
-            ("nv-config-manager-ui", "build/ui.Dockerfile", "ui"),
-            ("nv-config-manager-kea", "build/kea.Dockerfile", "."),
-            ("nv-config-manager-kea-admin", "build/kea-admin.Dockerfile", "."),
-        ]
         apt_mirror_args: list[str] = []
         for env_var in ("APT_MIRROR", "APT_MIRROR_DEBIAN", "APT_MIRROR_GPG_KEY_URL"):
             val = os.environ.get(env_var, "")
@@ -1377,11 +1404,13 @@ class Deployer:
         build_cmd = ["docker", "buildx", "build"] if use_buildx else ["docker", "build"]
         build_output_args = ["--load"] if use_buildx else []
         build_commands: list[_ParallelCommand] = []
-        for name, dockerfile, context in images:
+        for name, dockerfile, context, target in _LOCAL_IMAGE_BUILDS:
             build_tag = f"{name}:local"
             image_build_args = [*apt_mirror_args]
             if name == "nv-config-manager":
                 image_build_args += nv_config_manager_build_args
+            if target:
+                image_build_args += ["--target", target]
             build_commands.append(
                 _ParallelCommand(
                     label=name,
@@ -1416,7 +1445,7 @@ class Deployer:
             max_parallel=max_parallel,
         )
 
-        for name, _, _ in images:
+        for name, _, _, _ in _LOCAL_IMAGE_BUILDS:
             build_tag = f"{name}:local"
             digest_tag = _get_image_digest_tag(build_tag)
             if digest_tag:
@@ -1436,15 +1465,7 @@ class Deployer:
 
         step = self._start_step("load-kind")
         cluster = self.options.kind_cluster
-        image_names = [
-            "nv-config-manager-nautobot",
-            "nv-config-manager-nats-ready",
-            "nv-config-manager",
-            "nv-config-manager-ui",
-            "nv-config-manager-kea",
-            "nv-config-manager-kea-admin",
-        ]
-        for name in image_names:
+        for name, _, _, _ in _LOCAL_IMAGE_BUILDS:
             tag = self._local_image_tags.get(name, "local")
             img = f"{name}:{tag}"
             self.callback.on_log(f"Loading {img} into Kind cluster {cluster}...")
@@ -1993,6 +2014,76 @@ class Deployer:
 
         self._finish_step(step)
 
+    def _resolve_vault_token(self) -> str:
+        """Resolve a Vault provisioning token without storing it in the config."""
+        if self.options.vault_token_file is not None:
+            try:
+                token = self.options.vault_token_file.expanduser().read_text().strip()
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Cannot read Vault token file '{self.options.vault_token_file}': {exc}"
+                ) from exc
+            if token:
+                return token
+
+        token = (
+            os.environ.get("VAULT_TOKEN", "").strip() or os.environ.get("OPENBAO_TOKEN", "").strip()
+        )
+        if token:
+            return token
+
+        vault = self.config.secrets.vault
+        if vault.auth.method.value == "token" and vault.auth.token_secret_name:
+            assert self._k8s is not None
+            data = self._k8s.read_secret_data(
+                vault.auth.token_secret_name,
+                self.config.cluster.namespace,
+            )
+            if token := data.get("token", "").strip():
+                return token
+
+        raise RuntimeError(
+            "Vault population requires a provisioning token. Pass --vault-token-file, "
+            "set VAULT_TOKEN, or configure token auth with a Kubernetes Secret containing a "
+            "'token' key."
+        )
+
+    def _populate_vault(self) -> None:
+        """Create configured KV v2 mounts and populate missing ESO secret values."""
+        if self.config.secrets.method != SecretsMethod.ESO:
+            self._skip_step("populate-vault", "ESO is not selected")
+            return
+        if not self.options.populate_vault:
+            self._skip_step(
+                "populate-vault",
+                "Vault population disabled; using pre-provisioned ESO paths",
+            )
+            return
+
+        assert self._k8s is not None
+        step = self._start_step("populate-vault")
+        vault = self.config.secrets.vault
+        client = OpenBaoClient(
+            vault.server,
+            self._resolve_vault_token(),
+            namespace=vault.namespace,
+        )
+        result = OpenBaoPopulator(self.config, client).populate()
+        for mount in result.mounts_created:
+            message = f"Created Vault KV v2 mount: {mount}"
+            step.output.append(message)
+            self.callback.on_log(message)
+        if result.paths_updated:
+            message = (
+                f"Populated {result.keys_added} missing key(s) across "
+                f"{len(result.paths_updated)} Vault path(s)"
+            )
+        else:
+            message = "Vault secrets already contain all configured values"
+        step.output.append(message)
+        self.callback.on_log(message)
+        self._finish_step(step)
+
     def _create_core_secrets(self, step: DeployStep, s: dict[str, str]) -> None:
         """Create Redis, Nautobot, DB, NATS, and device credential secrets."""
         self._apply_secret(step, "redis-password", {"password": s.get("redis_password", "")})
@@ -2188,7 +2279,7 @@ class Deployer:
             self.callback.on_log(msg)
 
     def _setup_jobs_pvc(self) -> None:
-        if not self.config.content.jobs and not self.config.content.include_bootstrap_jobs:
+        if not self.config.content.jobs:
             self._skip_step("setup-jobs-pvc", "No custom jobs configured")
             return
 
@@ -2231,16 +2322,9 @@ class Deployer:
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "jobs"
             staging.mkdir()
-
-            if self.config.content.include_bootstrap_jobs:
-                bootstrap = _BOOTSTRAP_JOBS_PATH
-                if bootstrap.is_dir():
-                    shutil.copytree(
-                        bootstrap,
-                        staging / bootstrap.name,
-                        dirs_exist_ok=True,
-                        ignore=shutil.ignore_patterns(*_IGNORE_COMMON),
-                    )
+            # The PVC is mounted as JOBS_ROOT/custom, which must be a package for
+            # Nautobot's recursive module discovery to descend into it.
+            (staging / "__init__.py").write_text(CUSTOM_JOBS_PACKAGE_MARKER)
 
             for job_entry in self.config.content.jobs:
                 src = Path(job_entry.path)
@@ -2441,8 +2525,10 @@ class Deployer:
         for img in images:
             local_path = img.path
             fname = Path(local_path).name
-            platform = img.platform.replace(" ", "_").lower()
+            platform = normalize_ztp_platform(img.platform)
             version = img.version
+            validate_ztp_path_component("platform", platform)
+            validate_ztp_path_component("version", version)
 
             self.callback.on_log(f"  Computing sha256 for {fname}...")
             checksum = self._compute_sha256(local_path)
@@ -2453,15 +2539,11 @@ class Deployer:
             remote_tmp = f"/tmp/{fname}"
             self.callback.on_log(f"  Copying {fname} -> {platform}/{version}/...")
             self._k8s.copy_to_pod(local_path, pod_name, ns, remote_tmp)
-            self._k8s.exec_command(
-                pod_name,
-                ns,
-                ["sh", "-c", f"mv {remote_tmp} {remote_dir}/{fname}"],
-            )
+            self._k8s.exec_command(pod_name, ns, ["mv", remote_tmp, f"{remote_dir}/{fname}"])
 
             manifest["images"].append(
                 {
-                    "platform": img.platform,
+                    "platform": platform,
                     "version": version,
                     "filename": fname,
                     "path": f"{platform}/{version}/{fname}",
@@ -2819,207 +2901,6 @@ class Deployer:
         step.output.append("Render service restarted to pick up new templates")
         self._finish_step(step)
 
-    def _get_nautobot_proxy(self) -> ServiceProxy:
-        """Get or create a ServiceProxy for the Nautobot service."""
-        assert self._k8s is not None
-        release = self.config.cluster.release_name
-        ns = self.config.cluster.namespace
-        return ServiceProxy(self._k8s, f"{release}-nautobot", ns)
-
-    def _wait_for_nautobot_api(self, proxy: ServiceProxy, timeout: int = 300) -> None:
-        """Poll Nautobot health endpoint via port-forward until ready."""
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                proxy.request("health")
-                return
-            except Exception:
-                time.sleep(5)
-        raise TimeoutError("Nautobot API did not become healthy within timeout")
-
-    def _get_nautobot_api_token(self) -> str:
-        """Retrieve the Nautobot API token from the cluster secret."""
-        assert self._k8s is not None
-        ns = self.config.cluster.namespace
-        data = self._k8s.read_secret_data("nautobot-admin", ns)
-        if "api_token" in data:
-            return data["api_token"]
-        data = self._k8s.read_secret_data("nautobot-token", ns)
-        return data.get("token", "")
-
-    def _enable_nautobot_job(
-        self,
-        proxy: ServiceProxy,
-        job_id: str,
-        job_data: dict[str, Any],
-        headers: dict[str, str],
-    ) -> None:
-        """Enable a Nautobot job if it isn't already."""
-        if job_data.get("enabled"):
-            return
-
-        self.callback.on_log("  Enabling job...")
-        try:
-            proxy.request(
-                f"api/extras/jobs/{job_id}/",
-                method="PATCH",
-                headers=headers,
-                data=json.dumps({"enabled": True}),
-            )
-        except Exception:
-            assert self._k8s is not None
-            ns = self.config.cluster.namespace
-            release = self.config.cluster.release_name
-            self.callback.on_log("  API PATCH failed, enabling via nautobot-server shell...")
-            pods = self._k8s.v1.list_namespaced_pod(
-                ns,
-                label_selector=f"app.kubernetes.io/name=nautobot,app.kubernetes.io/instance={release}",
-            )
-            if pods.items:
-                pod_name = pods.items[0].metadata.name
-                try:
-                    self._k8s.exec_command(
-                        pod_name,
-                        ns,
-                        [
-                            "nautobot-server",
-                            "shell",
-                            "--command",
-                            (
-                                "from nautobot.extras.models import Job; "
-                                f"j=Job.objects.get(id='{job_id}'); "
-                                "j.enabled=True; j.save()"
-                            ),
-                        ],
-                        container="nautobot",
-                    )
-                except Exception as exc:
-                    self.callback.on_log(f"  Shell fallback failed: {exc}")
-
-    _COMPLETED_STATUSES = frozenset({"completed", "success"})
-    _FAILED_STATUSES = frozenset({"failed", "failure", "errored", "error"})
-    _PENDING_STATUSES = frozenset({"pending", "running", "started", ""})
-
-    def _stream_job_logs(
-        self,
-        proxy: ServiceProxy,
-        job_result_id: str,
-        headers: dict[str, str],
-        step: DeployStep,
-        last_line: int,
-    ) -> int:
-        """Fetch and stream new job log entries. Returns the new high-water mark."""
-        try:
-            resp = proxy.request(f"api/extras/job-results/{job_result_id}/logs/", headers=headers)
-            logs_data = json.loads(resp)
-            if not isinstance(logs_data, list) or len(logs_data) <= last_line:
-                return last_line
-            for entry in logs_data[last_line:]:
-                line = f"  [{entry.get('log_level', '').upper()}] [{entry.get('grouping', '')}] {entry.get('message', '')}"
-                self.callback.on_log(line)
-                step.output.append(line)
-            return len(logs_data)
-        except Exception:
-            return last_line
-
-    def _poll_job_result(
-        self,
-        proxy: ServiceProxy,
-        job_result_id: str,
-        headers: dict[str, str],
-        step: DeployStep,
-        timeout: int = 1800,
-    ) -> bool:
-        """Poll a Nautobot job result for completion, streaming log entries."""
-        start = time.time()
-        last_log_line = 0
-
-        while True:
-            if time.time() - start >= timeout:
-                self.callback.on_log(f"  Job timed out after {timeout}s")
-                return False
-
-            try:
-                result_data = json.loads(
-                    proxy.request(f"api/extras/job-results/{job_result_id}/", headers=headers)
-                )
-            except Exception:
-                time.sleep(3)
-                continue
-
-            status_obj = result_data.get("status", {})
-            status = (
-                status_obj.get("value", "") if isinstance(status_obj, dict) else str(status_obj)
-            ).lower()
-
-            last_log_line = self._stream_job_logs(
-                proxy, job_result_id, headers, step, last_log_line
-            )
-
-            if status in self._COMPLETED_STATUSES:
-                return True
-            if status in self._FAILED_STATUSES:
-                self.callback.on_log(f"  Job failed (status: {status})")
-                return False
-            if status not in self._PENDING_STATUSES:
-                self.callback.on_log(f"  Unknown job status: {status}")
-
-            time.sleep(3)
-
-    def _run_single_job(
-        self,
-        proxy: ServiceProxy,
-        job_spec: Any,
-        headers: dict[str, str],
-        step: DeployStep,
-        index: int,
-        total: int,
-    ) -> bool:
-        """Run a single Nautobot job. Returns True on success."""
-        job_class = job_spec.job
-        module_name, job_class_name = job_class.rsplit(".", 1)
-        self.callback.on_log(f"Job {index}/{total}: {job_class}")
-
-        jobs_response = proxy.request(
-            f"api/extras/jobs/?module_name={module_name}&job_class_name={job_class_name}",
-            headers=headers,
-        )
-        jobs_data = json.loads(jobs_response)
-        if not jobs_data.get("results"):
-            self.callback.on_log(f"  Job not found: {job_class}, skipping")
-            step.output.append(f"Job not found: {job_class}")
-            return False
-
-        job_record = jobs_data["results"][0]
-        job_id = job_record["id"]
-        self.callback.on_log(f"  Found job ID: {job_id}")
-        self._enable_nautobot_job(proxy, job_id, job_record, headers)
-
-        job_input = json.loads(job_spec.input) if job_spec.input else {}
-        self.callback.on_log("  Starting job execution...")
-        run_response = proxy.request(
-            f"api/extras/jobs/{job_id}/run/",
-            method="POST",
-            headers=headers,
-            data=json.dumps({"data": job_input}),
-        )
-        run_data_resp = json.loads(run_response)
-
-        job_result_id = (
-            run_data_resp.get("id")
-            or run_data_resp.get("job_result", {}).get("id")
-            or run_data_resp.get("result", {}).get("id")
-            or ""
-        )
-        if not job_result_id:
-            self.callback.on_log(f"  Run API response keys: {list(run_data_resp.keys())}")
-            self.callback.on_log(f"  Response (truncated): {run_response[:500]}")
-            step.output.append(f"Failed to get job result ID for {job_class}")
-            return False
-
-        self.callback.on_log(f"  Job started, result ID: {job_result_id}")
-        return self._poll_job_result(proxy, job_result_id, headers, step)
-
     def _run_post_deploy_jobs(self) -> None:
         if not self.config.content.run_after_deploy:
             self._skip_step("run-jobs", "No post-deploy jobs configured")
@@ -3027,50 +2908,45 @@ class Deployer:
 
         step = self._start_step("run-jobs")
 
-        token = self._get_nautobot_api_token()
-        if not token:
-            step.error = "Could not retrieve Nautobot API token from secret"
-            self._finish_step(step, StepStatus.FAILED)
-            return
-
-        proxy = self._get_nautobot_proxy()
-        try:
-            proxy.start()
-            self.callback.on_log("Port-forward to Nautobot established")
-            self.callback.on_log("Waiting for Nautobot API...")
+        assert self._k8s is not None
+        runner = NautobotJobRunner(
+            self._k8s,
+            self.config.cluster.namespace,
+            self.config.cluster.release_name,
+            on_log=lambda message: self._log_post_deploy_job(message, step),
+        )
+        total = len(self.config.content.run_after_deploy)
+        failed = 0
+        for i, job_spec in enumerate(self.config.content.run_after_deploy, 1):
             try:
-                self._wait_for_nautobot_api(proxy)
-            except TimeoutError:
-                step.error = "Nautobot API health check timed out"
-                self._finish_step(step, StepStatus.FAILED)
-                return
-
-            headers = {"Authorization": f"Token {token}", "Content-Type": "application/json"}
-            total = len(self.config.content.run_after_deploy)
-            failed = 0
-
-            for i, job_spec in enumerate(self.config.content.run_after_deploy, 1):
-                try:
-                    ok = self._run_single_job(proxy, job_spec, headers, step, i, total)
-                    label = f"Job {i}/{total}: {job_spec.job}"
-                    if ok:
-                        step.output.append(f"Completed: {label}")
-                    else:
-                        step.output.append(f"Failed: {label}")
-                        failed += 1
-                except Exception as exc:
-                    step.output.append(f"Failed to run {job_spec.job}: {exc}")
-                    self.callback.on_log(f"  Error: {exc}")
+                job_input = json.loads(job_spec.input) if job_spec.input else {}
+                if not isinstance(job_input, dict):
+                    raise ValueError("Job input must be a JSON object")
+                ok = runner.run(job_spec.job, job_input)
+                label = f"Job {i}/{total}: {job_spec.job}"
+                if ok:
+                    step.output.append(f"Completed: {label}")
+                else:
+                    step.output.append(f"Failed: {label}")
                     failed += 1
+            except Exception as exc:
+                step.output.append(f"Failed to run {job_spec.job}: {exc}")
+                self.callback.on_log(f"  Error: {exc}")
+                failed += 1
 
-            if failed > 0:
-                step.error = f"{failed} of {total} job(s) failed"
-                self._finish_step(step, StepStatus.FAILED)
-            else:
-                step.output.append(f"All {total} job(s) completed successfully")
-                self._finish_step(step)
-        finally:
-            proxy.stop()
+        if failed > 0:
+            step.error = f"{failed} of {total} job(s) failed"
+            self._finish_step(step, StepStatus.FAILED)
+            raise RuntimeError(step.error)
+        else:
+            step.output.append(f"All {total} job(s) completed successfully")
+            self._finish_step(step)
+
+    def _log_post_deploy_job(self, message: str, step: DeployStep) -> None:
+        """Stream a shared Nautobot-job runner message to deployment progress."""
+        line = f"  {message}"
+        self.callback.on_log(line)
+        step.output.append(line)
 
     def _refresh_caches(self) -> None:
         if not self.config.content.run_after_deploy:

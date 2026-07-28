@@ -52,6 +52,8 @@ Custom label keys must work as Kubernetes labels, Prometheus labels, and Python 
 
 Services expose Prometheus metrics on their operational `/metrics` endpoints. Enable chart monitoring resources with `monitoring.enabled` and `monitoring.podMonitors.enabled` when the target cluster has Prometheus Operator CRDs installed.
 
+When network policies are enabled, set `monitoring.prometheus.namespace` to the namespace where Prometheus runs so scraping traffic is allowed. The installer maps `infrastructure.monitoring.prometheus_namespace` (default `monitoring`) into that Helm value when **Enable monitoring** is on and **Enable local observability stack** is off. When the local observability stack is enabled, the installer uses `config.cluster.namespace` instead and ignores `prometheus_namespace`, because the bundled Prometheus runs in the same namespace as NVCM.
+
 The chart can also render HTTP probes for gateway-facing endpoints when `monitoring.probes.enabled` is set and a Blackbox Exporter is available. Set `monitoring.grafanaUrl` to display a Grafana link in the Config Manager UI.
 
 Key service metrics include:
@@ -61,6 +63,48 @@ Key service metrics include:
 | Render | Event processing duration, received events, processed events, skipped events, failed events |
 | DHCP | Config generation duration, config generation errors, Nautobot query errors, cache refresh failures, last refresh timestamp |
 | Config Store, ZTP, Temporal | FastAPI request metrics and service-specific metrics exposed by each component |
+
+## Tracing
+
+OpenTelemetry trace export is controlled by a single global Helm toggle, `observability.enabled`. When enabled, the chart injects standard `OTEL_*` environment variables into every instrumented service — no per-pod sidecar.
+
+Instrumented components:
+
+| Component | `OTEL_SERVICE_NAME` |
+| :-------- | :-------------------- |
+| Config Store API | `nv-config-manager-config-store` |
+| DHCP API | `nv-config-manager-dhcp` |
+| ZTP API | `nv-config-manager-ztp` |
+| Render API | `nv-config-manager-render` |
+| MCP server | `nv-config-manager-mcp` |
+| Temporal worker | `nv-config-manager-temporal-worker` |
+| Temporal API | `nv-config-manager-temporal-api` |
+| Temporal scheduler | `nv-config-manager-temporal-scheduler` |
+| Temporal archive | `nv-config-manager-temporal-archive` |
+
+The chart points each service's OTel SDK at an existing OTLP collector:
+
+| Setting | Behavior |
+| :------ | :------- |
+| `observability.otlpEndpoint` set | Export to that gRPC endpoint (managed or external collector). |
+| `observability.otlpEndpoint` empty and `alloy.enabled: true` | Default to `http://alloy.<namespace>.svc.cluster.local:4317`. |
+| `observability.enabled: true` with neither of the above | Helm render fails so pods never target a dead OTLP endpoint. |
+
+Temporal also exports built-in runtime metrics (workflow completion, activity latency, and similar) to the same OTLP endpoint when tracing is enabled.
+
+**Local development:** layer `deploy/helm/values-observability.yaml` on your values file. It enables the bundled Alloy OTLP receiver and Tempo, sets `observability.enabled: true`, and leaves `otlpEndpoint` empty so traces flow:
+
+```text
+HTTP APIs + Temporal pods → Alloy (OTLP) → Tempo → Grafana
+```
+
+**Production:** set `observability.enabled: true` and `observability.otlpEndpoint` to your cluster's OTLP collector URL. The collector fans traces out to whatever backend it is wired to; the chart does not deploy a trace backend in that path.
+
+```yaml
+observability:
+  enabled: true
+  otlpEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+```
 
 ## Local Observability Stack
 

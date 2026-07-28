@@ -52,7 +52,7 @@ PYTHONIOENCODING: "utf-8"
 LC_ALL: "C.UTF-8"
 LANG: "C.UTF-8"
 {{- if .Values.nautobot.customJobs.enabled }}
-# Custom jobs are mounted to NAUTOBOT_ROOT/jobs/
+# Custom jobs are mounted to NAUTOBOT_ROOT/jobs/custom/
 NAUTOBOT_JOBS_ROOT: "/opt/nautobot/jobs"
 # JOBS_ROOT must be on PYTHONPATH for multi-module job packages to import correctly.
 # Nautobot's import_modules_privately only temporarily adds JOBS_ROOT during startup scanning,
@@ -78,6 +78,20 @@ NV_CONFIG_MANAGER_JWT_COOKIE: {{ .Values.oidc.cookieName | default "NVConfigMana
 # Group/role names that grant Nautobot superuser status (nv_config_manager_auth.jwt_authentication).
 # Reconciled against the JWT groups claim on every login.
 NV_CONFIG_MANAGER_SUPERUSER_GROUPS: {{ join "," . | quote }}
+{{- end }}
+{{- if hasKey .Values.nautobot.rbac "groupMapping" }}
+# Path to the group-mapping YAML consumed by nv_config_manager_auth.rbac on every JWT
+# login.  Rendered by the chart into the nautobot group-mapping ConfigMap and
+# mounted at the path below.  Keyed on presence of ``nautobot.rbac.groupMapping``
+# (even ``[]``) so that omitting it entirely leaves the feature unconfigured;
+# an explicit empty list is the deliberate revoke-everyone idiom.
+NV_CONFIG_MANAGER_GROUP_MAPPING_PATH: "/app/config/group-mapping.yaml"
+{{- if .Values.nautobot.rbac.autoCreateGroups }}
+# Opt-in: nv_config_manager_auth.rbac will create Django Groups referenced in the
+# mapping on the fly the first time a logging-in user matches them.  Default off --
+# operators are normally expected to create the Group rows up-front.
+NV_CONFIG_MANAGER_AUTO_CREATE_GROUPS: "true"
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -107,6 +121,16 @@ uwsgi.ini: |
   
   ; The WSGI module to load
   module = nautobot.core.wsgi:application
+
+  ; Preload django-prometheus cache metrics before any request.
+  ; Without this, the first /metrics/ scrape can self-deadlock: Nautobot's
+  ; metrics collector registers while holding Prometheus's non-reentrant
+  ; registry lock, then touches Django's cache, which lazily imports
+  ; django_prometheus.cache.metrics and tries to re-acquire the same lock.
+  ; Concurrent GraphQL init then blocks on the Python import lock, making
+  ; GraphQL appear responsible. Intermittent because each uWSGI worker
+  ; initializes independently.
+  import = django_prometheus.cache.metrics
   
   ; Listen queue size
   listen = {{ .Values.nautobot.server.uwsgi.listen }}
@@ -119,4 +143,40 @@ uwsgi.ini: |
   
   ; Enable stats
   stats = 127.0.0.1:1717
+{{- end -}}
+
+{{/*
+Nautobot RBAC group-mapping ConfigMap data.
+
+Rendered into ``<nautobot>-group-mapping`` and also fed into the
+pod-template checksum annotation so ``helm upgrade`` rolls the server
+pods on any change.  The pod mounts this ConfigMap as a directory (no
+subPath), so live ``kubectl edit configmap`` edits propagate to the
+running pod within the kubelet sync window without a restart.
+
+See ``components/nautobot/nv_config_manager_auth/rbac.py`` for the consumer.
+*/}}
+{{- define "nv-config-manager.configmap.nautobot-group-mapping" -}}
+group-mapping.yaml: |
+  # IdP-group → Nautobot Django Group + ObjectPermission mapping consumed
+  # by nv_config_manager_auth.rbac on every JWT login.  See nautobot.rbac.groupMapping
+  # in values.yaml for the schema.  Because this ConfigMap only exists when the
+  # ``groupMapping`` key is present, an empty ``groups: []`` list is NOT a no-op:
+  # it is the explicit revoke-everyone idiom.  Every login then runs the
+  # revoke/demote path -- users are removed from all mapping-managed Django
+  # Groups and the managed ``<group>_<action>`` ObjectPermissions are pruned.
+  # To disable the feature entirely (leave existing privileges untouched), omit
+  # the ``groupMapping`` key so this ConfigMap is never rendered or mounted.
+  groups:
+  {{- range .Values.nautobot.rbac.groupMapping }}
+    - name: {{ required "nautobot.rbac.groupMapping[].name is required" .name | quote }}
+      {{- if hasKey . "is_superuser" }}
+      is_superuser: {{ .is_superuser }}
+      {{- end }}
+      {{- with .nautobot_permissions }}
+      nautobot_permissions:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+  {{- else }} []
+  {{- end }}
 {{- end -}}

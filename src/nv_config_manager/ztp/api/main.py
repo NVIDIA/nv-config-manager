@@ -24,10 +24,12 @@ from prometheus_fastapi_instrumentator import Instrumentator, metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
+from nv_config_manager.common.telemetry import instrument_fastapi_app, setup_tracing
 from nv_config_manager.ztp.api import device_v1, files_v1, firmware_v1
 from nv_config_manager.ztp.api.metrics import device_http_requests
 
 configure_logging(service="ztp")
+setup_tracing("ztp")
 
 
 def main() -> None:
@@ -48,10 +50,12 @@ def main() -> None:
         timeout_keep_alive=75,
         limit_concurrency=1000,
         backlog=2048,
+        loop="asyncio",
     )
 
 
 app = FastAPI()
+instrument_fastapi_app(app)
 
 # Include routers
 app.include_router(device_v1.router, prefix="/v1")

@@ -54,7 +54,14 @@ dependencies = [
     # OpenTelemetry — trace export and FastAPI HTTP instrumentation
     # (opentelemetry-api and opentelemetry-sdk come via temporalio[opentelemetry])
     "opentelemetry-exporter-otlp-proto-grpc>=1.11.1,<2",
-    "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-instrumentation-asgi>=0.64b0",
+    # Outbound HTTP client instrumentation so trace context propagates across
+    # service hops: aiohttp (inter-service clients), httpx + requests (Nautobot,
+    # devices, OIDC).
+    "opentelemetry-instrumentation-aiohttp-client>=0.46b0",
+    "opentelemetry-instrumentation-httpx>=0.46b0",
+    "opentelemetry-instrumentation-requests>=0.46b0",
     # Security: Fix protobuf JSON recursion depth bypass (GHSA-7gcm-g887-7qv7)
     "protobuf>=6.33.5",
     # Network Automation
@@ -130,7 +137,7 @@ nv-config-manager-config-store-api = "nv_config_manager.config_store.api.main:ma
 nv-config-manager-config-store-cache-refresh = "nv_config_manager.config_store.cache_refresh_service:cli_main"
 
 # MCP Service
-nvidia-config-manager-mcp = "nv_config_manager.mcp.main:main"
+nv-config-manager-mcp = "nv_config_manager.mcp.main:main"
 nvcm-mcp-cli = "nv_config_manager.mcp.cli:main"
 
 [dependency-groups]
@@ -214,6 +221,7 @@ addopts = "--ignore=src/tests/integration"
 markers = [
     "integration: marks tests as integration tests (require running NVIDIA Config Manager cluster)",
     "spiffe: marks tests that require a live SPIFFE/Workload-Identity setup (opt-in via --spiffe)",
+    "rbac: marks tests that require live group-mapping RBAC (opt-in via --rbac)",
 ]
 
 [tool.coverage.report]

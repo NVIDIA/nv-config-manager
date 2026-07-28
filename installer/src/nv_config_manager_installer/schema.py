@@ -22,12 +22,15 @@ Helm values and config-secrets.ini.
 from __future__ import annotations
 
 import os
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_KUBERNETES_NAMESPACE_RE = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -87,6 +90,9 @@ class LBProvider(StrEnum):
 class ZTPStorageType(StrEnum):
     S3 = "s3"
     FILE = "file"
+
+
+SUPPORTED_ZTP_IMAGE_PLATFORMS = frozenset({"cumulus-linux", "arista-eos", "nv-os", "mlnx-os"})
 
 
 class ImageSource(StrEnum):
@@ -151,6 +157,8 @@ class VaultPathsConfig(BaseModel):
             token="token",
             readOnlyToken="read_only_token",
             natsPassword="nats_password",
+            natsSysPassword="nats_sys_password",
+            natsNautobotPassword="nats_nautobot_password",
         )
     )
     redis: VaultPathConfig = Field(default_factory=lambda: _path(password="password"))
@@ -181,6 +189,17 @@ class VaultPathsConfig(BaseModel):
     oidc: VaultPathConfig = Field(
         default_factory=lambda: _path(clientSecret="client_secret", cookieSecret="cookie_secret")
     )
+    redfish: VaultPathConfig = Field(
+        default_factory=lambda: _path(
+            lenovoDefaultUser="lenovo_default_user",
+            lenovoDefaultPassword="lenovo_default_password",
+            lenovoConfigManagerPassword="lenovo_config_manager_password",
+            bluefieldDefaultUser="bluefield_default_user",
+            bluefieldDefaultPassword="bluefield_default_password",
+            bluefieldConfigManagerPassword="bluefield_config_manager_password",
+        )
+    )
+    bmc: VaultPathConfig = Field(default_factory=lambda: _path(credsJson="bmc-creds.json"))
     slack: VaultPathConfig = Field(default_factory=lambda: _path(enabled=False, token="token"))
     jira: VaultPathConfig = Field(
         default_factory=lambda: _path(enabled=False, baseUrl="base_url", apiToken="api_token")
@@ -218,7 +237,7 @@ class VaultConfig(BaseModel):
 
 
 class K8sSecretGroup(BaseModel):
-    """Manual value overrides for one secret group in kubernetes-secrets mode.
+    """Manual value overrides for a Kubernetes Secret or OpenBao path group.
 
     Each key in ``values`` matches the corresponding vault property name so the
     same key names are meaningful in both ESO and kubernetes modes.
@@ -230,7 +249,7 @@ class K8sSecretGroup(BaseModel):
 
 
 class KubernetesSecretsConfig(BaseModel):
-    """Optional manual overrides for kubernetes-mode secrets.
+    """Optional values shared by Kubernetes-secret and OpenBao population modes.
 
     Required groups default to enabled; optional integrations default to disabled.
     Any value left empty (or the group left at defaults) will be auto-generated
@@ -386,8 +405,12 @@ class ContentConfig(BaseModel):
     jobs_config: JobsConfig = Field(default_factory=JobsConfig)
     template_plugins: list[TemplatePath] = Field(default_factory=list)
     template_plugins_config: TemplatePluginsConfig = Field(default_factory=TemplatePluginsConfig)
-    include_bootstrap_jobs: bool = True
     run_after_deploy: list[PostDeployJob] = Field(default_factory=list)
+
+    @property
+    def requires_local_nautobot(self) -> bool:
+        """Return whether the configured content needs the local Nautobot deployment."""
+        return bool(self.jobs or self.run_after_deploy)
 
 
 class ServicesConfig(BaseModel):
@@ -439,12 +462,30 @@ class CNPGBackupConfig(BaseModel):
 class MonitoringConfig(BaseModel):
     """Monitoring / observability configuration."""
 
+    model_config = ConfigDict(validate_assignment=True)
+
     enabled: bool = False
+    # Namespace where Prometheus scrapes from (for network policy ingress).
+    # Ignored when observability_enabled is true — the local stack runs in
+    # cluster.namespace and helm_values sets that automatically.
+    prometheus_namespace: str = "monitoring"
     # Bundles Prometheus + Grafana Alloy as subcharts of nv-config-manager
     # (see deploy/helm/values-observability.yaml). LOCAL-DEV / KIND ONLY.
     # Grafana/Loki are AGPL-licensed and are not enabled by the default
     # installer-managed observability path.
     observability_enabled: bool = False
+
+    @field_validator("prometheus_namespace")
+    @classmethod
+    def _validate_prometheus_namespace(cls, v: str) -> str:
+        if not v:
+            raise ValueError("namespace must not be empty")
+        if not _KUBERNETES_NAMESPACE_RE.fullmatch(v):
+            raise ValueError(
+                "namespace must be a lowercase DNS-1123 label (alphanumeric, hyphens, "
+                "start/end with alphanumeric, max 63 characters)"
+            )
+        return v
 
 
 class NLBServiceConfig(BaseModel):
@@ -502,6 +543,14 @@ class ZTPOSImage(BaseModel):
     platform: str = ""
     version: str = ""
     path: str = ""
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        """Reject ZTP platforms the installer does not yet support."""
+        if value and value not in SUPPORTED_ZTP_IMAGE_PLATFORMS:
+            raise ValueError(f"Unsupported ZTP platform {value!r}.")
+        return value
 
 
 class ZTPS3CephObjectStoreUserConfig(BaseModel):
@@ -574,6 +623,54 @@ class ExternalPostgresConfig(BaseModel):
     nautobot_host: str = ""
 
 
+class TemporalAuthMethod(StrEnum):
+    """Authentication mode used for a user-managed Temporal endpoint."""
+
+    NONE = "none"
+    MTLS = "mtls"
+
+
+class ExternalTemporalConfig(BaseModel):
+    """User-managed Temporal connection settings.
+
+    Set ``address`` to leave Temporal server ownership with the operator while
+    still deploying NVIDIA Config Manager's Temporal worker and Workflow API.
+    For mTLS, ``tls_secret_name`` names an existing Kubernetes Secret with the
+    standard ``ca.crt``, ``tls.crt``, and ``tls.key`` entries.
+    """
+
+    address: str = ""
+    namespace: str = "default"
+    auth_method: TemporalAuthMethod = TemporalAuthMethod.NONE
+    tls_secret_name: str = ""
+    tls_server_name: str = ""
+
+    @field_validator("namespace")
+    @classmethod
+    def validate_namespace(cls, value: str) -> str:
+        """Reject control characters that can alter generated configuration."""
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("namespace must not contain control characters")
+        return value
+
+    @field_validator("tls_server_name")
+    @classmethod
+    def validate_tls_server_name(cls, value: str) -> str:
+        """Reject values that cannot safely be rendered as one INI value."""
+        if value and not re.fullmatch(r"[A-Za-z0-9:.-]+", value):
+            raise ValueError("tls_server_name may contain only DNS-name or IP-literal characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_mtls(self) -> ExternalTemporalConfig:
+        if self.auth_method == TemporalAuthMethod.MTLS:
+            if not self.address:
+                raise ValueError("External Temporal mTLS requires an address")
+            if not self.tls_secret_name:
+                raise ValueError("External Temporal mTLS requires tls_secret_name")
+        return self
+
+
 class SlackConfig(BaseModel):
     """Slack integration configuration."""
 
@@ -585,6 +682,7 @@ class ExternalServicesConfig(BaseModel):
 
     redis: ExternalRedisConfig = Field(default_factory=ExternalRedisConfig)
     postgres: ExternalPostgresConfig = Field(default_factory=ExternalPostgresConfig)
+    temporal: ExternalTemporalConfig = Field(default_factory=ExternalTemporalConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
 
 
@@ -654,6 +752,16 @@ class ImagesConfig(BaseModel):
     pull_secret: ImagePullSecret = Field(default_factory=ImagePullSecret)
     overrides: dict[str, ImageOverride] = Field(default_factory=dict)
 
+    @model_validator(mode="after")
+    def validate_bootstrap_image_override(self) -> ImagesConfig:
+        """Keep schema bootstrap coupled to the supported Temporal version."""
+        if "temporalBootstrap" in self.overrides:
+            raise ValueError(
+                "images.overrides.temporalBootstrap is not supported; "
+                "use images.registry to mirror the project-owned bootstrap image"
+            )
+        return self
+
 
 NV_CONFIG_MANAGER_IMAGE_KEYS: list[tuple[str, str]] = [
     ("nvConfigManager", "nv-config-manager"),
@@ -662,6 +770,9 @@ NV_CONFIG_MANAGER_IMAGE_KEYS: list[tuple[str, str]] = [
     ("keaAdmin", "nv-config-manager-kea-admin"),
     ("nautobot", "nv-config-manager-nautobot"),
     ("natsReady", "nv-config-manager-nats-ready"),
+    ("temporalServer", "nv-config-manager-temporal"),
+    ("temporalBootstrap", "nv-config-manager-temporal-bootstrap"),
+    ("temporalUi", "nv-config-manager-temporal-ui"),
 ]
 
 # Image override keys accepted by the installer. The second field is the
@@ -680,9 +791,11 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("redis", "docker.io/library/redis"),
     ("nats", "docker.io/library/nats"),
     ("natsBox", "docker.io/natsio/nats-box"),
-    ("temporalServer", "docker.io/temporalio/server"),
-    ("temporalAdminTools", "docker.io/temporalio/admin-tools"),
-    ("temporalUi", "docker.io/temporalio/ui"),
+    # The bootstrap image is intentionally absent: it is version-coupled to
+    # the project-managed server schema.  Operators may override the server
+    # and UI with compatible upstream or locally built images instead.
+    ("temporalServer", "temporalio/server"),
+    ("temporalUi", "temporalio/ui"),
     ("nautobotNginx", "docker.io/nginxinc/nginx-unprivileged"),
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
     ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),
@@ -813,13 +926,12 @@ class NVConfigManagerInstallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_external_nautobot(self) -> NVConfigManagerInstallConfig:
-        """Custom jobs and bootstrap jobs require local Nautobot."""
-        if not self.services.nautobot and (
-            self.content.jobs or self.content.include_bootstrap_jobs
-        ):
+        """Reject content that cannot run against an external Nautobot instance."""
+        if not self.services.nautobot and self.content.requires_local_nautobot:
             msg = (
-                "Custom jobs and bootstrap jobs require a local Nautobot deployment "
-                "(services.nautobot must be true). Disable them or switch to local Nautobot."
+                "Custom jobs and post-deploy jobs require a local Nautobot deployment "
+                "(services.nautobot must be true). Remove content.jobs and "
+                "content.run_after_deploy or switch to local Nautobot."
             )
             raise ValueError(msg)
         return self
@@ -882,7 +994,11 @@ def _replace_with_keys(section: dict[str, Any], keys: set[str]) -> None:
 def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
     method = secrets.get("method")
     if method == SecretsMethod.ESO.value:
-        secrets.pop("k8s", None)
+        # The app-secrets UI stores optional initial values in ``k8s`` for
+        # both secret backends.  In ESO mode the installer writes those
+        # values to Vault/OpenBao instead of Kubernetes Secrets, so retain
+        # them in the saved installer config for subsequent runs.
+        _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
         _prune_vault(_as_dict(secrets.get("vault")))
         return
 
@@ -891,7 +1007,11 @@ def _prune_secrets(secrets: dict[str, Any], data: dict[str, Any]) -> None:
         if isinstance(site, dict):
             site.pop("vault_path", None)
 
-    k8s = _as_dict(secrets.get("k8s"))
+    _prune_k8s_secret_values(_as_dict(secrets.get("k8s")))
+
+
+def _prune_k8s_secret_values(k8s: dict[str, Any]) -> None:
+    """Remove values for Kubernetes secret groups that are disabled."""
     for group in k8s.values():
         group_data = _as_dict(group)
         if group_data.get("enabled") is False:

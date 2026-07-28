@@ -5,6 +5,8 @@
 {{- $ztpFileStorage := eq .Values.networkZtp.storage.type "file" }}
 {{- $ztpSpiffeJwt := and .Values.spiffe.enabled (eq (.Values.spiffe.authMode | default "jwt") "jwt") }}
 {{- $ztpVaultAgentJwt := and (eq .Values.secrets.method "vault-agent") (eq (.Values.secrets.vaultAgent.autoAuthMethod | default "kubernetes") "jwt") }}
+{{- $downloads := .Values.networkZtp.downloads | default dict }}
+{{- $sftpDownloads := $downloads.sftp | default dict }}
 ---
 # Network ZTP Deployment
 apiVersion: apps/v1
@@ -16,6 +18,7 @@ metadata:
     app: {{ $ztpName }}
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: network-ztp
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.networkZtp.replicas }}
   selector:
@@ -35,6 +38,9 @@ spec:
         {{- end }}
         {{- if include "nv-config-manager.spiffe.enabled" . }}
         {{- include "nv-config-manager.spiffe.annotations" (dict "root" . "app" $ztpName) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelOptOutAnnotations" . | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "nv-config-manager.serviceAccountName" . }}
@@ -66,6 +72,9 @@ spec:
         - name: ACCEPT_REQUEST_HEADERS
           value: "true"
         {{- include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-ztp") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 9000
           name: http
@@ -104,6 +113,9 @@ spec:
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
         {{- include "nv-config-manager.networkZtpStorageEnv" . | nindent 8 }}
+        {{- if .Values.observability.enabled }}
+        {{- include "nv-config-manager.otelAppEnv" (dict "root" . "serviceName" "nv-config-manager-ztp") | nindent 8 }}
+        {{- end }}
         ports:
         - containerPort: 8000
           name: http-lb
@@ -144,6 +156,8 @@ spec:
         ports:
         - containerPort: 2222
           name: sftp
+        - containerPort: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+          name: sftp-metrics
         resources:
           {{- toYaml .Values.networkZtp.resources.sftp | nindent 10 }}
         {{- if or $ztpConfigVolume $ztpFileStorage }}
@@ -223,6 +237,10 @@ spec:
     targetPort: 9000
     protocol: TCP
     name: http
+  - port: {{ $sftpDownloads.metricsPort | default 9100 | int }}
+    targetPort: sftp-metrics
+    protocol: TCP
+    name: sftp-metrics
   selector:
     app: {{ $ztpName }}
 ---
