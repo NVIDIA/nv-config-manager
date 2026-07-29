@@ -26,7 +26,7 @@
 # untrusted PR code never executes here.
 #
 # Required protected CI/CD variables (see .gitlab/ci/README.md):
-#   NVCM_MIRROR_API_TOKEN, NVCM_TEST_ENV_TARGETS, NVCM_CHART_OCI_REPO,
+#   NVCM_MIRROR_API_TOKEN, NVCM_TEST_ENV_TARGETS, NVCM_CHART_REPO,
 #   NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN, NVCM_VALUES_REPO_PATH,
 #   plus the existing image/chart target variables.
 # =============================================================================
