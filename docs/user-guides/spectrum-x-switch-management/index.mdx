@@ -107,9 +107,7 @@ The common operator path is:
 1. Run **SpX Overlay Creation** once for the tenant overlay at the site.
 1. Run **SpX Overlay Tenant Change** to assign the overlay to a switch and its
    ports, render the changed intent, and deploy it end to end.
-1. Before deletion, remove the overlay from all interfaces and deploy that
-   removal. Then run **SpX Overlay Deletion** to clean up the unused Nautobot
-   objects.
+1. Before deletion, remove the overlay from all interfaces and deploy the resulting configuration change. Then, run **SpX Overlay Deletion** to clean up the unused Nautobot objects.
 
 These overlay workflows supplement the normal Spectrum-X switch
 management path. They are not required for ZTP, general configuration
