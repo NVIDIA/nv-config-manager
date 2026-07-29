@@ -65,6 +65,8 @@ NATS_COMPONENT_SELECTOR = "app.kubernetes.io/component=nautobot-nats"
 # templates/monitoring.yaml (PodMonitor endpoint).
 EXPORTER_CONTAINER = "prom-exporter"
 EXPORTER_PORT = "prom-metrics"
+# nautobotNats.metrics.port in values.yaml, and the sidecar's `default 7777`.
+EXPORTER_PORT_NUMBER = 7777
 EXPORTER_JSZ_ARG = "-jsz=all"
 # Every arg the sidecar must carry for the metrics KEDA/PromQL rely on:
 # -varz selects the server endpoint, -jsz=all emits the JetStream consumer
