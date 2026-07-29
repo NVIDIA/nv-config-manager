@@ -12,7 +12,7 @@ Before running, confirm:
 
 - **For assignment or moves, the target overlay exists at the site** ([Spectrum-X Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot). No target overlay is needed when only removing an assignment.
 - **Device exists in Nautobot** with a primary IPv4, a supported platform (Cumulus Linux or NVOS), and current credentials in the secrets store.
-- **Target ports exist as interfaces in Nautobot** on the selected device. The form queries these interfaces after you choose the device. Already-assigned ports are silently skipped.
+- **Target ports exist as interfaces in Nautobot** on the selected device. The form queries these interfaces after you choose the device. For assignment or move operations, ports already assigned to the target VRF are silently skipped as no-ops. Removal-only runs intentionally treat selected interfaces with existing Spectrum-X assignments as removal targets.
 - **Render service is healthy.** The workflow waits up to a bounded window for the render service to produce the new tenant config; outages on render will stall the workflow.
 - **Tenant Deploy validation will accept the diff.** [Tenant Deploy](../tenant-deploy/index.mdx) only applies diffs that match the tenant-allowed `nv set` / `nv unset` patterns.
 
