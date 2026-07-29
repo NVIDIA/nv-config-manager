@@ -245,34 +245,35 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
         config = consumer_configs[consumer_type]
 
         nats_conn = await nats_connection()
-        jetstream = jetstream_for_consumer(nats_conn, config)
-
         try:
-            skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
-        except NotFoundError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Consumer '{config['durable_name']}' not found",
-            ) from exc
+            jetstream = jetstream_for_consumer(nats_conn, config)
 
-        status, message = _reset_result(config, skipped, remaining)
-        logger.info(
-            "Fast-forwarded consumer %s: skipped %d, %d still pending",
-            config["durable_name"],
-            skipped,
-            remaining,
-        )
+            try:
+                skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
+            except NotFoundError as exc:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Consumer '{config['durable_name']}' not found",
+                ) from exc
 
-        await nats_conn.close()
+            status, message = _reset_result(config, skipped, remaining)
+            logger.info(
+                "Fast-forwarded consumer %s: skipped %d, %d still pending",
+                config["durable_name"],
+                skipped,
+                remaining,
+            )
 
-        return ConsumerResetResponse(
-            consumer_name=config["durable_name"],
-            stream=config["stream"],
-            status=status,
-            message=message,
-            skipped=skipped,
-            remaining_pending=remaining,
-        )
+            return ConsumerResetResponse(
+                consumer_name=config["durable_name"],
+                stream=config["stream"],
+                status=status,
+                message=message,
+                skipped=skipped,
+                remaining_pending=remaining,
+            )
+        finally:
+            await nats_conn.close()
 
     except HTTPException:
         raise
@@ -289,44 +290,49 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
         consumer_configs = get_consumer_configs()
 
         nats_conn = await nats_connection()
+        try:
+            for consumer_type, config in consumer_configs.items():
+                jetstream = jetstream_for_consumer(nats_conn, config)
+                skipped = 0
+                remaining = 0
+                try:
+                    skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
+                    status, message = _reset_result(config, skipped, remaining)
+                    logger.info(
+                        "Fast-forwarded consumer %s: skipped %d, %d still pending",
+                        config["durable_name"],
+                        skipped,
+                        remaining,
+                    )
 
-        for consumer_type, config in consumer_configs.items():
-            jetstream = jetstream_for_consumer(nats_conn, config)
-            skipped = 0
-            remaining = 0
-            try:
-                skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
-                status, message = _reset_result(config, skipped, remaining)
-                logger.info(
-                    "Fast-forwarded consumer %s: skipped %d, %d still pending",
-                    config["durable_name"],
-                    skipped,
-                    remaining,
+                # Mirrors the 404 from the single-consumer endpoint: an absent consumer
+                # was not fast-forwarded, so reporting success would misrepresent it.
+                except NotFoundError:
+                    status = "not_found"
+                    message = f"Consumer '{config['durable_name']}' does not exist."
+                    logger.info(f"Consumer {config['durable_name']} not found")
+
+                except Exception as e:
+                    status = "error"
+                    message = (
+                        f"Failed to fast-forward consumer '{config['durable_name']}': {str(e)}"
+                    )
+                    logger.error(f"Error processing consumer {consumer_type}: {e}")
+
+                results.append(
+                    ConsumerResetResponse(
+                        consumer_name=config["durable_name"],
+                        stream=config["stream"],
+                        status=status,
+                        message=message,
+                        skipped=skipped,
+                        remaining_pending=remaining,
+                    )
                 )
 
-            except NotFoundError:
-                status = "success"
-                message = f"Consumer '{config['durable_name']}' does not exist."
-                logger.info(f"Consumer {config['durable_name']} not found")
-
-            except Exception as e:
-                status = "error"
-                message = f"Failed to fast-forward consumer '{config['durable_name']}': {str(e)}"
-                logger.error(f"Error processing consumer {consumer_type}: {e}")
-
-            results.append(
-                ConsumerResetResponse(
-                    consumer_name=config["durable_name"],
-                    stream=config["stream"],
-                    status=status,
-                    message=message,
-                    skipped=skipped,
-                    remaining_pending=remaining,
-                )
-            )
-
-        await nats_conn.close()
-        return results
+            return results
+        finally:
+            await nats_conn.close()
 
     except Exception as exc:
         logger.exception("Error resetting all consumers")

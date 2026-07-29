@@ -358,6 +358,9 @@ class TestResetConsumer:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
+        # nats_connection opens a fresh connection per call, so an error path that
+        # returns without closing leaks one connection per request.
+        mock_conn.close.assert_awaited_once()
 
     def test_reset_consumer_invalid_type(self):
         """Test resetting with invalid consumer type."""
@@ -391,10 +394,13 @@ class TestResetConsumer:
         )
 
         client = TestClient(app)
-        response = client.delete("/v1/admin/consumers/template/reset")
+        # Must be a type get_consumer_configs actually returns; "template" is in the
+        # enum but has no config, so it would 500 on a KeyError before reaching fetch.
+        response = client.delete("/v1/admin/consumers/device/reset")
 
         assert response.status_code == 500
         assert "Failed to reset consumer" in response.json()["detail"]
+        mock_conn.close.assert_awaited_once()
 
 
 class TestFastForward:
@@ -464,6 +470,39 @@ class TestResetAllConsumers:
         mock_js.delete_consumer.assert_not_called()
         mock_conn.jetstream.assert_any_call(prefix="$JS.CUSTOM.API")
         mock_conn.jetstream.assert_any_call(prefix="$JS.API")
+        mock_conn.close.assert_awaited_once()
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_all_consumers_reports_missing_as_not_found(
+        self, mock_get_conn, mock_load_config
+    ):
+        """An absent consumer is reported as not_found, matching the single-consumer 404."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        mock_conn.flush = AsyncMock()
+
+        async def mock_consumer_info(stream, consumer):
+            raise NotFoundError
+
+        mock_js.consumer_info.side_effect = mock_consumer_info
+
+        client = TestClient(app)
+        response = client.delete("/v1/admin/consumers/reset-all")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+
+        for result in data:
+            assert result["status"] == "not_found"
+            assert "does not exist" in result["message"]
+            assert result["skipped"] == 0
+
+        mock_js.delete_consumer.assert_not_called()
+        mock_conn.close.assert_awaited_once()
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
