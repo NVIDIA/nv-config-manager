@@ -21,8 +21,8 @@ var _ MappedNullable = &BatchDeployInput{}
 
 // BatchDeployInput Input for batch deploy child workflow.
 type BatchDeployInput struct {
-	// Devices whose configurations will be deployed in this batch.
-	BatchDevices []DeviceDiffData `json:"batch_devices"`
+	// Deprecated compatibility field. When omitted, devices are read from diff_group.devices.
+	BatchDevices []DeviceDiffData `json:"batch_devices,omitempty"`
 	// Sequence number of this batch within the parent workflow.
 	BatchNumber NullableInt32 `json:"batch_number,omitempty"`
 	// Whether to use commit-confirmed mode when the platform supports it.
@@ -39,9 +39,8 @@ type _BatchDeployInput BatchDeployInput
 // This constructor will assign default values to properties that have it defined,
 // and makes sure properties required by API are set, but the set of arguments
 // will change when the set of required properties is changed
-func NewBatchDeployInput(batchDevices []DeviceDiffData, diffGroup DiffGroup, parentWorkflowId string) *BatchDeployInput {
+func NewBatchDeployInput(diffGroup DiffGroup, parentWorkflowId string) *BatchDeployInput {
 	this := BatchDeployInput{}
-	this.BatchDevices = batchDevices
 	var commitConfirm bool = true
 	this.CommitConfirm = &commitConfirm
 	this.DiffGroup = diffGroup
@@ -59,26 +58,35 @@ func NewBatchDeployInputWithDefaults() *BatchDeployInput {
 	return &this
 }
 
-// GetBatchDevices returns the BatchDevices field value
+// GetBatchDevices returns the BatchDevices field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *BatchDeployInput) GetBatchDevices() []DeviceDiffData {
 	if o == nil {
 		var ret []DeviceDiffData
 		return ret
 	}
-
 	return o.BatchDevices
 }
 
-// GetBatchDevicesOk returns a tuple with the BatchDevices field value
+// GetBatchDevicesOk returns a tuple with the BatchDevices field value if set, nil otherwise
 // and a boolean to check if the value has been set.
+
 func (o *BatchDeployInput) GetBatchDevicesOk() ([]DeviceDiffData, bool) {
-	if o == nil {
+	if o == nil || IsNil(o.BatchDevices) {
 		return nil, false
 	}
 	return o.BatchDevices, true
 }
 
-// SetBatchDevices sets field value
+// HasBatchDevices returns a boolean if a field has been set.
+func (o *BatchDeployInput) HasBatchDevices() bool {
+	if o != nil && !IsNil(o.BatchDevices) {
+		return true
+	}
+
+	return false
+}
+
+// SetBatchDevices gets a reference to the given []DeviceDiffData and assigns it to the BatchDevices field.
 func (o *BatchDeployInput) SetBatchDevices(v []DeviceDiffData) {
 	o.BatchDevices = v
 }
@@ -219,7 +227,9 @@ func (o BatchDeployInput) MarshalJSON() ([]byte, error) {
 
 func (o BatchDeployInput) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
-	toSerialize["batch_devices"] = o.BatchDevices
+	if o.BatchDevices != nil {
+		toSerialize["batch_devices"] = o.BatchDevices
+	}
 	if o.BatchNumber.IsSet() {
 		toSerialize["batch_number"] = o.BatchNumber.Get()
 	}
@@ -236,7 +246,6 @@ func (o *BatchDeployInput) UnmarshalJSON(data []byte) (err error) {
 	// by unmarshalling the object into a generic map with string keys and checking
 	// that every required field exists as a key in the generic map.
 	requiredProperties := map[string]bool{
-		"batch_devices":      false,
 		"diff_group":         false,
 		"parent_workflow_id": false,
 	}
