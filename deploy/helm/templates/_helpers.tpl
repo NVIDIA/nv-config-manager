@@ -1046,6 +1046,28 @@ Result depends on configuration:
 {{- end }}
 
 {{/*
+Address of the Prometheus this release deploys, for KEDA's render-autoscaling
+trigger -- empty unless that in-cluster Prometheus is actually what KEDA will
+query.
+
+Returns nothing when renderService.autoscaling.prometheus.serverAddress is set
+(KEDA queries that endpoint instead) or when the prometheus subchart is off.
+Both the ScaledObject's serverAddress and the NetworkPolicy rule that lets KEDA
+reach it derive from this, so the policy cannot grant cross-namespace access to
+a Prometheus KEDA never talks to.
+
+The FQDN is required because KEDA resolves it from its own namespace, not the
+release's. The service name comes from prometheus.server.fullnameOverride in
+values-observability.yaml; only the namespace is unknown to a values file, which
+is why this is resolved here.
+*/}}
+{{- define "nv-config-manager.inClusterPrometheusAddress" -}}
+{{- if and .Values.prometheus.enabled (not .Values.renderService.autoscaling.prometheus.serverAddress) -}}
+{{- printf "http://prometheus-server.%s.svc.cluster.local:9090" .Release.Namespace -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Common secret names
 */}}
 {{- define "nv-config-manager.iniSecretName" -}}

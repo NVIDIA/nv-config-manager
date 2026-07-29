@@ -15,18 +15,12 @@
 {{- $autoscaling := .Values.renderService.autoscaling }}
 {{- $prometheus := $autoscaling.prometheus }}
 {{- /*
-Fall back to the Prometheus this release deploys itself. values-observability.yaml
-turns the subchart on with server.fullnameOverride: prometheus-server, so the
-service name is known; only the namespace isn't, and a values file can't template
-it -- hence resolving it here instead of hardcoding a namespace in the overlay.
-The FQDN is required because KEDA resolves this from its own namespace, not the
-release's. Deployments pointing at an external Prometheus set serverAddress
-explicitly and are unaffected.
+Fall back to the Prometheus this release deploys itself. Deployments pointing at
+an external Prometheus set serverAddress explicitly and are unaffected. The
+helper is shared with the NetworkPolicy that opens KEDA's path to that address,
+so the two cannot disagree about which Prometheus KEDA queries.
 */}}
-{{- $promAddress := $prometheus.serverAddress }}
-{{- if and (not $promAddress) .Values.prometheus.enabled }}
-{{- $promAddress = printf "http://prometheus-server.%s.svc.cluster.local:9090" .Release.Namespace }}
-{{- end }}
+{{- $promAddress := $prometheus.serverAddress | default (include "nv-config-manager.inClusterPrometheusAddress" .) }}
 
 {{- /* Iterate over each consumer type */ -}}
 {{- if $autoscaling.consumers }}
