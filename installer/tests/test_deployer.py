@@ -419,6 +419,7 @@ class TestInstallCrds:
         (charts_dir / "cloudnative-pg-0.28.0.tgz").touch()
         (charts_dir / "gateway-helm-v1.6.5.tgz").touch()
         (charts_dir / "prometheus-operator-crds-28.0.1.tgz").touch()
+        (charts_dir / "keda-2.20.1.tgz").touch()
         (manifests_dir / "gateway-api-v1.4.1.yaml").touch()
 
         run_commands: list[list[str]] = []
@@ -517,6 +518,17 @@ class TestInstallCrds:
             in cnpg_cmd
         )
         assert "image.tag=1.29.0" in cnpg_cmd
+
+        # KEDA comes with observability_enabled (it reconciles the ScaledObjects
+        # values-observability.yaml turns on), so it has to resolve from the
+        # bundle too -- and must not fall back to `helm repo add`, which has no
+        # network to reach in an airgapped install.
+        keda_cmd = next(
+            cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "keda"]
+        )
+        assert str(charts_dir / "keda-2.20.1.tgz") in keda_cmd
+        assert "--version" not in keda_cmd
+        assert not any(cmd[:3] == ["helm", "repo", "add"] for cmd in run_commands)
 
         prom_crds_cmd = next(
             cmd

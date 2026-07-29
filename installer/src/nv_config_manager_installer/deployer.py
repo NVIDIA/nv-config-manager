@@ -346,6 +346,7 @@ def _docker_image_id(image: str) -> str:
 _DEFAULT_IMAGE_REGISTRY = "nvcr.io/nvidian/cfa"
 _CNPG_OPERATOR_IMAGE_TAG = "1.29.0"
 _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION = "28.0.1"
+_KEDA_CHART_VERSION = "2.20.1"
 _KIND_PRELOAD_IMAGES_ENV = "NVCM_KIND_PRELOAD_IMAGES"
 _KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
 _KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
@@ -1943,6 +1944,60 @@ class Deployer:
                 prom_crds_args.extend(["--version", _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION])
             _run_logged(
                 prom_crds_args,
+                step,
+                self.callback,
+            )
+
+            # values-observability.yaml also turns on render-service
+            # autoscaling, whose ScaledObjects are keda.sh/v1alpha1 — so KEDA
+            # has the same ordering constraint as the CRDs above and must be a
+            # separate release installed first, or the parent chart fails API
+            # discovery with "no matches for kind ScaledObject".
+            #
+            # Installing the operator rather than only its CRDs is deliberate:
+            # KEDA marks a ScaledObject Ready only after it resolves the
+            # trigger against Prometheus, so the operator is what turns the
+            # rendered PromQL into something CI can actually verify. CRDs alone
+            # would admit a ScaledObject whose query matches no series.
+            self.callback.on_log("Installing KEDA...")
+            keda_chart = self._require_airgap_artifact(
+                self._local_operator_chart(bundle_root, "keda", _KEDA_CHART_VERSION),
+                f"keda chart {_KEDA_CHART_VERSION}",
+            )
+            keda_chart_ref = str(keda_chart) if keda_chart is not None else "kedacore/keda"
+            keda_args = [
+                "helm",
+                "upgrade",
+                "--install",
+                "keda",
+                keda_chart_ref,
+                "-n",
+                "keda",
+                "--create-namespace",
+                "--wait",
+                # Longer than the CRD-only release above: this one waits on the
+                # operator, metrics-apiserver, and admission-webhooks
+                # deployments, each pulling from ghcr.io.
+                "--timeout",
+                "300s",
+            ]
+            if keda_chart is not None:
+                self.callback.on_log(f"Using local chart: {keda_chart}")
+            else:
+                _run(
+                    [
+                        "helm",
+                        "repo",
+                        "add",
+                        "kedacore",
+                        "https://kedacore.github.io/charts",
+                        "--force-update",
+                    ],
+                    check=False,
+                )
+                keda_args.extend(["--version", _KEDA_CHART_VERSION])
+            _run_logged(
+                keda_args,
                 step,
                 self.callback,
             )
