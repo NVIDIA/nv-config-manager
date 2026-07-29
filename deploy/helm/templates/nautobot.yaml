@@ -721,6 +721,8 @@ spec:
               mountPath: /opt/nautobot/static
             - name: nautobot-media
               mountPath: /opt/nautobot/media
+            - name: prom-cache
+              mountPath: /prom_cache
             {{- if hasKey .Values.nautobot.rbac "groupMapping" }}
             # Mount as a directory (not subPath) so kubelet syncs file
             # updates in-place: ConfigMap edits propagate to the running
@@ -819,6 +821,15 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        # prometheus_client keys its multiprocess metric files by PID and never reaps
+        # them, so /prom_cache only grows over a pod's lifetime.  An emptyDir starts
+        # empty on every pod start and caps the growth -- the image already creates
+        # the directory, so this adds lifecycle management, not the directory itself.
+        # Steady state is a few files per uWSGI worker; the limit is sized to be a
+        # regression signal rather than something normal operation approaches.
+        - name: prom-cache
+          emptyDir:
+            sizeLimit: 256Mi
         {{- if .Values.nautobot.customJobs.enabled }}
         - name: custom-jobs
           persistentVolumeClaim:
@@ -985,18 +996,26 @@ spec:
                 name: {{ $nautobotName }}-env
           resources:
             {{- toYaml .Values.nautobot.celery.resources | nindent 12 }}
-          {{- if .Values.nautobot.customJobs.enabled }}
           volumeMounts:
+            - name: prom-cache
+              mountPath: /prom_cache
+            {{- if .Values.nautobot.customJobs.enabled }}
             - name: custom-jobs
               mountPath: /opt/nautobot/jobs/custom
               readOnly: true
-          {{- end }}
+            {{- end }}
+          # Celery has no HTTP listener, so unlike the web pod these probes must fork.
+          # The forked process gets a fresh PID, and any nautobot-server invocation
+          # with $prometheus_multiproc_dir set writes a set of *.db files under it that
+          # nothing reaps.  Dropping the variable from the child's environment keeps
+          # prometheus_client in single-process mode for the probe, so it writes none;
+          # `celery inspect ping` never touches /metrics, so nothing is lost.
           livenessProbe:
             exec:
               command:
                 - python
                 - -c
-                - "import os, subprocess, sys; sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
+                - "import os, subprocess, sys; os.environ.pop('prometheus_multiproc_dir', None); os.environ.pop('PROMETHEUS_MULTIPROC_DIR', None); sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
             initialDelaySeconds: 60
             periodSeconds: 120
             timeoutSeconds: 60
@@ -1006,17 +1025,21 @@ spec:
               command:
                 - python
                 - -c
-                - "import os, subprocess, sys; sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
+                - "import os, subprocess, sys; os.environ.pop('prometheus_multiproc_dir', None); os.environ.pop('PROMETHEUS_MULTIPROC_DIR', None); sys.exit(subprocess.call(['nautobot-server', 'celery', 'inspect', 'ping', '--destination', 'celery@' + os.environ.get('HOSTNAME', '')]))"
             initialDelaySeconds: 60
             periodSeconds: 120
             timeoutSeconds: 60
             failureThreshold: 10
-      {{- if .Values.nautobot.customJobs.enabled }}
       volumes:
+        # See the nautobot web pod for why /prom_cache is an emptyDir.
+        - name: prom-cache
+          emptyDir:
+            sizeLimit: 256Mi
+        {{- if .Values.nautobot.customJobs.enabled }}
         - name: custom-jobs
           persistentVolumeClaim:
             claimName: {{ .Values.nautobot.customJobs.pvcName }}
-      {{- end }}
+        {{- end }}
       terminationGracePeriodSeconds: 120
 
 # =============================================================================

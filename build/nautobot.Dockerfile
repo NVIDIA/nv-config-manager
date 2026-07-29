@@ -68,7 +68,8 @@ RUN mkdir -p /opt/nautobot/static \
     /opt/nautobot/media/devicetype-images \
     /opt/nautobot/media/image-attachments \
     /opt/nautobot/git \
-    /opt/nautobot/.cache && \
+    /opt/nautobot/.cache \
+    /prom_cache && \
     chmod -R a+rX /opt/nautobot/.venv /opt/nautobot/nautobot_config.py /opt/nautobot/nv_config_manager_auth
 
 # =============================================================================
@@ -80,6 +81,18 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV NAUTOBOT_ROOT=/opt/nautobot
 ENV NAUTOBOT_CONFIG=/opt/nautobot/nautobot_config.py
+# Prometheus multiprocess mode. These variables only enable multiprocess mode and
+# name the shared metrics directory -- they do not themselves create a registry.
+# The /metrics handler must still build an isolated CollectorRegistry and register
+# a MultiProcessCollector on it; Nautobot core already does this when either
+# spelling is set (NautobotMetricsView, nautobot/core/views/__init__.py), so no
+# application-side change is needed. That per-request registry uses
+# auto_describe=False, so register() never calls collect() while holding the
+# non-reentrant registry lock that deadlocks the first /metrics scrape against the
+# global REGISTRY, and metrics aggregate across all uWSGI workers. Nautobot accepts
+# either spelling; the stock Nautobot image bakes the lower-case one, so both are set.
+ENV prometheus_multiproc_dir=/prom_cache
+ENV PROMETHEUS_MULTIPROC_DIR=/prom_cache
 
 WORKDIR /opt/nautobot
 
@@ -90,6 +103,8 @@ COPY --from=builder /opt/nautobot/nv_config_manager_auth /opt/nautobot/nv_config
 COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/static /opt/nautobot/static
 COPY --from=builder --chown=1000:1000 /opt/nautobot/media /opt/nautobot/media
 COPY --from=builder --chown=1000:1000 /opt/nautobot/git /opt/nautobot/git
+# Writable dir for prometheus_client multiprocess metric files (see ENV above).
+COPY --from=builder --chown=1000:1000 /prom_cache /prom_cache
 COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/jobs /opt/nautobot/jobs
 COPY --from=builder --chown=1000:1000 /opt/nautobot/.cache /opt/nautobot/.cache
 
