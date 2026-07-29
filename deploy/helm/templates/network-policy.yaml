@@ -63,6 +63,22 @@ spec:
           port: {{ .Values.nautobotNats.metrics.port | default 7777 }}  # nautobot NATS exporter
         {{- end }}
     {{- end }}
+    {{- if and .Values.renderService.enabled .Values.renderService.autoscaling.enabled .Values.prometheus.enabled }}
+    # Allow KEDA to read the render-consumer trigger metric from the Prometheus
+    # this release deploys. KEDA runs in its own namespace, so its queries are
+    # cross-namespace ingress that the same-namespace rule above does not cover;
+    # without this the ScaledObjects never resolve a value. Gated on
+    # prometheus.enabled because an external Prometheus is queried outside this
+    # namespace entirely, needing no ingress here. Port must match the address
+    # built in templates/render-service-scaledobject.yaml.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.kedaNamespace | default "keda" | quote }}
+      ports:
+        - protocol: TCP
+          port: 9090
+    {{- end }}
     {{- if .Values.networkPolicy.allowFromGatewayNamespace }}
     # Allow traffic from Envoy Gateway system namespace (data plane proxies)
     - from:

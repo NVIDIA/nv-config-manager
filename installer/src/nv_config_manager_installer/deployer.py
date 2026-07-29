@@ -351,6 +351,9 @@ _KEDA_CHART_VERSION = "2.20.1"
 # KEDA happens to keep the two in lockstep today, but they are independent knobs
 # and the chart would otherwise default the tag from its own appVersion.
 _KEDA_IMAGE_TAG = "2.20.1"
+# Must stay in sync with networkPolicy.kedaNamespace in deploy/helm/values.yaml,
+# which allows KEDA's trigger queries through the namespace-isolation policy.
+_KEDA_NAMESPACE = "keda"
 _KIND_PRELOAD_IMAGES_ENV = "NVCM_KIND_PRELOAD_IMAGES"
 _KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
 _KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
@@ -2003,7 +2006,7 @@ class Deployer:
                 "keda",
                 keda_chart_ref,
                 "-n",
-                "keda",
+                _KEDA_NAMESPACE,
                 "--create-namespace",
                 "--wait",
                 # Longer than the CRD-only release above: this one waits on the
