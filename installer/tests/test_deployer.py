@@ -406,6 +406,48 @@ class TestInstallCrds:
         )
         assert cert_cmd[cert_cmd.index("--version") + 1] == "v1.20.2"
 
+    def test_keda_online_install_leaves_upstream_images_alone(self, tmp_path, monkeypatch):
+        """With no private registry, KEDA's image defaults must be left untouched.
+
+        The chart's repository values are registry-relative ("kedacore/keda"), so
+        emitting the ``image.*.registry=""`` that the private-registry path needs
+        would resolve them against Docker Hub instead of ghcr.io.
+        """
+        (tmp_path / "helm").mkdir()
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.infrastructure.monitoring.observability_enabled = True
+        deployer = Deployer(
+            config,
+            DeployOptions(chart_dir=str(tmp_path / "helm")),
+            RecordingCallback(),
+        )
+        deployer._install_crds()
+
+        keda_cmd = next(
+            cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "keda"]
+        )
+        assert "kedacore/keda" in keda_cmd
+        assert keda_cmd[keda_cmd.index("--version") + 1] == "2.20.1"
+        assert any("kedacore.github.io" in " ".join(cmd) for cmd in run_commands)
+        assert not any(arg.startswith("image.") for arg in keda_cmd), (
+            f"KEDA install should not override images without a registry: {keda_cmd}"
+        )
+
     def test_airgap_operator_installs_use_local_artifacts(self, tmp_path, monkeypatch):
         root = tmp_path / "bundle"
         chart_dir = root / "helm"
@@ -529,6 +571,20 @@ class TestInstallCrds:
         assert str(charts_dir / "keda-2.20.1.tgz") in keda_cmd
         assert "--version" not in keda_cmd
         assert not any(cmd[:3] == ["helm", "repo", "add"] for cmd in run_commands)
+        # All three KEDA images must come from the private registry. The chart
+        # composes registry + repository, so the registry has to be blanked too or
+        # the rewritten repository would end up appended to ghcr.io.
+        for value_prefix, repository in (
+            ("image.keda", "kedacore/keda"),
+            ("image.metricsApiServer", "kedacore/keda-metrics-apiserver"),
+            ("image.webhooks", "kedacore/keda-admission-webhooks"),
+        ):
+            assert f"{value_prefix}.registry=" in keda_cmd
+            assert (
+                f"{value_prefix}.repository=registry.example.com/nv-config-manager/{repository}"
+                in keda_cmd
+            )
+            assert f"{value_prefix}.tag=2.20.1" in keda_cmd
 
         prom_crds_cmd = next(
             cmd

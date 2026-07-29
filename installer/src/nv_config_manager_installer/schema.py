@@ -816,6 +816,11 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("prometheusConfigReloader", "quay.io/prometheus-operator/prometheus-config-reloader"),
     ("alloy", "docker.io/grafana/alloy"),
     ("alloyConfigReloader", "quay.io/prometheus-operator/prometheus-config-reloader"),
+    # KEDA ships as three separate images, all installed with the observability
+    # stack to reconcile the render-consumer ScaledObjects.
+    ("kedaOperator", "ghcr.io/kedacore/keda"),
+    ("kedaMetricsApiServer", "ghcr.io/kedacore/keda-metrics-apiserver"),
+    ("kedaAdmissionWebhooks", "ghcr.io/kedacore/keda-admission-webhooks"),
 ]
 
 
