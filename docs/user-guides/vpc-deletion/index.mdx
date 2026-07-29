@@ -1,14 +1,10 @@
 ---
-title: SpX Overlay Deletion
-sidebar-title: SpX Overlay Deletion
+title: Spectrum-X Overlay Deletion
+sidebar-title: Spectrum-X Overlay Deletion
 position: 20
 ---
 
-The SpX Overlay Deletion workflow removes the VRF, L3 VXLAN, and Overlay metadata for an existing overlay from Nautobot. It is the cleanup counterpart to [SpX Overlay Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted. The Overlay object is only deleted once all of its VXLANs and member assignments are gone.
-
-<Warning title="Experimental">
-This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
-</Warning>
+The Spectrum-X Overlay Deletion workflow removes the VRF, L3 VXLAN, and Overlay metadata for an existing overlay from Nautobot. It is the cleanup counterpart to [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) and refuses to delete VRFs that are still in use — any VRF currently bound to interfaces on a device is reported in the result's `in_use_vrfs` list rather than deleted. The Overlay object is only deleted once all of its VXLANs and member assignments are gone.
 
 ## Prerequisites
 
@@ -51,13 +47,13 @@ After the workflow reports success, confirm:
 - **`delete_spx_overlay` shows green** and the result lists `deleted_vrfs` and `in_use_vrfs` as expected.
 - **Nautobot no longer shows the deleted VRFs.**
 - **Nautobot overlays plugin** shows the Overlay deleted (or still present with a note if members remain).
-- **Any `in_use_vrfs` entries** are VRFs still bound to interfaces. Unbind them directly in Nautobot, re-deploy the affected devices, then re-run SpX Overlay Deletion.
+- **Any `in_use_vrfs` entries** are VRFs still bound to interfaces. Unbind them directly in Nautobot, re-deploy the affected devices, then re-run Spectrum-X Overlay Deletion.
 
 ## Common issues
 
 **Result lists VRFs as `in_use_vrfs`.**
 
-Those VRFs are still bound to interfaces on at least one device. Open Nautobot, remove the VRF binding from each interface, re-deploy the affected devices so the running configuration drops the VRF, then re-run SpX Overlay Deletion.
+Those VRFs are still bound to interfaces on at least one device. Open Nautobot, remove the VRF binding from each interface, re-deploy the affected devices so the running configuration drops the VRF, then re-run Spectrum-X Overlay Deletion.
 
 **Workflow returns "No VRFs exist for this overlay at the site".**
 
@@ -73,6 +69,6 @@ A Nautobot transaction failed mid-delete. Some VRFs may have been deleted; other
 
 ## Related guides
 
-- [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF metadata in the first place.
-- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — bind VRFs to devices and ports.
-- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — full assign + render + deploy lifecycle workflow.
+- [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) — provision the VRF metadata in the first place.
+- [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) — bind VRFs to devices and ports.
+- [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx) — full assign + render + deploy lifecycle workflow.
