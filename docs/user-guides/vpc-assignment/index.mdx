@@ -1,16 +1,12 @@
 ---
-title: SpX Overlay Assignment
-sidebar-title: SpX Overlay Assignment
+title: Spectrum-X Overlay Assignment
+sidebar-title: Spectrum-X Overlay Assignment
 position: 30
 ---
 
-The SpX Overlay Assignment workflow binds an existing overlay's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's IPAM intent and records matching device and interface `OverlayAssignment` entries in the overlays plugin without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the SpX Overlay lifecycle, after [SpX Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
+The Spectrum-X Overlay Assignment workflow binds an existing overlay's VRF to a specific device and to a specific set of ports on that device. It updates Nautobot's IPAM intent and records matching device and interface `OverlayAssignment` entries in the overlays plugin without touching the device itself; the device-side change happens when a subsequent deploy applies the resulting intended configuration. Assignment is the second step in the Spectrum-X Overlay lifecycle, after [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) provisions the VRF and Overlay objects.
 
-For the end-to-end assign + render + deploy lifecycle, use [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — it calls this workflow as a child plus the render and deploy steps.
-
-<Warning title="Experimental">
-This workflow is experimental and not intended for general use. Use it only in test or pilot environments.
-</Warning>
+For the end-to-end assign + render + deploy lifecycle, use [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx) — it calls this workflow as a child plus the render and deploy steps.
 
 ## Prerequisites
 
@@ -22,7 +18,7 @@ Before running, confirm:
 
 ## Running the workflow
 
-SpX Overlay Assignment is not exposed in the Config Manager UI today. It is invoked as a child of [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which orchestrates assignment plus the subsequent re-render and deploy. To run assignment in isolation, submit the workflow through the API with the target overlay, device, ports, and site.
+Spectrum-X Overlay Assignment is not exposed in the Config Manager UI today. It is invoked as a child of [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx), which orchestrates assignment plus the subsequent re-render and deploy. To run assignment in isolation, submit the workflow through the API with the target overlay, device, ports, and site.
 
 After submission, a status page shows the three stages.
 
@@ -50,13 +46,13 @@ After the workflow reports success, confirm:
 - **Result shape** — `assigned_ports` lists the ports actually changed; `vrf_assigned=true` means the device-level binding was new this run; `vrf` carries the bound VRF record.
 - **Nautobot** shows the VRF on the device and on each named interface.
 - **Nautobot overlays plugin** shows `OverlayAssignment` entries for the device and each named interface under the target overlay.
-- **Run a deploy** to push the resulting intended-config change to the device. The simplest path is [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx), which combines assignment with the subsequent re-render and deploy.
+- **Run a deploy** to push the resulting intended-config change to the device. The simplest path is [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx), which combines assignment with the subsequent re-render and deploy.
 
 ## Common issues
 
 **`get_device_and_vrf` raises `ApplicationError` "0 VRFs found".**
 
-The overlay has not been created yet at this site. Run [SpX Overlay Creation](../vpc-creation/index.mdx) first.
+The overlay has not been created yet at this site. Run [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) first.
 
 **`get_device_and_vrf` raises `ApplicationError` "multiple VRFs found".**
 
@@ -72,7 +68,7 @@ Those ports were already bound to this VRF. Successful no-op for those ports —
 
 ## Related guides
 
-- [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF and Overlay metadata.
-- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assignment + render + deploy in one workflow.
-- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only after VRFs are unassigned).
-- [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy used by SpX Overlay Tenant Change to push the resulting config to the device.
+- [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) — provision the VRF and Overlay metadata.
+- [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assignment + render + deploy in one workflow.
+- [Spectrum-X Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only after VRFs are unassigned).
+- [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy used by Spectrum-X Overlay Tenant Change to push the resulting config to the device.
