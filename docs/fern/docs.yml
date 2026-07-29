@@ -146,17 +146,17 @@ navigation:
     - page: Spectrum-X Switch Management
       path: ../user-guides/spectrum-x-switch-management/index.mdx
 
-    - section: SpX Overlay Lifecycle
+    - section: Spectrum-X Overlay Lifecycle
       collapsible: true
       collapsed-by-default: true
       contents:
-      - page: SpX Overlay Creation
+      - page: Spectrum-X Overlay Creation
         path: ../user-guides/vpc-creation/index.mdx
-      - page: SpX Overlay Deletion
+      - page: Spectrum-X Overlay Deletion
         path: ../user-guides/vpc-deletion/index.mdx
-      - page: SpX Overlay Assignment
+      - page: Spectrum-X Overlay Assignment
         path: ../user-guides/vpc-assignment/index.mdx
-      - page: SpX Overlay Tenant Change
+      - page: Spectrum-X Overlay Tenant Change
         path: ../user-guides/vpc-tenant-change/index.mdx
 
   - section: Deployment

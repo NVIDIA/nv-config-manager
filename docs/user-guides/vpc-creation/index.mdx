@@ -1,10 +1,10 @@
 ---
-title: SpX Overlay Creation
-sidebar-title: SpX Overlay Creation
+title: Spectrum-X Overlay Creation
+sidebar-title: Spectrum-X Overlay Creation
 position: 10
 ---
 
-The SpX Overlay Creation workflow provisions a SpectrumX overlay, VRFs, and L3 VXLANs for a new overlay at a site. An overlay in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [SpX Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx).
+The Spectrum-X Overlay Creation workflow provisions a Spectrum-X overlay, VRFs, and L3 VXLANs for a new overlay at a site. An overlay in this context is a tenant-scoped routing domain: creation allocates a route distinguisher (RD), registers the VRF objects in Nautobot, and creates an L3 VXLAN per namespace bound to a location-scoped Overlay object in the overlays plugin. No switches are touched by this workflow — applying the new overlay to a device happens through [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx), and re-rendering and redeploying tenant configuration happens through [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx).
 
 Creation is idempotent on `overlay_id` — re-running with an existing ID returns the already-existing VRFs rather than creating new ones.
 
@@ -12,7 +12,7 @@ Creation is idempotent on `overlay_id` — re-running with an existing ID return
 
 Before running, confirm:
 
-- **Site exists in Nautobot** and has at least one namespace tagged for SpX overlay creation.
+- **Site exists in Nautobot** and has at least one namespace tagged for Spectrum-X overlay creation.
 - **Tenant exists in Nautobot.** The tenant is used to scope the created Overlay object.
 - **overlay_id chosen.** Pick a unique identifier; if the same ID is reused, the workflow short-circuits and returns the existing VRFs without creating new ones.
 - **Route-distinguisher range has free entries** within the site's allocated `rd_min`..`rd_max` window. The workflow's RD allocator pulls the first available RD in that window.
@@ -75,7 +75,7 @@ The overlay already existed — the workflow short-circuited. This is the expect
 
 ## Related guides
 
-- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only when it is not in use on any device).
-- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — bind the new VRF to a device and specific ports.
-- [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy an overlay change against a device end-to-end.
+- [Spectrum-X Overlay Deletion](../vpc-deletion/index.mdx) — tear down an overlay (only when it is not in use on any device).
+- [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) — bind the new VRF to a device and specific ports.
+- [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx) — assign + render + deploy an overlay change against a device end-to-end.
 - [Render Service](../../render/index.mdx) — produces the tenant-scoped configurations that get deployed onto devices once an overlay is assigned.

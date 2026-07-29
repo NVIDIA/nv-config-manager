@@ -95,17 +95,17 @@ configuration.
 
 | Workflow | Purpose | Device impact |
 | :------- | :------ | :------------ |
-| [SpX Overlay Creation](../vpc-creation/index.mdx) | Allocate the route distinguisher and create the Overlay, VRF, and L3 VXLAN objects in Nautobot. | No switch configuration is changed. |
-| [SpX Overlay Assignment](../vpc-assignment/index.mdx) | Bind an existing overlay VRF to a device and selected interfaces in Nautobot. This is normally called by SpX Overlay Tenant Change; the standalone workflow is API-only. | No switch configuration is changed until a deploy runs. |
-| [SpX Overlay Tenant Change](../vpc-tenant-change/index.mdx) | Orchestrate assignment, tenant-scoped rendering, and deployment to a switch. | Applies the validated tenant configuration to the target switch. |
-| [SpX Overlay Deletion](../vpc-deletion/index.mdx) | Remove unused VRF, VXLAN, and Overlay metadata after assignments have been removed. | Deletes Nautobot intent; in-use VRFs are protected from deletion. |
+| [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) | Allocate the route distinguisher and create the Overlay, VRF, and L3 VXLAN objects in Nautobot. | No switch configuration is changed. |
+| [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) | Bind an existing overlay VRF to a device and selected interfaces in Nautobot. This is normally called by Spectrum-X Overlay Tenant Change; the standalone workflow is API-only. | No switch configuration is changed until a deploy runs. |
+| [Spectrum-X Overlay Tenant Change](../vpc-tenant-change/index.mdx) | Orchestrate assignment, tenant-scoped rendering, and deployment to a switch. | Applies the validated tenant configuration to the target switch. |
+| [Spectrum-X Overlay Deletion](../vpc-deletion/index.mdx) | Remove unused VRF, VXLAN, and Overlay metadata after assignments have been removed. | Deletes Nautobot intent; in-use VRFs are protected from deletion. |
 
 The common operator path is:
 
-1. Run **SpX Overlay Creation** once for the tenant overlay at the site.
-1. Run **SpX Overlay Tenant Change** to assign the overlay to a switch and its
+1. Run **Spectrum-X Overlay Creation** once for the tenant overlay at the site.
+1. Run **Spectrum-X Overlay Tenant Change** to assign the overlay to a switch and its
    ports, render the changed intent, and deploy it end to end.
-1. Before deletion, remove the overlay from all interfaces and deploy the resulting configuration change. Then, run **SpX Overlay Deletion** to clean up the unused Nautobot objects.
+1. Before deletion, remove the overlay from all interfaces and deploy the resulting configuration change. Then, run **Spectrum-X Overlay Deletion** to clean up the unused Nautobot objects.
 
 These overlay workflows supplement the normal Spectrum-X switch
 management path. They are not required for ZTP, general configuration
