@@ -27,7 +27,10 @@ from pydantic import BaseModel
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
-from nv_config_manager.common.telemetry import instrument_fastapi_app
+from nv_config_manager.common.telemetry import (
+    group_fastapi_status_codes,
+    instrument_fastapi_app,
+)
 from nv_config_manager.temporal.api import codec_server, parameter_v1, workflow_v1
 from nv_config_manager.temporal.api.audit import install_workflow_audit_logging
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
@@ -67,7 +70,10 @@ app.include_router(parameter_v1.router, prefix="/v1")
 app.include_router(workflow_v1.router, prefix="/v1")
 app.include_router(codec_server.router, prefix="/v1")
 
-instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+instrumentator = Instrumentator(
+    should_group_status_codes=group_fastapi_status_codes(),
+    excluded_handlers=["/healthcheck", "/metrics"],
+)
 instrumentator.add(
     instrumentator_metrics.default(
         metric_namespace="nv-config-manager",

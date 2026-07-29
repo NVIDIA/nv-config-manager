@@ -1,16 +1,16 @@
 ---
-title: SpX Overlay Tenant Change
-sidebar-title: SpX Overlay Tenant Change
+title: Spectrum-X Overlay Tenant Change
+sidebar-title: Spectrum-X Overlay Tenant Change
 position: 40
 ---
 
-The SpX Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign or remove the overlay on selected ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, removing, or expanding a tenant's footprint on a switch — the underlying [SpX Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
+The Spectrum-X Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign or remove the overlay on selected ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, removing, or expanding a tenant's footprint on a switch — the underlying [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
 
 ## Prerequisites
 
 Before running, confirm:
 
-- **For assignment or moves, the target overlay exists at the site** ([SpX Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot). No target overlay is needed when only removing an assignment.
+- **For assignment or moves, the target overlay exists at the site** ([Spectrum-X Overlay Creation](../vpc-creation/index.mdx) has been run, with the Overlay and L3 VXLANs created in Nautobot). No target overlay is needed when only removing an assignment.
 - **Device exists in Nautobot** with a primary IPv4, a supported platform (Cumulus Linux or NVOS), and current credentials in the secrets store.
 - **Target ports exist as interfaces in Nautobot** on the selected device. The form queries these interfaces after you choose the device. Already-assigned ports are silently skipped.
 - **Render service is healthy.** The workflow waits up to a bounded window for the render service to produce the new tenant config; outages on render will stall the workflow.
@@ -39,9 +39,9 @@ The workflow runs six stages in order. None require manual approval.
 
    Resolves the device by UUID and attaches search attributes for observability.
 
-1. **`assign_spx_overlay` — Run SpX Overlay Assignment as a child workflow.**
+1. **`assign_spx_overlay` — Run Spectrum-X Overlay Assignment as a child workflow.**
 
-   Invokes [SpX Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs. With an Overlay ID, it binds the target VRF to the device and ports. Without an Overlay ID, it clears the selected ports' VRF and Spectrum-X overlay assignments. After either operation, it removes any device/VRF association for which no interface on the device still maps to that VRF. The stage display links to the child workflow as soon as it starts. If the child fails, the stage retains the link and the tenant-change workflow stops before rendering or deployment. If the requested state is already present, the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
+   Invokes [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) with the same inputs. With an Overlay ID, it binds the target VRF to the device and ports. Without an Overlay ID, it clears the selected ports' VRF and Spectrum-X overlay assignments. After either operation, it removes any device/VRF association for which no interface on the device still maps to that VRF. The stage display links to the child workflow as soon as it starts. If the child fails, the stage retains the link and the tenant-change workflow stops before rendering or deployment. On success, the display shows the target Overlay, L3 VXLAN, VRF, and assigned ports, or the ports whose assignment was removed. If the requested state is already present, the workflow short-circuits — `render_tenant_config`, `wait_for_render`, and `deploy` are marked UNREACHABLE and the workflow exits successfully with `device_deployed=null`.
 
 1. **`determine_deployment_action` — Decide whether rendering and deployment are needed.**
 
@@ -49,7 +49,7 @@ The workflow runs six stages in order. None require manual approval.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
-   Submits a render request to the render service to generate the updated tenant configuration that reflects the new VRF assignment. The stage captures the resulting `tenant_config_file` commit ID for tracking.
+   Submits a render request to the render service to generate the updated tenant configuration that reflects the requested overlay change. The stage captures the resulting `tenant_config_file` commit ID for tracking.
 
 1. **`wait_for_render` — Wait for the render to land in the Config Store.**
 
@@ -86,13 +86,13 @@ The tenant-scoped diff produced by the re-render exceeds the tenant-allowed `nv 
 
 **`get_device_and_vrf` (inside the assign_spx_overlay child) raises `ApplicationError`.**
 
-Either zero or multiple VRFs were returned for the `overlay_id` + `namespace_tag` combination. Run [SpX Overlay Creation](../vpc-creation/index.mdx) if the overlay does not exist; reconcile duplicates in Nautobot if it does.
+Either zero or multiple VRFs were returned for the `overlay_id` + `namespace_tag` combination. Run [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) if the overlay does not exist; reconcile duplicates in Nautobot if it does.
 
 ## Related guides
 
-- [SpX Overlay Creation](../vpc-creation/index.mdx) — provision the VRF, VXLAN, and Overlay metadata before assigning it.
-- [SpX Overlay Assignment](../vpc-assignment/index.mdx) — the assignment child workflow this orchestration invokes.
-- [SpX Overlay Deletion](../vpc-deletion/index.mdx) — counterpart deletion lifecycle.
+- [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) — provision the VRF, VXLAN, and Overlay metadata before assigning it.
+- [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) — the assignment child workflow this orchestration invokes.
+- [Spectrum-X Overlay Deletion](../vpc-deletion/index.mdx) — counterpart deletion lifecycle.
 - [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy child this orchestration ends with.
 - [Render Service](../../render/index.mdx) — produces the tenant configurations this workflow waits on.
 - [Configuration Deploy](../configuration-deploy/index.mdx) — alternative path when a change is too broad for tenant deploy.

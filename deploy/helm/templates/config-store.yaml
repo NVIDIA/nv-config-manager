@@ -64,6 +64,7 @@ spec:
         - name: ENVIRONMENT
           value: {{ .Values.global.environment }}
         {{- include "nv-config-manager.customLabelsEnv" . | nindent 8 }}
+        {{- include "nv-config-manager.fastApiMetricsEnv" . | nindent 8 }}
         - name: RETENTION_DAYS
           value: "365"
         - name: NV_CONFIG_MANAGER_INI
