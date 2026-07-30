@@ -2620,7 +2620,7 @@ class JuniperConnection(NetworkConnection):
             ) from error
 
         if commit_confirm:
-            # Confirm the pending commit to cancel the rollback timer. 
+            # Confirm the pending commit to cancel the rollback timer.
             self._confirm_commit()
 
     def _confirm_commit(self) -> None:

@@ -684,6 +684,7 @@ def test_update_interface_rejects_unsafe_description(juniper_conn, bad_descripti
             juniper_conn.update_interface("xe-0/0/1", description=bad_description)
     mock_configure.assert_not_called()
 
+
 _UNSAFE_INTERFACES = ["ge-0/0/0 unit 0", "ge-0/0/0 disable", "ge 0/0/0", "", "0/0/0"]
 
 
