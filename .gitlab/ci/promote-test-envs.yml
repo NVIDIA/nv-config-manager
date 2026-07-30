@@ -139,9 +139,16 @@ test-promote-chart:
       wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
       echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum -c -
       chmod +x /usr/local/bin/yq
-    - wget --content-disposition https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/4.8.2/files/ngccli_linux.zip -O ngccli_linux.zip
-    - unzip ngccli_linux.zip
-    - chmod u+x ngc-cli/ngc
+    # Pinned + checksum-verified, as with yq above: this job holds registry and
+    # values-push credentials, so nothing unverified gets executed here.
+    - |
+      set -e
+      NGC_CLI_VERSION=4.8.2
+      NGC_CLI_SHA256=8f12ed29aaa49be96e059439f993a990b953a709b152550f062d5190e21afafa
+      wget --content-disposition "https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/${NGC_CLI_VERSION}/files/ngccli_linux.zip" -O ngccli_linux.zip
+      echo "${NGC_CLI_SHA256}  ngccli_linux.zip" | sha256sum -c -
+      unzip ngccli_linux.zip
+      chmod u+x ngc-cli/ngc
   script:
     - |
       set -e
@@ -292,6 +299,25 @@ test-rollback-env:
         git log -n 15 --pretty='%h  %ad  %s' --date=iso -- "$state_file"
         echo ""
         echo "Re-run this pipeline with NVCM_ROLLBACK_TO=<commit sha> to roll back."
+        exit 1
+      fi
+
+      # The rollback target must be a commit on THIS env branch. Without this,
+      # a typo or a SHA from another branch/env would install an unrelated
+      # deploy-state (e.g. another environment's chart + digests).
+      if ! git rev-parse --verify --quiet "${NVCM_ROLLBACK_TO}^{commit}" >/dev/null; then
+        echo "ERROR: NVCM_ROLLBACK_TO='${NVCM_ROLLBACK_TO}' is not a commit in ${NVCM_VALUES_REPO_PATH}."
+        exit 1
+      fi
+      if ! git merge-base --is-ancestor "${NVCM_ROLLBACK_TO}" "origin/${NVCM_ENV_BRANCH}"; then
+        echo "ERROR: ${NVCM_ROLLBACK_TO} is not an ancestor of ${NVCM_ENV_BRANCH}."
+        echo "       Roll back only to a deploy-state committed on this env branch"
+        echo "       (re-run without NVCM_ROLLBACK_TO to list valid candidates)."
+        exit 1
+      fi
+      # And it must actually carry this env's deploy-state.
+      if ! git cat-file -e "${NVCM_ROLLBACK_TO}:${state_file}" 2>/dev/null; then
+        echo "ERROR: ${NVCM_ROLLBACK_TO} does not contain ${state_file}."
         exit 1
       fi
 

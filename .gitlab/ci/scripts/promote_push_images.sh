@@ -77,9 +77,13 @@ for image in $images; do
 
     # Authoritative digest: ask the registry for the pushed manifest digest
     # (the local image id is NOT the registry manifest digest).
-    digest="$(docker buildx imagetools inspect "$dst" --format '{{json .Manifest}}' | grep -o '"digest": *"sha256:[0-9a-f]*"' | head -n 1 | cut -d'"' -f4)"
+    # The `|| true` is required: under `set -euo pipefail` a failing inspect or
+    # a non-matching grep would abort the script here, making the fallback (and
+    # the validation below) unreachable.
+    digest="$(docker buildx imagetools inspect "$dst" --format '{{json .Manifest}}' 2>/dev/null | grep -o '"digest": *"sha256:[0-9a-f]*"' | head -n 1 | cut -d'"' -f4 || true)"
     if [ -z "$digest" ]; then
-        digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$dst" | cut -d@ -f2)"
+        echo "  imagetools inspect yielded no digest; falling back to docker inspect"
+        digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$dst" 2>/dev/null | cut -d@ -f2 || true)"
     fi
     if ! printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
         echo "ERROR: could not capture a valid digest for ${dst} (got '${digest}')"
