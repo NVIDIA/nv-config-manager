@@ -635,6 +635,24 @@ def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:
     return postgres
 
 
+# The chart defaults these to the legacy "kiwi" names that the ESO deployments
+# run on. The kubernetes secrets path never delivered them into the assembled
+# INI, so those deployments have always fallen back to the application defaults
+# below. Pin them explicitly now that the path does deliver them, otherwise
+# closing that gap would relocate the JetStream identity of a running install.
+_KUBERNETES_CONFIG_MANAGER_STREAM = {
+    "name": "nv-config-manager",
+    "subjects": [
+        "nv-config-manager.nautobotchange",
+        "nv-config-manager.devicechange",
+        "nv-config-manager.workflow.result",
+    ],
+    "renderChangeSubject": "nv-config-manager.nautobotchange",
+    "deviceChangeSubject": "nv-config-manager.devicechange",
+    "archiveSubject": "nv-config-manager.workflow.result",
+}
+
+
 def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the ``externalServices`` section."""
     svc = config.services
@@ -651,6 +669,11 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
             "server": "nats://nv-config-manager@nats:4222",
             "authMethod": "password",
             "local": True,
+        }
+
+    if config.secrets.method == SecretsMethod.KUBERNETES:
+        ext.setdefault("nats", {})["streams"] = {
+            "configManager": deepcopy(_KUBERNETES_CONFIG_MANAGER_STREAM)
         }
 
     if es.redis.enabled and es.redis.host:

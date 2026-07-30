@@ -262,6 +262,38 @@ class TestGenerateHelmValues:
         assert values["nautobotNats"]["jetstream"]["enabled"] is True
         assert values["nautobotNats"]["natsReady"]["useNatsCli"] is True
 
+    def test_kubernetes_secrets_pin_config_manager_stream(self):
+        """The kubernetes path must keep the application's own stream names.
+
+        Those deployments ran without stream keys in the assembled INI, so the
+        app supplied its defaults. The chart still defaults to the legacy kiwi
+        names, so without this pin an upgrade would relocate a live stream.
+        """
+        streams = _gen(_make_config())["externalServices"]["nats"]["streams"]
+
+        cm = streams["configManager"]
+        assert cm["name"] == "nv-config-manager"
+        assert cm["subjects"] == [
+            "nv-config-manager.nautobotchange",
+            "nv-config-manager.devicechange",
+            "nv-config-manager.workflow.result",
+        ]
+        assert cm["renderChangeSubject"] == "nv-config-manager.nautobotchange"
+        assert cm["deviceChangeSubject"] == "nv-config-manager.devicechange"
+        assert cm["archiveSubject"] == "nv-config-manager.workflow.result"
+
+    def test_eso_secrets_leave_stream_names_to_the_chart(self):
+        """ESO deployments must keep inheriting the chart's kiwi defaults."""
+        config = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(server="https://vault.test", secrets_path="nv-config-manager"),
+            ),
+        )
+        values = _gen(config)
+
+        assert "streams" not in values["externalServices"].get("nats", {})
+
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
@@ -272,7 +304,7 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["enabled"] is False
         assert "admin" not in values["nautobot"]
         assert values["nautobotNats"]["enabled"] is False
-        assert "nats" not in values["externalServices"]
+        assert "server" not in values["externalServices"].get("nats", {})
 
     def test_cnpg_per_database_clusters(self):
         values = _gen(_make_config())
@@ -783,7 +815,7 @@ class TestGenerateHelmValues:
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is False
         assert ext["nautobot"]["server"] == "https://nb.prod.example.com"
-        assert "nats" not in ext
+        assert "server" not in ext.get("nats", {})
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert values["mcp"]["enabled"] is True
