@@ -310,9 +310,24 @@ test-promote-chart:
       fi
       verify_dir="$(mktemp -d)"
       helm repo add nvcm-verify "$NVCM_CHART_REPO" --username '$oauthtoken' --password "$ngc_key" >/dev/null
-      helm repo update nvcm-verify >/dev/null
-      helm pull "nvcm-verify/${CHART_NAME}" --version "$PROMOTE_VERSION" --devel -d "$verify_dir"
       published_chart="${verify_dir}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      # The NGC repo index is eventually consistent, so a chart published
+      # seconds ago is often not listed yet. Retry the refresh+pull for a
+      # bounded window before treating that as a publish failure.
+      pull_attempts="${NVCM_CHART_PULL_ATTEMPTS:-6}"
+      pull_delay="${NVCM_CHART_PULL_DELAY:-10}"
+      attempt=1
+      while :; do
+        if helm repo update nvcm-verify >/dev/null \
+          && helm pull "nvcm-verify/${CHART_NAME}" --version "$PROMOTE_VERSION" --devel -d "$verify_dir" \
+          && [ -f "$published_chart" ]; then
+          break
+        fi
+        [ "$attempt" -lt "$pull_attempts" ] || break
+        echo "   not in the index yet; retrying in ${pull_delay}s (attempt ${attempt}/${pull_attempts})"
+        attempt=$((attempt + 1))
+        sleep "$pull_delay"
+      done
       if [ ! -f "$published_chart" ]; then
         echo "❌ Could not pull ${CHART_NAME}:${PROMOTE_VERSION} back from ${NVCM_CHART_REPO}"
         exit 1
