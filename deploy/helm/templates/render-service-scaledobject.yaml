@@ -71,7 +71,12 @@ spec:
         name: {{ $serviceName }}-prometheus-auth
       {{- end }}
       metadata:
-        serverAddress: {{ $promAddress | quote }}
+        {{- /*
+        Empty means autoscaling is on with no Prometheus to query: the release
+        deploys none and no external one was named. KEDA would accept the
+        ScaledObject and then never scale, so fail the render instead.
+        */}}
+        serverAddress: {{ required (printf "renderService.autoscaling is enabled for the %s consumer but no Prometheus endpoint is available. Set renderService.autoscaling.prometheus.serverAddress to an external Prometheus, or enable the in-cluster one via prometheus.enabled." $consumerType) $promAddress | quote }}
         # Query NATS consumer pending messages
         # consumer_name matches what the render service creates: {nats.queue}-{type}
         # is_consumer_leader="true" avoids double-counting in HA
