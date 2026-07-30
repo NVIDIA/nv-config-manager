@@ -15,6 +15,7 @@
 """Tests for Multi-Deploy Workflow."""
 
 import asyncio
+import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -46,7 +47,10 @@ from nv_config_manager.temporal.ngc.activities.nautobot import (
 )
 from nv_config_manager.temporal.ngc.workflows.backup import BackupInput, BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.multi_deploy import (
+    BatchDeployInput,
     BatchDeployWorkflow,
+    DeviceDiffData,
+    DiffGroup,
     MultiDeployInput,
     MultiDeployWorkflow,
     _format_batch_status,
@@ -129,6 +133,173 @@ class MockBatchBackupWorkflow:
         if workflow_input.device_id == "device_2":
             raise ApplicationError("mock backup failure", non_retryable=True)
         return True
+
+
+def _large_device_diffs(count: int, config_size: int = 30_000) -> list[DeviceDiffData]:
+    """Build representative multi-deploy device data without exposing real configurations."""
+    return [
+        DeviceDiffData(
+            device=NetworkDeviceData(
+                id=f"device_{index}",
+                name=f"spine-{index:03d}",
+                role="spine",
+                platform="cumulus-linux",
+                device_type="sn4000",
+                site="SITEA",
+                primary_ip4=f"10.0.{index // 255}.{index % 255}",
+                primary_ip6=None,
+                config_context={"device_index": index, "feature_flags": ["nvcm"]},
+            ),
+            diff="- old config line\n+ new config line",
+            intended_config=f"# device {index}\n" + ("x" * config_size),
+            commit_id=f"commit-{index}",
+        )
+        for index in range(count)
+    ]
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=0.0)
+async def test_group_and_batch_creates_batch_subsets(_):
+    """Group matching diffs and split their devices into bounded batches."""
+    workflow_instance = MultiDeployWorkflow()
+    device_diffs = _large_device_diffs(115)
+    stage_input = MultiDeployWorkflow.GroupAndBatchStageInput(
+        device_diffs=device_diffs,
+        max_batch_size=5,
+    )
+
+    output = await MultiDeployWorkflow.group_and_batch.__wrapped__(  # type: ignore[attr-defined]
+        workflow_instance,
+        stage_input,
+    )
+
+    assert len(output.diff_groups) == 1
+    assert len(output.diff_groups[0].devices) == 115
+    assert len(output.batches) == 23
+    assert all(len(batch) == 5 for batch in output.batches)
+
+
+def test_batch_deploy_input_supports_legacy_and_canonical_device_fields():
+    """Read legacy inputs while allowing new inputs to serialize each device once."""
+    device_diffs = _large_device_diffs(115)
+    assert BatchDeployInput.model_json_schema()["properties"]["batch_devices"]["deprecated"] is True
+    legacy_input = BatchDeployInput.model_validate(
+        {
+            "diff_group": {
+                "diff_hash": "shared-diff",
+                "diff_content": device_diffs[0].diff,
+                "devices": [device.model_dump(mode="json") for device in device_diffs],
+            },
+            "batch_devices": [device.model_dump(mode="json") for device in device_diffs[:5]],
+            "parent_workflow_id": "parent-workflow",
+            "batch_number": 1,
+        }
+    )
+
+    assert len(legacy_input.diff_group.devices) == 115
+    assert legacy_input.batch_devices is not None
+    assert len(legacy_input.batch_devices) == 5
+    assert len(legacy_input.resolved_batch_devices()) == 5
+
+    canonical_input = BatchDeployInput(
+        diff_group=DiffGroup(
+            diff_hash="shared-diff",
+            diff_content=str(device_diffs[0].diff),
+            devices=device_diffs[:5],
+        ),
+        parent_workflow_id="parent-workflow",
+        batch_number=1,
+    )
+    serialized = canonical_input.model_dump(mode="json")
+    assert canonical_input.resolved_batch_devices() == device_diffs[:5]
+    assert len(serialized["diff_group"]["devices"]) == 5
+    assert serialized["batch_devices"] is None
+    assert len(json.dumps(serialized).encode()) < 250_000
+
+
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=0.0)
+def test_parent_stage_serialization_excludes_operational_device_payloads(_):
+    """Keep intended configurations out of the parent stages query."""
+    workflow_instance = MultiDeployWorkflow()
+    device_diffs = _large_device_diffs(115)
+    diff_group = DiffGroup(
+        diff_hash="shared-diff",
+        diff_content=str(device_diffs[0].diff),
+        devices=device_diffs,
+    )
+    batch = device_diffs[:5]
+
+    workflow_instance.set_stage_input(
+        "collect_diffs",
+        MultiDeployWorkflow.CollectDiffsStageInput(
+            devices=[device_diff.device for device_diff in device_diffs]
+        ),
+    )
+    workflow_instance.set_stage_output(
+        "collect_diffs",
+        MultiDeployWorkflow.CollectDiffsStageOutput(
+            device_diffs=device_diffs,
+            failed_devices={},
+            display="Collected diffs from 115 devices.",
+        ),
+    )
+    workflow_instance.set_stage_input(
+        "group_and_batch",
+        MultiDeployWorkflow.GroupAndBatchStageInput(
+            device_diffs=device_diffs,
+            max_batch_size=5,
+        ),
+    )
+    workflow_instance.set_stage_output(
+        "group_and_batch",
+        MultiDeployWorkflow.GroupAndBatchStageOutput(
+            batches=[batch],
+            diff_groups=[diff_group],
+            display="Created one diff group.",
+        ),
+    )
+    workflow_instance.set_stage_input(
+        "execute_batches",
+        MultiDeployWorkflow.ExecuteBatchesStageInput(
+            batches=[batch],
+            diff_groups=[diff_group],
+        ),
+    )
+
+    serialized_stages = json.dumps(
+        [stage.model_dump(mode="json") for stage in workflow_instance.stages()]
+    )
+
+    assert device_diffs[0].intended_config not in serialized_stages
+    assert len(serialized_stages.encode()) < 50_000
+
+
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=0.0)
+def test_child_stage_serialization_excludes_operational_device_payloads(_):
+    """Keep intended configurations out of the child stages query."""
+    workflow_instance = BatchDeployWorkflow()
+    device_diffs = _large_device_diffs(5)
+    workflow_instance.set_stage_input(
+        "review_shared_diff",
+        BatchDeployWorkflow.ReviewDiffStageInput(
+            diff_group=DiffGroup(
+                diff_hash="shared-diff",
+                diff_content=str(device_diffs[0].diff),
+                devices=device_diffs,
+            ),
+            device_count=len(device_diffs),
+            batch_devices=device_diffs,
+            batch_number=1,
+        ),
+    )
+
+    serialized_stages = json.dumps(
+        [stage.model_dump(mode="json") for stage in workflow_instance.stages()]
+    )
+
+    assert device_diffs[0].intended_config not in serialized_stages
+    assert len(serialized_stages.encode()) < 50_000
 
 
 @pytest.mark.asyncio
@@ -497,11 +668,6 @@ async def test_batch_deploy_workflow_directly(
 ):
     """Test the BatchDeployWorkflow directly."""
     from nv_config_manager.temporal.ngc.activities.nats import publish_nats
-    from nv_config_manager.temporal.ngc.workflows.multi_deploy import (
-        BatchDeployInput,
-        DeviceDiffData,
-        DiffGroup,
-    )
 
     task_queue_name = str(uuid.uuid4())
     client: Client = env.client
