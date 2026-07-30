@@ -196,6 +196,12 @@ test-promote-chart:
       echo "BASELINE_REVISION=${baseline_revision}" > "${CI_PROJECT_DIR}/chart.env"
       git -C /tmp/values-repo fetch origin "${NVCM_ENV_BRANCH}"
       git -C /tmp/values-repo worktree add /tmp/values-env "origin/${NVCM_ENV_BRANCH}"
+      # Capture the env-branch SHA whose overrides this render validates.
+      # resource_group serializes promote/rollback/release, but NOT human pushes
+      # to the env branch, so the overrides can move between this gate and the
+      # deploy-state commit. write_deploy_state refuses to write if they have.
+      env_branch_revision="$(git -C /tmp/values-repo rev-parse "origin/${NVCM_ENV_BRANCH}")"
+      echo "ENV_BRANCH_REVISION=${env_branch_revision}" >> "${CI_PROJECT_DIR}/chart.env"
       overrides_file="/tmp/values-env/${NVCM_ENV_STATE_DIR}/values-aws-${NVCM_ENV}.overrides.yaml"
       test -f "$overrides_file" || (echo "❌ Missing overrides file ${overrides_file} on ${NVCM_ENV_BRANCH}" && exit 1)
 

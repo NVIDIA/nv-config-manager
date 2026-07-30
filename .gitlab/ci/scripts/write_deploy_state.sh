@@ -8,7 +8,9 @@
 # overrides on the env branch are never modified.
 #
 # Requires (dotenv from earlier stages): PROMOTE_VERSION, PR_NUM, PR_SHA,
-#          DIGEST_<IMAGE> x6, BASELINE_REVISION (from test-promote-chart)
+#          DIGEST_<IMAGE> x9, and from test-promote-chart: BASELINE_REVISION
+#          (main SHA whose baseline was validated) + ENV_BRANCH_REVISION
+#          (env-branch SHA whose overrides were validated)
 # Requires (eval of test_env_config.sh): NVCM_ENV, NVCM_ENV_BRANCH,
 #          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR
 # Requires (protected variables): NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN,
@@ -26,6 +28,7 @@ set -euo pipefail
 : "${NVCM_ENV_RELEASE_NAME:?eval test_env_config.sh first}"
 : "${NVCM_ENV_STATE_DIR:?eval test_env_config.sh first}"
 : "${NVCM_CHART_REPO:?Set NVCM_CHART_REPO to the Helm repo URL ArgoCD reads the chart from}"
+: "${ENV_BRANCH_REVISION:?ENV_BRANCH_REVISION missing (dotenv from test-promote-chart)}"
 : "${DIGEST_NV_CONFIG_MANAGER:?missing dotenv from test-promote-push-images}"
 : "${DIGEST_NV_CONFIG_MANAGER_UI:?missing dotenv from test-promote-push-images}"
 : "${DIGEST_NV_CONFIG_MANAGER_KEA:?missing dotenv from test-promote-push-images}"
@@ -70,6 +73,21 @@ fi
 
 if [ ! -f "$state_file" ]; then
     echo "ERROR: ${state_file} not found on ${NVCM_ENV_BRANCH}; the env is not seeded."
+    exit 1
+fi
+
+# The render gate in test-promote-chart validated this env's overrides at a
+# specific env-branch revision. resource_group serializes promote/rollback/
+# release runs, but not human pushes to the env branch, so the overrides can
+# change in between. Refuse to write deploy-state against overrides that were
+# never validated - fail closed and let the operator re-run.
+current_env_rev="$(git rev-parse HEAD)"
+if [ "$current_env_rev" != "$ENV_BRANCH_REVISION" ]; then
+    echo "ERROR: ${NVCM_ENV_BRANCH} moved since the render gate validated it."
+    echo "  validated: ${ENV_BRANCH_REVISION}"
+    echo "  current:   ${current_env_rev}"
+    echo "Someone pushed to the env branch mid-promote, so its overrides are"
+    echo "unvalidated against this chart. Re-run the promote pipeline."
     exit 1
 fi
 
