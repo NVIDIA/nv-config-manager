@@ -178,14 +178,20 @@ test-promote-chart:
       # Render gate against the env's real values layering (pinned baseline +
       # env-branch overrides + digest pins) BEFORE publishing or touching the
       # env branch. helm template is sandboxed (no env access), so rendering the
-      # untrusted chart with the values token present cannot leak secrets; the
-      # packaged .tgz already vendors its subcharts, so nothing is fetched.
+      # untrusted chart with this job's credentials present cannot leak them;
+      # the packaged .tgz already vendors its subcharts, so nothing is fetched.
       env_config="$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/test_env_config.sh" "$NVCM_PROMOTE_ENV")" || exit $?
       eval "$env_config"
+      # Read-only access: this job only reads the baseline values and the env
+      # branch's overrides, so it uses CI_JOB_TOKEN (short-lived, job-scoped,
+      # auto-revoked) rather than the values PUSH token. Requires the values
+      # repo's inbound job-token allowlist to include this project. Only the
+      # deploy-state / rollback / release jobs, which actually commit, use
+      # NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN.
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
         values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
-        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
+        values_repo_url="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
       fi
       git clone "$values_repo_url" /tmp/values-repo
       # Capture the exact main SHA whose baseline values this render validates.

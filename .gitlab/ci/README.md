@@ -244,6 +244,12 @@ Project settings required (GitLab UI):
 - Maximum artifacts size ≥ 1.5 GB (the build hands images over as artifacts).
 - Pull mirroring must replicate `pull-request/*` branches.
 - Only `main` and release-tag patterns protected; `pull-request/*` unprotected.
+- The **values repo** (`NVCM_VALUES_REPO_PATH`) must allow this project in its
+  inbound **job token allowlist**. `test-promote-chart` reads the baseline and
+  overrides with `CI_JOB_TOKEN` rather than the push token, since it only reads;
+  without the allowlist entry that clone fails with an auth error. Only the
+  deploy-state / rollback / release jobs use
+  `NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN`, and only they write.
 
 ## Air-Gapped Bundles
 
