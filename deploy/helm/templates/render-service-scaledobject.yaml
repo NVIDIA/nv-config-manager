@@ -42,10 +42,28 @@ metadata:
 spec:
   scaleTargetRef:
     name: {{ $serviceName }}-consumer-{{ $consumerType }}
-  minReplicaCount: {{ $consumerConfig.minReplicas | default 1 }}
+{{- /*
+  Not `default 1`: sprig treats 0 as empty, so an explicit minReplicas: 0 would
+  silently become 1 and scale-to-zero -- the one mode pollingInterval and
+  cooldownPeriod below exist for -- could never be configured.
+  */}}
+{{- $minReplicas := 1 }}
+{{- if hasKey $consumerConfig "minReplicas" }}
+{{- $minReplicas = $consumerConfig.minReplicas }}
+{{- end }}
+  minReplicaCount: {{ $minReplicas }}
   maxReplicaCount: {{ $consumerConfig.maxReplicas | default 10 }}
+  {{- /*
+  Only meaningful when scaling from zero: above zero the HPA drives scaling off
+  KEDA's metrics adapter and both knobs are inert, which KEDA reports as an
+  admission warning on every install. Rendering them conditionally keeps them
+  available for scale-to-zero deployments without emitting settings that do
+  nothing.
+  */}}
+  {{- if eq (int $minReplicas) 0 }}
   pollingInterval: {{ $autoscaling.pollingInterval | default 30 }}
   cooldownPeriod: {{ $autoscaling.cooldownPeriod | default 300 }}
+  {{- end }}
   triggers:
     - type: prometheus
       {{- if $prometheus.tls.enabled }}
