@@ -260,3 +260,6 @@ Project settings required (GitLab UI):
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key for air-gapped bundle uploads |
 | `NVCM_AIRGAPPED_S3_BUCKET` | S3 bucket for air-gapped bundles |
 | `NVCM_AIRGAPPED_S3_REGION` | AWS region for air-gapped bundle uploads |
+
+
+Remove me once testing is done.
