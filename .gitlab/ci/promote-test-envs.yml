@@ -180,7 +180,8 @@ test-promote-chart:
       # env branch. helm template is sandboxed (no env access), so rendering the
       # untrusted chart with the values token present cannot leak secrets; the
       # packaged .tgz already vendors its subcharts, so nothing is fetched.
-      eval "$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/test_env_config.sh" "$NVCM_PROMOTE_ENV")"
+      env_config="$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/test_env_config.sh" "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
         values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
@@ -254,7 +255,9 @@ test-promote-deploy-state:
   script:
     # Final stale-HEAD check before mutating the env branch.
     - bash .gitlab/ci/scripts/pr_ref_guard.sh "$PR_REF" "$PR_SHA"
-    - eval "$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")"
+    - |
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
     - bash .gitlab/ci/scripts/write_deploy_state.sh
 
 # -----------------------------------------------------------------------------
@@ -281,7 +284,8 @@ test-rollback-env:
   script:
     - |
       set -e
-      eval "$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")"
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
         values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
@@ -363,7 +367,8 @@ test-release-env:
   script:
     - |
       set -e
-      eval "$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")"
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
       if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
         values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
       else
@@ -375,6 +380,10 @@ test-release-env:
       git checkout "${NVCM_ENV_BRANCH}"
 
       echo "Resetting ${NVCM_ENV_STATE_DIR}/ to the canonicals on main..."
+      # Clear the directory first: `git checkout <ref> -- <dir>` only overwrites
+      # paths that exist on main, so files added only on the env branch (scratch
+      # values, stray notes) would survive a release and leave the slot dirty.
+      git rm -r --quiet --ignore-unmatch "${NVCM_ENV_STATE_DIR}/"
       git checkout origin/main -- "${NVCM_ENV_STATE_DIR}/"
 
       if git diff --cached --quiet && git diff --quiet; then

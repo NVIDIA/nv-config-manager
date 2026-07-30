@@ -91,6 +91,7 @@ baseline_rev="${BASELINE_REVISION:?BASELINE_REVISION missing (dotenv from test-p
 
 export NVCM_ENV NVCM_ENV_NAMESPACE NVCM_ENV_BRANCH NVCM_ENV_RELEASE_NAME \
     NVCM_CHART_REPO PROMOTE_VERSION PR_SHA PR_NUM occupant baseline_rev \
+    current_hold \
     DIGEST_NV_CONFIG_MANAGER DIGEST_NV_CONFIG_MANAGER_UI \
     DIGEST_NV_CONFIG_MANAGER_KEA DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN \
     DIGEST_NV_CONFIG_MANAGER_NAUTOBOT DIGEST_NV_CONFIG_MANAGER_NATS_READY \
@@ -98,6 +99,8 @@ export NVCM_ENV NVCM_ENV_NAMESPACE NVCM_ENV_BRANCH NVCM_ENV_RELEASE_NAME \
     DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI
 updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export updated_at
+
+trap 'rm -f "${state_file}.new" "${state_file}.merged"' EXIT
 
 yq -n '
   .env = strenv(NVCM_ENV) |
@@ -120,14 +123,17 @@ yq -n '
   .pr = (strenv(PR_NUM) | tonumber) |
   .occupant = strenv(occupant) |
   .updatedAt = strenv(updated_at) |
-  .hold = false
+  .hold = (strenv(current_hold) == "true")
 ' > "${state_file}.new"
 
 # Keep the leading DO-NOT-HAND-EDIT comment header from the existing file.
+# Assemble into a separate file: redirecting straight onto "$state_file" would
+# truncate it before awk could read the header back out of it.
 {
     awk '/^---$/ { next } /^#/ { print; next } { exit }' "$state_file"
     cat "${state_file}.new"
-} > "$state_file"
+} > "${state_file}.merged"
+mv "${state_file}.merged" "$state_file"
 rm -f "${state_file}.new"
 
 if git diff --quiet "$state_file"; then

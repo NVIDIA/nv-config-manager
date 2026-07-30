@@ -36,6 +36,13 @@ api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
 poll_interval="${NVCM_BUILD_POLL_INTERVAL:-30}"
 poll_timeout="${NVCM_BUILD_POLL_TIMEOUT:-5400}"
 
+# Pipeline sources that count as a deliberately triggered build. Anything else
+# (a mirror push, a schedule, ...) is refused by the pr-build workflow rules in
+# common.yml, so such a pipeline can be "successful" without having built
+# anything. Applied both when picking a build to reuse and at the provenance
+# gate below; keep the two in sync by keeping this the only copy.
+allowed_build_sources='["pipeline","trigger","api","web"]'
+
 PR_NUM="$NVCM_PROMOTE_PR"
 PR_REF="pull-request/${PR_NUM}"
 
@@ -112,8 +119,12 @@ bash "$(dirname "$0")/pr_ref_guard.sh" "$PR_REF" "$PR_SHA"
 # -----------------------------------------------------------------------------
 BUILD_PIPELINE_ID=""
 if [ "${NVCM_PROMOTE_REUSE_BUILD:-true}" != "false" ]; then
-    BUILD_PIPELINE_ID="$(api_get "${api}/pipelines?ref=$(printf '%s' "$PR_REF" | sed 's|/|%2F|g')&sha=${PR_SHA}&status=success&order_by=id&sort=desc&per_page=1" \
-        | jq -r '.[0].id // empty')"
+    # Consider several recent successes, not just the newest: a pipeline with a
+    # disallowed source would be rejected by the provenance gate below, which
+    # would dead-end the promote instead of falling through to a fresh trigger.
+    BUILD_PIPELINE_ID="$(api_get "${api}/pipelines?ref=$(printf '%s' "$PR_REF" | sed 's|/|%2F|g')&sha=${PR_SHA}&status=success&order_by=id&sort=desc&per_page=20" \
+        | jq -r --argjson allowed "$allowed_build_sources" \
+            '[.[] | select(.source as $s | $allowed | index($s))] | sort_by(.id) | last | .id // empty')"
     if [ -n "$BUILD_PIPELINE_ID" ]; then
         echo "Found existing successful build pipeline ${BUILD_PIPELINE_ID} for ${PR_SHA}; will verify its artifacts."
     fi
@@ -183,15 +194,12 @@ if [ "$build_sha" != "$PR_SHA" ] || [ "$build_ref" != "$PR_REF" ] || [ "$build_s
     echo "Re-run with NVCM_PROMOTE_REUSE_BUILD=false to force a fresh build."
     exit 1
 fi
-case "$build_source" in
-    pipeline|trigger|api|web)
-        ;;
-    *)
-        echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'."
-        echo "Expected a deliberately triggered pipeline (pipeline, trigger, api, or web)."
-        exit 1
-        ;;
-esac
+if ! printf '%s' "$allowed_build_sources" \
+    | jq -e --arg s "$build_source" 'index($s) != null' >/dev/null; then
+    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'."
+    echo "Expected a deliberately triggered pipeline ($(printf '%s' "$allowed_build_sources" | jq -r 'join(", ")'))."
+    exit 1
+fi
 echo "Provenance OK: successful ${build_source} pipeline ${BUILD_PIPELINE_ID} ran on ${PR_REF}@${PR_SHA}"
 
 # -----------------------------------------------------------------------------
