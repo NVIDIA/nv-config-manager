@@ -1057,13 +1057,15 @@ reach it derive from this, so the policy cannot grant cross-namespace access to
 a Prometheus KEDA never talks to.
 
 The FQDN is required because KEDA resolves it from its own namespace, not the
-release's. The service name comes from prometheus.server.fullnameOverride in
-values-observability.yaml; only the namespace is unknown to a values file, which
-is why this is resolved here.
+release's. The service name tracks prometheus.server.fullnameOverride so that
+overriding it moves both the trigger and the NetworkPolicy with it; the fallback
+matches how the upstream chart names the service when no override is given.
 */}}
 {{- define "nv-config-manager.inClusterPrometheusAddress" -}}
 {{- if and .Values.prometheus.enabled (not .Values.renderService.autoscaling.prometheus.serverAddress) -}}
-{{- printf "http://prometheus-server.%s.svc.cluster.local:9090" .Release.Namespace -}}
+{{- $server := .Values.prometheus.server | default dict -}}
+{{- $name := $server.fullnameOverride | default (printf "%s-prometheus-server" .Release.Name) -}}
+{{- printf "http://%s.%s.svc.cluster.local:9090" $name .Release.Namespace -}}
 {{- end -}}
 {{- end }}
 

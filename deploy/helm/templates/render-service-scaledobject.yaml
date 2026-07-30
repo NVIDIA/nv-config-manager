@@ -28,6 +28,15 @@ so the two cannot disagree about which Prometheus KEDA queries.
 {{- $consumerConfig := index $autoscaling.consumers $consumerType }}
 {{- $streamName := ternary $.Values.externalServices.nats.streams.nautobot.name $.Values.externalServices.nats.streams.configManager.name (eq $consumerType "nautobot") }}
 {{- if $consumerConfig.enabled }}
+{{- /*
+An external Prometheus is typically shared across clusters, where the trigger
+query below would match an identically named consumer in another environment
+and scale this one on someone else's backlog. The namespace label is what keeps
+the series distinct, so require it rather than let the query silently widen.
+*/}}
+{{- if and $prometheus.serverAddress (not $prometheus.natsMetricsNamespace) }}
+{{- fail (printf "renderService.autoscaling.prometheus.natsMetricsNamespace is required for the %s consumer when serverAddress points at an external Prometheus, otherwise the trigger query can match NATS series from another environment." $consumerType) }}
+{{- end }}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
