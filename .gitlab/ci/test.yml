@@ -413,6 +413,10 @@ test-main-py:
     - linux/amd64
     - docker
   rules:
+    # Skip during test-env promote pipelines (web pipelines on the default
+    # branch with $NVCM_PROMOTE_ENV set).
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+      when: never
     - if: $CI_COMMIT_TAG
       when: on_success
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -459,6 +463,10 @@ test-main-network-templates:
     - linux/amd64
     - docker
   rules:
+    # Skip during test-env promote pipelines (web pipelines on the default
+    # branch with $NVCM_PROMOTE_ENV set).
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+      when: never
     - if: $CI_COMMIT_TAG
       when: on_success
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -491,6 +499,10 @@ test-main-installer:
     - linux/amd64
     - docker
   rules:
+    # Skip during test-env promote pipelines (web pipelines on the default
+    # branch with $NVCM_PROMOTE_ENV set).
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+      when: never
     - if: $CI_COMMIT_TAG
       when: on_success
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -523,6 +535,10 @@ test-main-ui-e2e:
     - linux/amd64
     - docker
   rules:
+    # Skip during test-env promote pipelines (web pipelines on the default
+    # branch with $NVCM_PROMOTE_ENV set).
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+      when: never
     - if: $CI_COMMIT_TAG
       when: on_success
     - if: $GITLAB_USER_EMAIL == $CI_PUSH_EMAIL
