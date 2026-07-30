@@ -7,10 +7,10 @@
 # The deploy-state file is the ONLY file this script touches - human-owned
 # overrides on the env branch are never modified.
 #
-# Requires (dotenv from earlier stages): PR_NUM, PR_SHA
 # Requires (FILE artifacts, read as the source of truth - see "Attested inputs"
-#          below): chart.env from test-promote-chart (PROMOTE_VERSION,
-#          BASELINE_REVISION, ENV_BRANCH_REVISION) and digests.env from
+#          below): promote.env from test-promote-build (PR_NUM, PR_SHA),
+#          chart.env from test-promote-chart (PROMOTE_VERSION,
+#          BASELINE_REVISION, ENV_BRANCH_REVISION), and digests.env from
 #          test-promote-push-images (DIGEST_<IMAGE> x9)
 # Requires (eval of test_env_config.sh): NVCM_ENV, NVCM_ENV_BRANCH,
 #          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR
@@ -20,8 +20,6 @@
 #          https://helm.ngc.nvidia.com/nvidian/cfa)
 set -euo pipefail
 
-: "${PR_NUM:?missing dotenv from test-promote-build}"
-: "${PR_SHA:?missing dotenv from test-promote-build}"
 : "${NVCM_ENV:?eval test_env_config.sh first}"
 : "${NVCM_ENV_BRANCH:?eval test_env_config.sh first}"
 : "${NVCM_ENV_NAMESPACE:?eval test_env_config.sh first}"
@@ -35,12 +33,14 @@ set -euo pipefail
 # so an operator-supplied variable of the same name would silently override the
 # values these provenance guards compare against. Files cannot be overridden
 # that way, so the deployment-affecting inputs are taken from disk.
+#   promote.env (test-promote-build)       - resolved PR number + SHA
 #   chart.env   (test-promote-chart)       - revisions + verified chart version
 #   digests.env (test-promote-push-images) - registry digests as pushed
 # ---------------------------------------------------------------------------
+promote_attest="${CI_PROJECT_DIR}/promote.env"
 chart_attest="${CI_PROJECT_DIR}/chart.env"
 digest_attest="${CI_PROJECT_DIR}/digests.env"
-for f in "$chart_attest" "$digest_attest"; do
+for f in "$promote_attest" "$chart_attest" "$digest_attest"; do
     [ -f "$f" ] || { echo "ERROR: missing attestation artifact ${f}"; exit 1; }
 done
 
@@ -51,6 +51,8 @@ attest() {
     printf '%s' "$val"
 }
 
+PR_NUM="$(attest PR_NUM "$promote_attest")"
+PR_SHA="$(attest PR_SHA "$promote_attest")"
 PROMOTE_VERSION="$(attest PROMOTE_VERSION "$chart_attest")"
 BASELINE_REVISION="$(attest BASELINE_REVISION "$chart_attest")"
 ENV_BRANCH_REVISION="$(attest ENV_BRANCH_REVISION "$chart_attest")"
@@ -126,11 +128,11 @@ if [ "$current_hold" = "true" ] && [ "$current_occupant" != "$occupant" ]; then
 fi
 
 # Baseline pin: the kiwi-argocd main SHA whose baseline values the render gate
-# validated against, captured in test-promote-chart and passed via dotenv.
+# validated against, attested by test-promote-chart in chart.env (read above).
 # Consuming that exact SHA - rather than re-resolving origin/main here - keeps
 # the deployed baseline identical to the one that was validated even if main
 # moved in between. Pinning (vs tracking main) also makes rollback exact.
-baseline_rev="${BASELINE_REVISION:?BASELINE_REVISION missing (dotenv from test-promote-chart)}"
+baseline_rev="$BASELINE_REVISION"
 
 export NVCM_ENV NVCM_ENV_NAMESPACE NVCM_ENV_BRANCH NVCM_ENV_RELEASE_NAME \
     NVCM_CHART_REPO PROMOTE_VERSION PR_SHA PR_NUM occupant baseline_rev \

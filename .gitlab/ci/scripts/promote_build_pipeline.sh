@@ -17,8 +17,9 @@
 #             NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE (default false)
 # Requires: NVCM_MIRROR_API_TOKEN (read_api; polling/job-listing endpoints are
 #           not in the CI_JOB_TOKEN allowlist), CI_JOB_TOKEN (trigger + clone)
-# Output:   promote.env dotenv - PR_NUM, PR_REF, PR_SHA, PR_SHORT_SHA,
-#           PROMOTE_VERSION, BUILD_PIPELINE_ID, BUILD_JOB_ID_<IMAGE> x6,
+# Output:   promote.env (dotenv + file artifact) - PR_NUM, PR_REF, PR_SHA,
+#           PR_SHORT_SHA,
+#           PROMOTE_VERSION, BUILD_PIPELINE_ID, BUILD_JOB_ID_<IMAGE> x9,
 #           CHART_BUILD_JOB_ID
 set -euo pipefail
 
@@ -46,7 +47,7 @@ allowed_build_sources='["pipeline","trigger","api","web"]'
 PR_NUM="$NVCM_PROMOTE_PR"
 PR_REF="pull-request/${PR_NUM}"
 
-# The six pr-build-image matrix entries (target|image), matching pr-build.yml.
+# The nine pr-build-image matrix entries (target|image), matching pr-build.yml.
 matrix_entries="nv-config-manager|nv-config-manager
 kea|nv-config-manager-kea
 kea-admin|nv-config-manager-kea-admin

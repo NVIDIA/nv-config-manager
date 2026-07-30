@@ -2,7 +2,7 @@
 # Stage 2 of the test-env promote flow: turn the untrusted build's artifacts
 # into immutable registry artifacts.
 #
-# For each of the six images: download the build job's artifact archive by job
+# For each of the nine built images: download the build job's artifact archive by job
 # id (race-free, CI_JOB_TOKEN allowlisted), docker load, retag to
 # ${NVCM_IMAGE_REPOSITORY}/<image>:${PROMOTE_VERSION}, push, and capture the
 # pushed manifest digest from the registry. Images and tars are deleted
@@ -13,18 +13,33 @@
 # promote_build_pipeline.sh. This job must never trust or execute anything the
 # untrusted build wrote.
 #
-# Requires (from test-promote-build's dotenv): PR_SHORT_SHA, PROMOTE_VERSION,
-#          BUILD_JOB_ID_<IMAGE> x6
+# Requires (from test-promote-build FILE artifact promote.env): PR_SHORT_SHA,
+#          PROMOTE_VERSION,
+#          BUILD_JOB_ID_<IMAGE> x9
 # Requires (from before_script): docker login already performed,
 #          NVCM_IMAGE_REPOSITORY exported by image_target_env.sh
-# Output:  digests.env dotenv - DIGEST_<IMAGE>=sha256:... x6
+# Output:  digests.env - DIGEST_<IMAGE>=sha256:... x9 (dotenv + file artifact)
 set -euo pipefail
 
-: "${PROMOTE_VERSION:?missing dotenv from test-promote-build}"
 : "${NVCM_IMAGE_REPOSITORY:?image_target_env.sh exports required}"
 
 api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
-short_sha="${PR_SHORT_SHA:?missing dotenv from test-promote-build}"
+
+# Read the resolved build metadata from test-promote-build's FILE artifact
+# rather than its dotenv export: pipeline variables outrank dotenv, so a
+# same-named variable could otherwise redirect which job's artifacts are
+# downloaded (BUILD_JOB_ID_*) or change the tag images are pushed under.
+promote_attest="${CI_PROJECT_DIR}/promote.env"
+[ -f "$promote_attest" ] || { echo "ERROR: missing attestation artifact ${promote_attest}"; exit 1; }
+attest() {
+    local key="$1" val
+    val="$(grep -m1 "^${key}=" "$promote_attest" | cut -d= -f2- || true)"
+    [ -n "$val" ] || { echo "ERROR: ${key} missing from promote.env"; exit 1; }
+    printf '%s' "$val"
+}
+
+PROMOTE_VERSION="$(attest PROMOTE_VERSION)"
+short_sha="$(attest PR_SHORT_SHA)"
 
 images="nv-config-manager
 nv-config-manager-kea
@@ -40,8 +55,7 @@ nv-config-manager-temporal-ui"
 
 for image in $images; do
     key="$(printf '%s' "$image" | tr 'a-z-' 'A-Z_')"
-    job_id_var="BUILD_JOB_ID_${key}"
-    job_id="${!job_id_var:?missing ${job_id_var} from test-promote-build dotenv}"
+    job_id="$(attest "BUILD_JOB_ID_${key}")"
 
     echo ""
     echo "=== ${image} (build job ${job_id}) ==="
