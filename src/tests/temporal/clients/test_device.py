@@ -436,14 +436,14 @@ def test_rpc_requests_json_and_converts_flag_params(juniper_conn):
     assert kwargs == {"terse": True}
 
 
-def test_get_running_configuration_returns_set_format(juniper_conn):
-    """Backup returns set-format config terminated by a newline."""
+def test_get_running_configuration_returns_text_format(juniper_conn):
+    """Backup returns full hierarchical text config terminated by a newline."""
     device = MagicMock()
-    device.rpc.get_config.return_value = SimpleNamespace(text="set system host-name RTR1")
+    device.rpc.get_config.return_value = SimpleNamespace(text="system {\n    host-name RTR1;\n}")
     with patch.object(juniper_conn, "_get_device", return_value=device):
         config = juniper_conn.get_running_configuration()
-    assert config == "set system host-name RTR1\n"
-    assert device.rpc.get_config.call_args.kwargs["options"]["format"] == "set"
+    assert config == "system {\n    host-name RTR1;\n}\n"
+    assert device.rpc.get_config.call_args.kwargs["options"]["format"] == "text"
 
 
 def test_get_configuration_text_returns_hierarchical(juniper_conn):
@@ -492,19 +492,37 @@ def test_get_uptime_raises_on_unexpected_shape(juniper_conn):
             juniper_conn.get_uptime()
 
 
-def test_perform_candidate_diff_loads_rolls_back_and_returns_diff(juniper_conn):
-    """perform_candidate_diff loads set config, returns the diff, and discards the candidate."""
+def test_perform_candidate_diff_loads_full_config_rolls_back_and_returns_diff(juniper_conn):
+    """perform_candidate_diff loads the full config with load update, returns the diff, discards."""
     cu = MagicMock()
-    cu.diff.return_value = '[edit interfaces xe-0/0/0]\n+   description "foo";'
+    cu.diff.return_value = "[edit system]\n-  host-name OLD;\n+  host-name RTR1;"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
         patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
     ):
-        diff = juniper_conn.perform_candidate_diff('set interfaces xe-0/0/0 description "foo"')
-    assert "description" in diff
-    cu.load.assert_called_once_with('set interfaces xe-0/0/0 description "foo"', format="set")
+        diff = juniper_conn.perform_candidate_diff("system { host-name RTR1; }")
+    assert "host-name" in diff
+    cu.load.assert_called_once_with("system { host-name RTR1; }", format="text", update=True)
     cu.rollback.assert_called_once()
     cu.commit.assert_not_called()
+
+
+def test_perform_candidate_diff_rejects_partial(juniper_conn):
+    """Partial diffs are rejected; no config session is opened."""
+    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
+        with pytest.raises(NetworkDeviceException, match="Partial configuration is not supported"):
+            juniper_conn.perform_candidate_diff("system { host-name RTR1; }", partial=True)
+    mock_config.assert_not_called()
+
+
+def test_commit_candidate_config_rejects_partial(juniper_conn):
+    """Partial commits are rejected; no config session is opened."""
+    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
+        with pytest.raises(NetworkDeviceException, match="Partial configuration is not supported"):
+            juniper_conn.commit_candidate_config(
+                "system { host-name RTR1; }", approved_diff="d", partial=True
+            )
+    mock_config.assert_not_called()
 
 
 def test_perform_candidate_diff_raises_config_syntax_on_load_error(juniper_conn):
@@ -601,242 +619,9 @@ def test_commit_candidate_config_raises_on_commit_error(juniper_conn):
             juniper_conn.commit_candidate_config("config", approved_diff="diff")
 
 
-def test_configure_set_noop_on_empty_commands(juniper_conn):
-    """configure_set with no commands opens no config session."""
-    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
-        juniper_conn.configure_set([])
-    mock_config.assert_not_called()
-
-
-def test_configure_set_loads_and_commits(juniper_conn):
-    """configure_set loads the joined commands and commits when there is a diff."""
-    cu = MagicMock()
-    cu.diff.return_value = "diff"
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.configure_set(["set a", "set b"])
-    cu.load.assert_called_once_with("set a\nset b", format="set")
-    cu.commit.assert_called_once()
-
-
-def test_configure_set_no_diff_confirms_when_commit_confirm(juniper_conn):
-    """configure_set with commit_confirm and no diff still runs the confirm, so a
-    pending commit-confirm from a retried attempt is not rolled back."""
-    cu = MagicMock()
-    cu.diff.return_value = ""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.configure_set(["set a"], commit_confirm=True)
-    cu.rollback.assert_called_once()
-    cu.commit.assert_called_once()
-    assert "confirm" not in cu.commit.call_args.kwargs
-
-
-def test_set_interface_description_builds_set_command(juniper_conn):
-    """set_interface_description issues the expected set command."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        juniper_conn.set_interface_description("xe-0/0/0", "peering::circuit-1")
-    mock_configure.assert_called_once_with(
-        ['set interfaces xe-0/0/0 description "peering::circuit-1"'],
-        commit_confirm=False,
-    )
-
-
-def test_update_interface_builds_all_commands(juniper_conn):
-    """update_interface builds description, admin-state, and MTU commands."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        juniper_conn.update_interface("xe-0/0/1", description="uplink", enabled=False, mtu=9192)
-    commands = mock_configure.call_args.args[0]
-    assert 'set interfaces xe-0/0/1 description "uplink"' in commands
-    assert "set interfaces xe-0/0/1 disable" in commands
-    assert "set interfaces xe-0/0/1 mtu 9192" in commands
-
-
-def test_update_interface_enable_deletes_disable(juniper_conn):
-    """Enabling an interface deletes the Junos `disable` knob."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        juniper_conn.update_interface("xe-0/0/1", enabled=True)
-    assert mock_configure.call_args.args[0] == ["delete interfaces xe-0/0/1 disable"]
-
-
-@pytest.mark.parametrize(
-    "bad_description", ['peering "circuit"', "line1\nset system host-name evil"]
-)
-def test_set_interface_description_rejects_unsafe_input(juniper_conn, bad_description):
-    """Descriptions with a quote or newline are rejected with no config emitted."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        with pytest.raises(NetworkDeviceException, match="double quotes and newlines"):
-            juniper_conn.set_interface_description("xe-0/0/0", bad_description)
-    mock_configure.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "bad_description", ['peering "circuit"', "line1\nset system host-name evil"]
-)
-def test_update_interface_rejects_unsafe_description(juniper_conn, bad_description):
-    """update_interface rejects unsafe descriptions without emitting statements."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        with pytest.raises(NetworkDeviceException, match="double quotes and newlines"):
-            juniper_conn.update_interface("xe-0/0/1", description=bad_description)
-    mock_configure.assert_not_called()
-
-
-_UNSAFE_INTERFACES = ["ge-0/0/0 unit 0", "ge-0/0/0 disable", "ge 0/0/0", "", "0/0/0"]
-
-
-@pytest.mark.parametrize("bad_interface", _UNSAFE_INTERFACES)
-def test_set_interface_description_rejects_unsafe_interface(juniper_conn, bad_interface):
-    """Interface names with spaces or an invalid form are rejected; no config emitted."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        with pytest.raises(NetworkDeviceException, match="Invalid interface name"):
-            juniper_conn.set_interface_description(bad_interface, "ok-desc")
-    mock_configure.assert_not_called()
-
-
-@pytest.mark.parametrize("bad_interface", _UNSAFE_INTERFACES)
-def test_update_interface_rejects_unsafe_interface(juniper_conn, bad_interface):
-    """update_interface rejects unsafe interface names without emitting statements."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        with pytest.raises(NetworkDeviceException, match="Invalid interface name"):
-            juniper_conn.update_interface(bad_interface, description="ok")
-    mock_configure.assert_not_called()
-
-
-@pytest.mark.parametrize("good_interface", ["ge-0/0/0", "xe-0/0/0.100", "et-0/0/0:1", "ae0", "irb"])
-def test_set_interface_description_accepts_valid_interface(juniper_conn, good_interface):
-    """Valid Junos interface identifiers pass validation and emit a set command."""
-    with patch.object(juniper_conn, "configure_set") as mock_configure:
-        juniper_conn.set_interface_description(good_interface, "desc")
-    mock_configure.assert_called_once()
-
-
 # ---------------------------------------------------------------------------
-# Full replace, numbered rollback, and rescue configuration.
+# Numbered rollback and rescue configuration.
 # ---------------------------------------------------------------------------
-
-
-def test_perform_replace_diff_defaults_to_load_update(juniper_conn):
-    """perform_replace_diff defaults to load update, returns the diff, and discards."""
-    cu = MagicMock()
-    cu.diff.return_value = "some-diff"
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        diff = juniper_conn.perform_replace_diff("system { host-name RTR1; }")
-    assert diff == "some-diff"
-    cu.load.assert_called_once_with("system { host-name RTR1; }", format="text", update=True)
-    cu.rollback.assert_called_once()
-    cu.commit.assert_not_called()
-
-
-def test_perform_replace_diff_override_mode_uses_overwrite(juniper_conn):
-    """replace_mode='override' maps to Junos load override (overwrite=True)."""
-    cu = MagicMock()
-    cu.diff.return_value = "some-diff"
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.perform_replace_diff("system { host-name RTR1; }", replace_mode="override")
-    cu.load.assert_called_once_with("system { host-name RTR1; }", format="text", overwrite=True)
-
-
-def test_replace_configuration_rejects_unknown_mode(juniper_conn):
-    """An unknown replace_mode raises before touching the device config."""
-    cu = MagicMock()
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        with pytest.raises(NetworkDeviceException, match="replace_mode"):
-            juniper_conn.replace_configuration("config", approved_diff="d", replace_mode="merge")
-    cu.load.assert_not_called()
-
-
-def test_perform_replace_diff_rejects_set_format(juniper_conn):
-    """A full deploy cannot use set format; the client raises before touching the device."""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch(
-            "nv_config_manager.temporal.client.device.Config",
-            return_value=_FakeConfigCM(MagicMock()),
-        ),
-    ):
-        with pytest.raises(NetworkDeviceException, match="set"):
-            juniper_conn.perform_replace_diff("set system host-name RTR1", config_format="set")
-
-
-def test_replace_configuration_raises_config_syntax_on_load_error(juniper_conn):
-    """A load failure during replace surfaces as ConfigSyntaxException."""
-    cu = MagicMock()
-    cu.load.side_effect = ConfigLoadError(rsp=_rpc_error_rsp("syntax error"))
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        with pytest.raises(ConfigSyntaxException):
-            juniper_conn.replace_configuration("bad config", approved_diff="d")
-
-
-def test_replace_configuration_raises_when_diff_changed(juniper_conn):
-    """A replace whose fresh diff differs from the approved diff aborts before commit."""
-    cu = MagicMock()
-    cu.diff.return_value = "new-diff"
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        with pytest.raises(DiffChangedException):
-            juniper_conn.replace_configuration("config", approved_diff="old-diff")
-    cu.rollback.assert_called_once()
-    cu.commit.assert_not_called()
-
-
-def test_replace_configuration_no_diff_confirms_pending_commit(juniper_conn):
-    """A replace with no diff still confirms so a pending commit-confirm left by a
-    retried attempt is cancelled rather than rolled back."""
-    cu = MagicMock()
-    cu.diff.return_value = ""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.replace_configuration("config", approved_diff="", commit_confirm=True)
-    cu.rollback.assert_called_once()
-    cu.commit.assert_called_once()
-    assert "confirm" not in cu.commit.call_args.kwargs
-
-
-def test_replace_configuration_no_diff_direct_does_not_commit(juniper_conn):
-    """A replace with no diff and commit_confirm=False issues no commit."""
-    cu = MagicMock()
-    cu.diff.return_value = ""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.replace_configuration("config", approved_diff="", commit_confirm=False)
-    cu.rollback.assert_called_once()
-    cu.commit.assert_not_called()
-
-
-def test_replace_configuration_commit_confirm_then_confirms(juniper_conn):
-    """replace_configuration with commit_confirm commits with a timer then confirms."""
-    cu = MagicMock()
-    cu.diff.return_value = "diff"
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
-    ):
-        juniper_conn.replace_configuration("config", approved_diff="diff", commit_confirm=True)
-    assert cu.commit.call_count == 2
-    assert "confirm" in cu.commit.call_args_list[0].kwargs
-    assert "confirm" not in cu.commit.call_args_list[1].kwargs
 
 
 def test_get_rollback_diff_returns_diff(juniper_conn):

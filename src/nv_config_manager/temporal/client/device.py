@@ -29,7 +29,7 @@ import time
 from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO, StringIO
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 from uuid import uuid4
 
 import netaddr
@@ -535,28 +535,6 @@ class NetworkConnection:
         commit_confirm: bool = True,
     ) -> None:
         """Load the candidate configuration and commit."""
-        raise NotImplementedError()
-
-    def perform_replace_diff(
-        self,
-        new_configuration: str,
-        *,
-        config_format: str = "text",
-        replace_mode: str = "update",
-    ) -> str:
-        """Return the diff for a full desired-state deploy without committing."""
-        raise NotImplementedError()
-
-    def replace_configuration(
-        self,
-        new_configuration: str,
-        approved_diff: str,
-        *,
-        config_format: str = "text",
-        replace_mode: str = "update",
-        commit_confirm: bool = True,
-    ) -> None:
-        """Deploy the complete desired-state configuration and commit."""
         raise NotImplementedError()
 
     def get_rollback_diff(self, rollback_id: int = 1) -> str:
@@ -2362,10 +2340,7 @@ class JuniperConnection(NetworkConnection):
     config workflow maps directly onto perform_candidate_diff and
     commit_candidate_config without hand-rolling RPC batches.
 
-    Config is exchanged in Junos ``set`` format, which round-trips through
-    ``load(format="set")`` so a stored backup can be re-applied directly.
-    Authentication uses the standard device SSH credentials (with password
-    rotation); no dedicated local REST account is required.
+    Config is applied as the full desired state via Junos ``load update``.
     """
 
     # Junos commit-confirmed timeout is expressed in minutes, not seconds. Round
@@ -2492,14 +2467,24 @@ class JuniperConnection(NetworkConnection):
         # set/text formats return an lxml element whose text holds the config.
         return getattr(result, "text", "") or ""
 
-    def _load_set_config(self, cu: Config, new_configuration: str) -> None:
-        """Load set-format config into the candidate, mapping load errors."""
+    def _load_full_config(self, cu: Config, new_configuration: str) -> None:
+        """Load the complete desired-state config via Junos ``load update``."""
         try:
-            cu.load(new_configuration, format="set")
+            cu.load(new_configuration, format="text", update=True)
         except ConfigLoadError as error:
             raise ConfigSyntaxException(
                 f"Invalid configuration for {self._host}: {error}"
             ) from error
+
+    @staticmethod
+    def _reject_partial(partial: bool) -> None:
+        """Reject partial applies; JuniperConnection supports full desired state only."""
+        if partial:
+            raise NetworkDeviceException(
+                "Partial configuration is not supported for JuniperConnection; "
+                "supply the full desired-state configuration.",
+                non_retryable=True,
+            )
 
     def _commit(self, cu: Config, commit_confirm: bool) -> None:
         """Commit the candidate, optionally with a rollback timer."""
@@ -2516,12 +2501,12 @@ class JuniperConnection(NetworkConnection):
     # ------------------------------------------------------------------
 
     def get_running_configuration(self) -> str:
-        """Return the running configuration in Junos ``set`` format.
+        """Return the running configuration in hierarchical (curly-brace) text.
 
-        ``set`` format round-trips through ``load(format="set")``, so the stored
-        backup can be re-applied directly.
+        Text is the full desired-state format consumed by ``load update``, so a
+        stored backup can be re-applied through the full-config path.
         """
-        return self._get_config("set").strip() + "\n"
+        return self._get_config("text").strip() + "\n"
 
     def get_configuration_text(self) -> str:
         """Return the running configuration in hierarchical (curly-brace) text."""
@@ -2570,11 +2555,12 @@ class JuniperConnection(NetworkConnection):
     # ------------------------------------------------------------------
 
     def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
-        """Load the candidate configuration and return the diff versus active."""
+        """Load the full desired-state candidate and return the diff versus active."""
+        self._reject_partial(partial)
         device = self._get_device()
         try:
             with Config(device, mode="exclusive") as cu:
-                self._load_set_config(cu, new_configuration)
+                self._load_full_config(cu, new_configuration)
                 diff = cu.diff()
                 cu.rollback()
         except ConfigSyntaxException:
@@ -2593,17 +2579,12 @@ class JuniperConnection(NetworkConnection):
         *,
         commit_confirm: bool = True,
     ) -> None:
-        """Load the candidate configuration and commit.
-
-        When commit_confirm is True, commits with a rollback timer and then
-        confirms with a follow-up commit. When False, commits directly (use for
-        changes that cause brief interruption, e.g. an IP change ahead of an
-        upstream VLAN change).
-        """
+        """Load the full desired-state candidate and commit."""
+        self._reject_partial(partial)
         device = self._get_device()
         try:
             with Config(device, mode="exclusive") as cu:
-                self._load_set_config(cu, new_configuration)
+                self._load_full_config(cu, new_configuration)
                 diff = cu.diff()
                 if diff and diff != approved_diff:
                     cu.rollback()
@@ -2633,194 +2614,6 @@ class JuniperConnection(NetworkConnection):
             raise NetworkDeviceException(
                 f"Failed to confirm commit on {self._host}: {error}"
             ) from error
-
-    def configure_set(self, commands: list[str], *, commit_confirm: bool = False) -> None:
-        """Apply a list of Junos ``set``/``delete`` commands and commit.
-
-        This is the direct-apply path for programmatic edits (e.g. interface
-        updates). It bypasses the approved-diff gate, so callers that need
-        change review should use commit_candidate_config instead.
-        """
-        if not commands:
-            return
-        device = self._get_device()
-        configuration = "\n".join(commands)
-        try:
-            with Config(device, mode="exclusive") as cu:
-                self._load_set_config(cu, configuration)
-                if cu.diff():
-                    self._commit(cu, commit_confirm)
-                else:
-                    cu.rollback()
-        except ConfigSyntaxException:
-            raise
-        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
-            raise NetworkDeviceException(
-                f"Failed to apply configuration on {self._host}: {error}"
-            ) from error
-        if commit_confirm:
-            self._confirm_commit()
-
-    @staticmethod
-    def _reject_unsafe_config_value(field: str, value: str) -> None:
-        """Reject values that could break out of a Junos ``set`` statement.
-
-        Double quotes would terminate a quoted description early and newlines
-        would inject additional statements when commands are joined.
-        """
-        if any(char in value for char in ('"', "\n", "\r")):
-            raise NetworkDeviceException(
-                f"Invalid {field}: double quotes and newlines are not allowed.",
-                non_retryable=True,
-            )
-
-    _INTERFACE_NAME_RE: ClassVar[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9./:-]*$")
-
-    @classmethod
-    def _reject_unsafe_interface_name(cls, interface: str) -> None:
-        """Reject interface names that could inject extra Junos statement tokens."""
-        if not cls._INTERFACE_NAME_RE.match(interface):
-            raise NetworkDeviceException(
-                f"Invalid interface name '{interface}'",
-                non_retryable=True,
-            )
-
-    def set_interface_description(
-        self, interface: str, description: str, *, commit_confirm: bool = False
-    ) -> None:
-        """Set the description on an interface."""
-        self._reject_unsafe_interface_name(interface)
-        self._reject_unsafe_config_value("description", description)
-        self.configure_set(
-            [f'set interfaces {interface} description "{description}"'],
-            commit_confirm=commit_confirm,
-        )
-
-    def update_interface(
-        self,
-        interface: str,
-        *,
-        description: str | None = None,
-        enabled: bool | None = None,
-        mtu: int | None = None,
-        commit_confirm: bool = False,
-    ) -> None:
-        """Update common interface attributes (description, admin state, MTU)."""
-        self._reject_unsafe_interface_name(interface)
-        commands: list[str] = []
-        if description is not None:
-            self._reject_unsafe_config_value("description", description)
-            commands.append(f'set interfaces {interface} description "{description}"')
-        if enabled is not None:
-            # Junos uses the `disable` knob; deleting it re-enables the interface.
-            if enabled:
-                commands.append(f"delete interfaces {interface} disable")
-            else:
-                commands.append(f"set interfaces {interface} disable")
-        if mtu is not None:
-            commands.append(f"set interfaces {interface} mtu {mtu}")
-        self.configure_set(commands, commit_confirm=commit_confirm)
-
-    # ------------------------------------------------------------------
-    # Full declarative configuration deploy.
-    #
-    # The intended config is the complete desired state for the device. We do
-    # not use per-stanza ``load replace`` markers; the whole document drives the
-    # device so drift is removed rather than accumulated.
-    #
-    #   * "update"   -> Junos ``load update``: full desired state, but only the
-    #                   hierarchies that actually differ are re-parsed, so
-    #                   unrelated daemons are not disturbed. This is the safe
-    #                   default for routine deploys.
-    #   * "override" -> Junos ``load override``: replaces the entire config in
-    #                   one shot (all daemons reload). Use for hard resets /
-    #                   initial provisioning.
-    #
-    # Neither mode is valid for ``set`` format, so the intended config must be
-    # supplied as text, xml, or json.
-    # ------------------------------------------------------------------
-
-    _REPLACE_MODES: ClassVar[dict[str, str]] = {"update": "update", "override": "overwrite"}
-
-    def _load_replace(
-        self, cu: Config, new_configuration: str, config_format: str, replace_mode: str
-    ) -> None:
-        """Load the complete desired-state config via ``load update``/``override``."""
-        load_flag = self._REPLACE_MODES.get(replace_mode)
-        if load_flag is None:
-            raise NetworkDeviceException(
-                f"Unknown replace_mode '{replace_mode}' for {self._host}; "
-                f"expected one of {sorted(self._REPLACE_MODES)}."
-            )
-        if config_format == "set":
-            raise NetworkDeviceException(
-                f"Full config {replace_mode} is not supported for 'set' format on {self._host}; "
-                "supply the configuration in text, xml, or json format."
-            )
-        try:
-            cu.load(new_configuration, format=config_format, **{load_flag: True})
-        except ConfigLoadError as error:
-            raise ConfigSyntaxException(
-                f"Invalid configuration for {self._host}: {error}"
-            ) from error
-
-    def perform_replace_diff(
-        self,
-        new_configuration: str,
-        *,
-        config_format: str = "text",
-        replace_mode: str = "update",
-    ) -> str:
-        """Return the diff for a full desired-state deploy without committing."""
-        device = self._get_device()
-        try:
-            with Config(device, mode="exclusive") as cu:
-                self._load_replace(cu, new_configuration, config_format, replace_mode)
-                diff = cu.diff()
-                cu.rollback()
-        except ConfigSyntaxException:
-            raise
-        except (LockError, UnlockError, RpcError, ConnectError) as error:
-            raise NetworkDeviceException(
-                f"Failed to perform replace diff on {self._host}: {error}"
-            ) from error
-        return diff or ""
-
-    def replace_configuration(
-        self,
-        new_configuration: str,
-        approved_diff: str,
-        *,
-        config_format: str = "text",
-        replace_mode: str = "update",
-        commit_confirm: bool = True,
-    ) -> None:
-        """Deploy the complete desired-state config and commit.
-
-        Uses Junos ``load update`` by default (``replace_mode="override"`` for a
-        full ``load override``). Gated on approved_diff like commit_candidate_config
-        so a changed device state aborts the deploy.
-        """
-        device = self._get_device()
-        try:
-            with Config(device, mode="exclusive") as cu:
-                self._load_replace(cu, new_configuration, config_format, replace_mode)
-                diff = cu.diff()
-                if diff and diff != approved_diff:
-                    cu.rollback()
-                    raise DiffChangedException("Diff has changed since approval, aborting.")
-                if diff:
-                    self._commit(cu, commit_confirm)
-                else:
-                    cu.rollback()
-        except (ConfigSyntaxException, DiffChangedException):
-            raise
-        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
-            raise NetworkDeviceException(
-                f"Failed to replace configuration on {self._host}: {error}"
-            ) from error
-        if commit_confirm:
-            self._confirm_commit()
 
     # ------------------------------------------------------------------
     # Rollback to a numbered revision (Junos keeps rollback 0-49).
