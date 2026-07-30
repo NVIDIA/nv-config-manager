@@ -1057,14 +1057,23 @@ reach it derive from this, so the policy cannot grant cross-namespace access to
 a Prometheus KEDA never talks to.
 
 The FQDN is required because KEDA resolves it from its own namespace, not the
-release's. The service name tracks prometheus.server.fullnameOverride so that
-overriding it moves both the trigger and the NetworkPolicy with it; the fallback
-matches how the upstream chart names the service when no override is given.
+release's.
+
+The service name comes from the subchart's own helper rather than being rebuilt
+here, so every input it honours -- server.fullnameOverride, nameOverride,
+server.name, and its rule that drops the chart-name segment when the release
+name already contains it -- moves the trigger and the NetworkPolicy with it.
+Rebuilding the name locally silently missed all but the first: a wrong name is
+still a non-empty address, so the required guard passes, KEDA accepts the
+ScaledObject, and it just never scales.
+
+Subchart helpers are registered globally even while the subchart is disabled,
+but expect subchart scope, hence the synthesised dict. Chart.Name must be
+"prometheus" because that is what upstream falls back to for nameOverride.
 */}}
 {{- define "nv-config-manager.inClusterPrometheusAddress" -}}
 {{- if and .Values.prometheus.enabled (not .Values.renderService.autoscaling.prometheus.serverAddress) -}}
-{{- $server := .Values.prometheus.server | default dict -}}
-{{- $name := $server.fullnameOverride | default (printf "%s-prometheus-server" .Release.Name) -}}
+{{- $name := include "prometheus.server.fullname" (dict "Values" .Values.prometheus "Chart" (dict "Name" "prometheus") "Release" .Release) -}}
 {{- printf "http://%s.%s.svc.cluster.local:9090" $name .Release.Namespace -}}
 {{- end -}}
 {{- end }}
