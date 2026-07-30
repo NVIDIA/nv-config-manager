@@ -31,6 +31,27 @@ shell_export() {
 }
 
 requested_env="$(trim "${1:?usage: test_env_config.sh <env>}")"
+
+# Defence in depth. The promote pipeline's rules already constrain
+# NVCM_PROMOTE_ENV to the shared test environments, but this script is the point
+# where an environment name becomes a concrete branch, namespace and release
+# name - so refuse anything outside that set here too. A mis-set variable, a
+# stray NVCM_TEST_ENV_TARGETS record, or a future caller that forgets the rule
+# then fails closed instead of resolving production.
+#
+# Deliberately hardcoded rather than configurable: making the allowlist itself
+# overridable would let the same variable injection this guards against widen
+# it. Adding an environment is a reviewed code change, by design.
+case "$requested_env" in
+  test|test01) ;;
+  *)
+    echo "Refusing to resolve environment '${requested_env}'." >&2
+    echo "Only the shared test environments (test, test01) may be resolved;" >&2
+    echo "production is deployed by the tag-driven release flow, not this one." >&2
+    exit 1
+    ;;
+esac
+
 records="${NVCM_TEST_ENV_TARGETS:-}"
 
 if [[ -z "$records" ]]; then
