@@ -7,10 +7,11 @@
 # The deploy-state file is the ONLY file this script touches - human-owned
 # overrides on the env branch are never modified.
 #
-# Requires (dotenv from earlier stages): PROMOTE_VERSION, PR_NUM, PR_SHA,
-#          DIGEST_<IMAGE> x9, and from test-promote-chart: BASELINE_REVISION
-#          (main SHA whose baseline was validated) + ENV_BRANCH_REVISION
-#          (env-branch SHA whose overrides were validated)
+# Requires (dotenv from earlier stages): PR_NUM, PR_SHA
+# Requires (FILE artifacts, read as the source of truth - see "Attested inputs"
+#          below): chart.env from test-promote-chart (PROMOTE_VERSION,
+#          BASELINE_REVISION, ENV_BRANCH_REVISION) and digests.env from
+#          test-promote-push-images (DIGEST_<IMAGE> x9)
 # Requires (eval of test_env_config.sh): NVCM_ENV, NVCM_ENV_BRANCH,
 #          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR
 # Requires (protected variables): NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN,
@@ -19,7 +20,6 @@
 #          https://helm.ngc.nvidia.com/nvidian/cfa)
 set -euo pipefail
 
-: "${PROMOTE_VERSION:?missing dotenv from test-promote-build}"
 : "${PR_NUM:?missing dotenv from test-promote-build}"
 : "${PR_SHA:?missing dotenv from test-promote-build}"
 : "${NVCM_ENV:?eval test_env_config.sh first}"
@@ -28,16 +28,41 @@ set -euo pipefail
 : "${NVCM_ENV_RELEASE_NAME:?eval test_env_config.sh first}"
 : "${NVCM_ENV_STATE_DIR:?eval test_env_config.sh first}"
 : "${NVCM_CHART_REPO:?Set NVCM_CHART_REPO to the Helm repo URL ArgoCD reads the chart from}"
-: "${ENV_BRANCH_REVISION:?ENV_BRANCH_REVISION missing (dotenv from test-promote-chart)}"
-: "${DIGEST_NV_CONFIG_MANAGER:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_UI:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_KEA:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_NATS_READY:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP:?missing dotenv from test-promote-push-images}"
-: "${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI:?missing dotenv from test-promote-push-images}"
+
+# ---------------------------------------------------------------------------
+# Attested inputs: read from the producing jobs' FILE artifacts, not from their
+# dotenv exports. GitLab ranks pipeline variables above dotenv report variables,
+# so an operator-supplied variable of the same name would silently override the
+# values these provenance guards compare against. Files cannot be overridden
+# that way, so the deployment-affecting inputs are taken from disk.
+#   chart.env   (test-promote-chart)       - revisions + verified chart version
+#   digests.env (test-promote-push-images) - registry digests as pushed
+# ---------------------------------------------------------------------------
+chart_attest="${CI_PROJECT_DIR}/chart.env"
+digest_attest="${CI_PROJECT_DIR}/digests.env"
+for f in "$chart_attest" "$digest_attest"; do
+    [ -f "$f" ] || { echo "ERROR: missing attestation artifact ${f}"; exit 1; }
+done
+
+attest() {
+    local key="$1" file="$2" val
+    val="$(grep -m1 "^${key}=" "$file" | cut -d= -f2- || true)"
+    [ -n "$val" ] || { echo "ERROR: ${key} missing from $(basename "$file")"; exit 1; }
+    printf '%s' "$val"
+}
+
+PROMOTE_VERSION="$(attest PROMOTE_VERSION "$chart_attest")"
+BASELINE_REVISION="$(attest BASELINE_REVISION "$chart_attest")"
+ENV_BRANCH_REVISION="$(attest ENV_BRANCH_REVISION "$chart_attest")"
+DIGEST_NV_CONFIG_MANAGER="$(attest DIGEST_NV_CONFIG_MANAGER "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_UI="$(attest DIGEST_NV_CONFIG_MANAGER_UI "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_KEA="$(attest DIGEST_NV_CONFIG_MANAGER_KEA "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN="$(attest DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_NAUTOBOT="$(attest DIGEST_NV_CONFIG_MANAGER_NAUTOBOT "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_NATS_READY="$(attest DIGEST_NV_CONFIG_MANAGER_NATS_READY "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_TEMPORAL="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP "$digest_attest")"
+DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI "$digest_attest")"
 
 if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
     # A full URL override is used as-is (provide any auth it needs in the URL).

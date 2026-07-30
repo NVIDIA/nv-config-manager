@@ -202,6 +202,12 @@ test-promote-chart:
       # deploy-state commit. write_deploy_state refuses to write if they have.
       env_branch_revision="$(git -C /tmp/values-repo rev-parse "origin/${NVCM_ENV_BRANCH}")"
       echo "ENV_BRANCH_REVISION=${env_branch_revision}" >> "${CI_PROJECT_DIR}/chart.env"
+      # Attest the chart version too, now that it has been cross-checked against
+      # the built artifact's filename above. chart.env is published as a FILE
+      # artifact (not only dotenv) because pipeline variables outrank dotenv in
+      # GitLab - an operator-supplied variable of the same name would otherwise
+      # override the values these provenance guards compare against.
+      echo "PROMOTE_VERSION=${PROMOTE_VERSION}" >> "${CI_PROJECT_DIR}/chart.env"
       overrides_file="/tmp/values-env/${NVCM_ENV_STATE_DIR}/values-aws-${NVCM_ENV}.overrides.yaml"
       test -f "$overrides_file" || (echo "❌ Missing overrides file ${overrides_file} on ${NVCM_ENV_BRANCH}" && exit 1)
 
@@ -230,6 +236,11 @@ test-promote-chart:
   artifacts:
     reports:
       dotenv: chart.env
+    # Also published as a plain file so downstream jobs can read the attested
+    # values from disk instead of trusting (overridable) dotenv variables.
+    paths:
+      - chart.env
+    expire_in: 1 week
 
 # -----------------------------------------------------------------------------
 # 4) Commit the deployment-state to the env branch. ArgoCD does the rest.
