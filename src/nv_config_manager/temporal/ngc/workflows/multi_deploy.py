@@ -174,8 +174,13 @@ class BatchDeployInput(BaseModel):
     """Input for batch deploy child workflow."""
 
     diff_group: DiffGroup = Field(description="Shared configuration diff for the device batch.")
-    batch_devices: list[DeviceDiffData] = Field(
-        description="Devices whose configurations will be deployed in this batch."
+    batch_devices: list[DeviceDiffData] | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+        description=(
+            "Deprecated compatibility field. When omitted, devices are read from "
+            "diff_group.devices."
+        ),
     )
     parent_workflow_id: str = Field(description="Identifier of the parent multi-deploy workflow.")
     batch_number: int | None = Field(
@@ -185,6 +190,12 @@ class BatchDeployInput(BaseModel):
         default=True,
         description="Whether to use commit-confirmed mode when the platform supports it.",
     )
+
+    def resolved_batch_devices(self) -> list[DeviceDiffData]:
+        """Return the legacy device field when present, otherwise the canonical group devices."""
+        # Legacy inputs supplied both collections and the child historically used
+        # batch_devices, so it must retain precedence when the collections differ.
+        return self.batch_devices if self.batch_devices is not None else self.diff_group.devices
 
 
 class BatchBackupResultData(BaseModel):
@@ -235,9 +246,9 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class ReviewDiffStageInput(StageInput):
         """Review Diff Stage Input."""
 
-        diff_group: DiffGroup
+        diff_group: DiffGroup = Field(exclude=True)
         device_count: int
-        batch_devices: list[DeviceDiffData]
+        batch_devices: list[DeviceDiffData] = Field(exclude=True)
         batch_number: int | None = None
 
     class ReviewDiffStageOutput(StageOutput):
@@ -297,7 +308,7 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class ApplyConfigsStageInput(StageInput):
         """Apply Configs Stage Input."""
 
-        batch_devices: list[DeviceDiffData]
+        batch_devices: list[DeviceDiffData] = Field(exclude=True)
         approved_diff: str
         commit_confirm: bool = True
 
@@ -374,7 +385,7 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class BackupsStageInput(StageInput):
         """Backups Stage Input."""
 
-        successful_devices: list[DeviceDiffData]
+        successful_devices: list[DeviceDiffData] = Field(exclude=True)
 
     class BackupsStageOutput(StageOutput):
         """Backups Stage Output."""
@@ -496,13 +507,14 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     async def run(self, workflow_input: BatchDeployInput) -> dict[str, Any]:  # type: ignore[override, ty:invalid-method-override]
         """Execute batch deploy workflow."""
         self.set_input(workflow_input)
+        batch_devices = workflow_input.resolved_batch_devices()
 
         # Review the shared diff
         review_output = await self.review_shared_diff(
             BatchDeployWorkflow.ReviewDiffStageInput(
                 diff_group=workflow_input.diff_group,
-                device_count=len(workflow_input.batch_devices),
-                batch_devices=workflow_input.batch_devices,
+                device_count=len(batch_devices),
+                batch_devices=batch_devices,
                 batch_number=workflow_input.batch_number,
             )
         )
@@ -523,7 +535,7 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             # Apply configurations
             apply_output = await self.apply_configurations(
                 BatchDeployWorkflow.ApplyConfigsStageInput(
-                    batch_devices=workflow_input.batch_devices,
+                    batch_devices=batch_devices,
                     approved_diff=workflow_input.diff_group.diff_content,
                     commit_confirm=workflow_input.commit_confirm,
                 )
@@ -535,7 +547,7 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
             # Perform backups for successful devices
             successful_device_data = [
                 device
-                for device in workflow_input.batch_devices
+                for device in batch_devices
                 if device.device.name in apply_output.successful_devices
             ]
 
@@ -617,7 +629,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class DiscoverDevicesStageOutput(StageOutput):
         """Discover Devices Stage Output."""
 
-        devices: list[NetworkDeviceData]
+        devices: list[NetworkDeviceData] = Field(exclude=True)
 
     @stage_executor("discover_devices")
     async def discover_devices(
@@ -645,12 +657,12 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class CollectDiffsStageInput(StageInput):
         """Collect Diffs Stage Input."""
 
-        devices: list[NetworkDeviceData]
+        devices: list[NetworkDeviceData] = Field(exclude=True)
 
     class CollectDiffsStageOutput(StageOutput):
         """Collect Diffs Stage Output."""
 
-        device_diffs: list[DeviceDiffData]
+        device_diffs: list[DeviceDiffData] = Field(exclude=True)
         failed_devices: dict[str, str]
 
     @stage_executor("collect_diffs")
@@ -728,14 +740,14 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class GroupAndBatchStageInput(StageInput):
         """Group and Batch Stage Input."""
 
-        device_diffs: list[DeviceDiffData]
+        device_diffs: list[DeviceDiffData] = Field(exclude=True)
         max_batch_size: int
 
     class GroupAndBatchStageOutput(StageOutput):
         """Group and Batch Stage Output."""
 
-        batches: list[list[DeviceDiffData]]
-        diff_groups: list[DiffGroup]
+        batches: list[list[DeviceDiffData]] = Field(exclude=True)
+        diff_groups: list[DiffGroup] = Field(exclude=True)
 
     @stage_executor("group_and_batch")
     async def group_and_batch(
@@ -794,8 +806,8 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     class ExecuteBatchesStageInput(StageInput):
         """Execute Batches Stage Input."""
 
-        batches: list[list[DeviceDiffData]]
-        diff_groups: list[DiffGroup]
+        batches: list[list[DeviceDiffData]] = Field(exclude=True)
+        diff_groups: list[DiffGroup] = Field(exclude=True)
         commit_confirm: bool = True
 
     class ExecuteBatchesStageOutput(StageOutput):
@@ -838,9 +850,10 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                 diff_hash = hashlib.sha256(first_device_diff.encode()).hexdigest()[:16]
                 diff_group = diff_group_map[diff_hash]
 
+                # Carry only this batch in the canonical device collection. Omitting
+                # deprecated batch_devices prevents serializing the devices twice.
                 batch_input = BatchDeployInput(
-                    diff_group=diff_group,
-                    batch_devices=batch,
+                    diff_group=diff_group.model_copy(update={"devices": batch}),
                     parent_workflow_id=workflow.info().workflow_id,
                     batch_number=i + 1,  # 1-indexed batch number for display
                     commit_confirm=stage_input.commit_confirm,
