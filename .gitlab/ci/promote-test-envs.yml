@@ -159,19 +159,32 @@ test-promote-chart:
       # source, so no untrusted chart code (e.g. `helm dependency build`) runs
       # in this credentialed context.
       : "${CHART_BUILD_JOB_ID:?missing dotenv from test-promote-build}"
+      # SECURITY: this archive is produced by the untrusted build stage - the PR
+      # controls pr-build.yml, and therefore the artifact's paths and contents.
+      # Extract into a throwaway directory, NEVER into CI_PROJECT_DIR: unzipping
+      # in place would let a crafted artifact overwrite the trusted scripts this
+      # job then executes (test_env_config.sh, publish_chart_targets.sh), giving
+      # arbitrary code execution with the registry and values-push credentials.
+      chart_dl="$(mktemp -d)"
       curl -fsS --retry 3 --retry-delay 5 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-        -o chart-artifacts.zip \
+        -o "${chart_dl}/chart-artifacts.zip" \
         "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/${CHART_BUILD_JOB_ID}/artifacts"
-      unzip -o -q chart-artifacts.zip
+      unzip -q "${chart_dl}/chart-artifacts.zip" -d "${chart_dl}/x"
 
       # Provenance: require exactly the chart version this promote run computed
       # from trusted PR metadata. A chart stamped with any other version does
       # not match and is rejected (fails closed).
       CHART_NAME=nv-config-manager
-      chart_file="chart/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      chart_file="${chart_dl}/x/chart/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
       if [ ! -f "$chart_file" ]; then
-        echo "❌ Expected ${chart_file} not found in build artifacts"
-        ls -laR chart || true
+        echo "❌ Expected chart/${CHART_NAME}-${PROMOTE_VERSION}.tgz not found in build artifacts"
+        ls -laR "${chart_dl}/x" || true
+        exit 1
+      fi
+      # Reject a symlink masquerading as the chart (it could point anywhere on
+      # the filesystem); only a regular file is acceptable.
+      if [ -L "$chart_file" ]; then
+        echo "❌ ${chart_file} is a symlink, not a regular file"
         exit 1
       fi
 
@@ -217,20 +230,26 @@ test-promote-chart:
       overrides_file="/tmp/values-env/${NVCM_ENV_STATE_DIR}/values-aws-${NVCM_ENV}.overrides.yaml"
       test -f "$overrides_file" || (echo "❌ Missing overrides file ${overrides_file} on ${NVCM_ENV_BRANCH}" && exit 1)
 
+      # Render with identical inputs for any package, so the locally validated
+      # one and the published one can be compared.
+      render_chart() {
+        helm template "${NVCM_ENV_RELEASE_NAME}" "$1" \
+          -f "/tmp/values-repo/${NVCM_ENV_BASELINE_VALUES}" \
+          -f "$overrides_file" \
+          --set "global.images.nvConfigManager.digest=${DIGEST_NV_CONFIG_MANAGER}" \
+          --set "global.images.nvConfigManagerUi.digest=${DIGEST_NV_CONFIG_MANAGER_UI}" \
+          --set "global.images.kea.digest=${DIGEST_NV_CONFIG_MANAGER_KEA}" \
+          --set "global.images.keaAdmin.digest=${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN}" \
+          --set "global.images.nautobot.digest=${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT}" \
+          --set "global.images.natsReady.digest=${DIGEST_NV_CONFIG_MANAGER_NATS_READY}" \
+          --set "global.images.temporalServer.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL}" \
+          --set "global.images.temporalBootstrap.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP}" \
+          --set "global.images.temporalUi.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI}" \
+          > "$2"
+      }
+
       echo "🔍 Validating render for ${NVCM_ENV}..."
-      helm template "${NVCM_ENV_RELEASE_NAME}" "$chart_file" \
-        -f "/tmp/values-repo/${NVCM_ENV_BASELINE_VALUES}" \
-        -f "$overrides_file" \
-        --set "global.images.nvConfigManager.digest=${DIGEST_NV_CONFIG_MANAGER}" \
-        --set "global.images.nvConfigManagerUi.digest=${DIGEST_NV_CONFIG_MANAGER_UI}" \
-        --set "global.images.kea.digest=${DIGEST_NV_CONFIG_MANAGER_KEA}" \
-        --set "global.images.keaAdmin.digest=${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN}" \
-        --set "global.images.nautobot.digest=${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT}" \
-        --set "global.images.natsReady.digest=${DIGEST_NV_CONFIG_MANAGER_NATS_READY}" \
-        --set "global.images.temporalServer.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL}" \
-        --set "global.images.temporalBootstrap.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP}" \
-        --set "global.images.temporalUi.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI}" \
-        > /dev/null
+      render_chart "$chart_file" /tmp/render-validated.yaml
       echo "✅ Render OK"
 
       echo "📤 Publishing chart to configured targets..."
@@ -239,6 +258,37 @@ test-promote-chart:
       cp "$chart_file" "${CI_PROJECT_DIR}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
       cd "${CI_PROJECT_DIR}"
       bash .gitlab/ci/scripts/publish_chart_targets.sh "${CHART_NAME}-${PROMOTE_VERSION}.tgz" "$PROMOTE_VERSION" "$CHART_NAME"
+
+      # The publisher treats "already exists" as success, and PROMOTE_VERSION is
+      # a pure function of PR+SHA - so a concurrent or earlier run could already
+      # have published a DIFFERENT package at this version and ours was silently
+      # skipped. Verify the registry now serves what we validated; otherwise
+      # deploy-state would pin a package this run never rendered.
+      echo "🔎 Verifying the published chart matches the validated package..."
+      ngc_key="$(awk -F' = ' '/^apikey/{print $2}' ~/.ngc/config 2>/dev/null || true)"
+      if [ -z "$ngc_key" ]; then
+        echo "❌ No NGC credentials available to verify the published chart."
+        echo "   (Expected ~/.ngc/config from an 'ngc' entry in NVCM_CHART_TARGETS.)"
+        exit 1
+      fi
+      verify_dir="$(mktemp -d)"
+      helm repo add nvcm-verify "$NVCM_CHART_REPO" --username '$oauthtoken' --password "$ngc_key" >/dev/null
+      helm repo update nvcm-verify >/dev/null
+      helm pull "nvcm-verify/${CHART_NAME}" --version "$PROMOTE_VERSION" --devel -d "$verify_dir"
+      published_chart="${verify_dir}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      if [ ! -f "$published_chart" ]; then
+        echo "❌ Could not pull ${CHART_NAME}:${PROMOTE_VERSION} back from ${NVCM_CHART_REPO}"
+        exit 1
+      fi
+      render_chart "$published_chart" /tmp/render-published.yaml
+      if ! diff -q /tmp/render-validated.yaml /tmp/render-published.yaml >/dev/null; then
+        echo "❌ The chart published at ${PROMOTE_VERSION} does NOT match the package"
+        echo "   this run validated - a different package already existed at this"
+        echo "   version. Refusing to promote an unvalidated chart."
+        diff /tmp/render-validated.yaml /tmp/render-published.yaml | head -40
+        exit 1
+      fi
+      echo "✅ Published chart renders identically to the validated package"
   artifacts:
     reports:
       dotenv: chart.env
