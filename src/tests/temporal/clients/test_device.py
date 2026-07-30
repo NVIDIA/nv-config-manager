@@ -533,15 +533,29 @@ def test_commit_candidate_config_raises_when_diff_changed(juniper_conn):
     cu.commit.assert_not_called()
 
 
-def test_commit_candidate_config_noop_when_no_diff(juniper_conn):
-    """When there is nothing to apply, the candidate is discarded and no commit occurs."""
+def test_commit_candidate_config_no_diff_confirms_pending_commit(juniper_conn):
+    """Empty diff with commit_confirm still issues the confirm."""
     cu = MagicMock()
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
         patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
     ):
-        juniper_conn.commit_candidate_config("config", approved_diff="")
+        juniper_conn.commit_candidate_config("config", approved_diff="", commit_confirm=True)
+    cu.rollback.assert_called_once()
+    cu.commit.assert_called_once()
+    assert "confirm" not in cu.commit.call_args.kwargs
+
+
+def test_commit_candidate_config_no_diff_direct_does_not_commit(juniper_conn):
+    """Empty diff with commit_confirm=False issues no commit at all."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.commit_candidate_config("config", approved_diff="", commit_confirm=False)
     cu.commit.assert_not_called()
     cu.rollback.assert_called_once()
 
@@ -607,6 +621,21 @@ def test_configure_set_loads_and_commits(juniper_conn):
     cu.commit.assert_called_once()
 
 
+def test_configure_set_no_diff_confirms_when_commit_confirm(juniper_conn):
+    """configure_set with commit_confirm and no diff still runs the confirm, so a
+    pending commit-confirm from a retried attempt is not rolled back."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.configure_set(["set a"], commit_confirm=True)
+    cu.rollback.assert_called_once()
+    cu.commit.assert_called_once()
+    assert "confirm" not in cu.commit.call_args.kwargs
+
+
 def test_set_interface_description_builds_set_command(juniper_conn):
     """set_interface_description issues the expected set command."""
     with patch.object(juniper_conn, "configure_set") as mock_configure:
@@ -654,6 +683,34 @@ def test_update_interface_rejects_unsafe_description(juniper_conn, bad_descripti
         with pytest.raises(NetworkDeviceException, match="double quotes and newlines"):
             juniper_conn.update_interface("xe-0/0/1", description=bad_description)
     mock_configure.assert_not_called()
+
+_UNSAFE_INTERFACES = ["ge-0/0/0 unit 0", "ge-0/0/0 disable", "ge 0/0/0", "", "0/0/0"]
+
+
+@pytest.mark.parametrize("bad_interface", _UNSAFE_INTERFACES)
+def test_set_interface_description_rejects_unsafe_interface(juniper_conn, bad_interface):
+    """Interface names with spaces or an invalid form are rejected; no config emitted."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        with pytest.raises(NetworkDeviceException, match="Invalid interface name"):
+            juniper_conn.set_interface_description(bad_interface, "ok-desc")
+    mock_configure.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_interface", _UNSAFE_INTERFACES)
+def test_update_interface_rejects_unsafe_interface(juniper_conn, bad_interface):
+    """update_interface rejects unsafe interface names without emitting statements."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        with pytest.raises(NetworkDeviceException, match="Invalid interface name"):
+            juniper_conn.update_interface(bad_interface, description="ok")
+    mock_configure.assert_not_called()
+
+
+@pytest.mark.parametrize("good_interface", ["ge-0/0/0", "xe-0/0/0.100", "et-0/0/0:1", "ae0", "irb"])
+def test_set_interface_description_accepts_valid_interface(juniper_conn, good_interface):
+    """Valid Junos interface identifiers pass validation and emit a set command."""
+    with patch.object(juniper_conn, "configure_set") as mock_configure:
+        juniper_conn.set_interface_description(good_interface, "desc")
+    mock_configure.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -739,15 +796,30 @@ def test_replace_configuration_raises_when_diff_changed(juniper_conn):
     cu.commit.assert_not_called()
 
 
-def test_replace_configuration_noop_when_no_diff(juniper_conn):
-    """A replace that produces no diff discards the candidate and does not commit."""
+def test_replace_configuration_no_diff_confirms_pending_commit(juniper_conn):
+    """A replace with no diff still confirms so a pending commit-confirm left by a
+    retried attempt is cancelled rather than rolled back."""
     cu = MagicMock()
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
         patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
     ):
-        juniper_conn.replace_configuration("config", approved_diff="")
+        juniper_conn.replace_configuration("config", approved_diff="", commit_confirm=True)
+    cu.rollback.assert_called_once()
+    cu.commit.assert_called_once()
+    assert "confirm" not in cu.commit.call_args.kwargs
+
+
+def test_replace_configuration_no_diff_direct_does_not_commit(juniper_conn):
+    """A replace with no diff and commit_confirm=False issues no commit."""
+    cu = MagicMock()
+    cu.diff.return_value = ""
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        juniper_conn.replace_configuration("config", approved_diff="", commit_confirm=False)
     cu.rollback.assert_called_once()
     cu.commit.assert_not_called()
 

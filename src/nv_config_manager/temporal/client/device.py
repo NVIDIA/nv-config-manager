@@ -2605,14 +2605,13 @@ class JuniperConnection(NetworkConnection):
             with Config(device, mode="exclusive") as cu:
                 self._load_set_config(cu, new_configuration)
                 diff = cu.diff()
-                if not diff:
-                    # Nothing to apply; a previous run may already have committed.
-                    cu.rollback()
-                    return
-                if diff != approved_diff:
+                if diff and diff != approved_diff:
                     cu.rollback()
                     raise DiffChangedException("Diff has changed since approval, aborting.")
-                self._commit(cu, commit_confirm)
+                if diff:
+                    self._commit(cu, commit_confirm)
+                else:
+                    cu.rollback()
         except (ConfigSyntaxException, DiffChangedException):
             raise
         except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
@@ -2621,7 +2620,7 @@ class JuniperConnection(NetworkConnection):
             ) from error
 
         if commit_confirm:
-            # Confirm the pending commit to cancel the rollback timer.
+            # Confirm the pending commit to cancel the rollback timer. 
             self._confirm_commit()
 
     def _confirm_commit(self) -> None:
@@ -2649,10 +2648,10 @@ class JuniperConnection(NetworkConnection):
         try:
             with Config(device, mode="exclusive") as cu:
                 self._load_set_config(cu, configuration)
-                if not cu.diff():
+                if cu.diff():
+                    self._commit(cu, commit_confirm)
+                else:
                     cu.rollback()
-                    return
-                self._commit(cu, commit_confirm)
         except ConfigSyntaxException:
             raise
         except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
@@ -2675,11 +2674,22 @@ class JuniperConnection(NetworkConnection):
                 non_retryable=True,
             )
 
+    _INTERFACE_NAME_RE: ClassVar[re.Pattern[str]] = re.compile(r"^[A-Za-z][A-Za-z0-9./:-]*$")
+
+    @classmethod
+    def _reject_unsafe_interface_name(cls, interface: str) -> None:
+        """Reject interface names that could inject extra Junos statement tokens."""
+        if not cls._INTERFACE_NAME_RE.match(interface):
+            raise NetworkDeviceException(
+                f"Invalid interface name '{interface}'",
+                non_retryable=True,
+            )
+
     def set_interface_description(
         self, interface: str, description: str, *, commit_confirm: bool = False
     ) -> None:
         """Set the description on an interface."""
-        self._reject_unsafe_config_value("interface", interface)
+        self._reject_unsafe_interface_name(interface)
         self._reject_unsafe_config_value("description", description)
         self.configure_set(
             [f'set interfaces {interface} description "{description}"'],
@@ -2696,7 +2706,7 @@ class JuniperConnection(NetworkConnection):
         commit_confirm: bool = False,
     ) -> None:
         """Update common interface attributes (description, admin state, MTU)."""
-        self._reject_unsafe_config_value("interface", interface)
+        self._reject_unsafe_interface_name(interface)
         commands: list[str] = []
         if description is not None:
             self._reject_unsafe_config_value("description", description)
@@ -2796,13 +2806,13 @@ class JuniperConnection(NetworkConnection):
             with Config(device, mode="exclusive") as cu:
                 self._load_replace(cu, new_configuration, config_format, replace_mode)
                 diff = cu.diff()
-                if not diff:
-                    cu.rollback()
-                    return
-                if diff != approved_diff:
+                if diff and diff != approved_diff:
                     cu.rollback()
                     raise DiffChangedException("Diff has changed since approval, aborting.")
-                self._commit(cu, commit_confirm)
+                if diff:
+                    self._commit(cu, commit_confirm)
+                else:
+                    cu.rollback()
         except (ConfigSyntaxException, DiffChangedException):
             raise
         except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
@@ -2835,10 +2845,10 @@ class JuniperConnection(NetworkConnection):
         try:
             with Config(device, mode="exclusive") as cu:
                 cu.rollback(rb_id=rollback_id)
-                if not cu.diff():
+                if cu.diff():
+                    self._commit(cu, commit_confirm)
+                else:
                     cu.rollback()
-                    return
-                self._commit(cu, commit_confirm)
         except (CommitError, LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
             raise NetworkDeviceException(
                 f"Failed to roll back to revision {rollback_id} on {self._host}: {error}"
@@ -2887,10 +2897,10 @@ class JuniperConnection(NetworkConnection):
         try:
             with Config(device, mode="exclusive") as cu:
                 cu.rescue(action="reload")
-                if not cu.diff():
+                if cu.diff():
+                    self._commit(cu, commit_confirm)
+                else:
                     cu.rollback()
-                    return
-                self._commit(cu, commit_confirm)
         except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
             raise NetworkDeviceException(
                 f"Failed to roll back to rescue configuration on {self._host}: {error}"

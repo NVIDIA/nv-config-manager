@@ -123,6 +123,13 @@ PLATFORM_COMMANDS: dict[Platform, set[str]] = {
         "show_inventory",
         "show_mlag",
     },
+    Platform.JUNIPER_JUNOS: {
+        "show_version",
+        "show_interfaces",
+        "show_lldp_neighbors",
+        "show_route_table",
+        "show_arp_table",
+    },
     Platform.MLNX_OS: set(),
     Platform.UFM: set(),
 }
