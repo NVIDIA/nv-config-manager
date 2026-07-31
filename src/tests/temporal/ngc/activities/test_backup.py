@@ -131,6 +131,39 @@ async def test_record_backup_retry_preserves_original_changed_result(
 
 
 @pytest.mark.asyncio
+async def test_record_backup_metadata_only_retry_does_not_rewrite(
+    clients: tuple[MagicMock, AsyncMock],
+) -> None:
+    """A retry after a metadata-only update remains unchanged without another write."""
+    _, nautobot_client = clients
+    nautobot_client.load_config_manager_plugin_backup_config.return_value = {
+        "commit_id": "7",
+        "deployed_commit_id": "previous-intended-commit",
+        "workflow_id": "previous-workflow",
+    }
+    activity_input = _record_input(deployed_commit_id="current-intended-commit")
+
+    changed, display = await record_backup_config_manager_plugin(activity_input)
+
+    assert changed is False
+    assert display.startswith("No diff to previous backup execution:")
+    nautobot_client.update_config_manager_plugin_backup_config.assert_awaited_once()
+
+    nautobot_client.update_config_manager_plugin_backup_config.reset_mock()
+    nautobot_client.load_config_manager_plugin_backup_config.return_value = {
+        "commit_id": "7",
+        "deployed_commit_id": "current-intended-commit",
+        "workflow_id": "previous-workflow",
+    }
+
+    retry_changed, retry_display = await record_backup_config_manager_plugin(activity_input)
+
+    assert retry_changed is False
+    assert retry_display.startswith("No diff to previous backup execution:")
+    nautobot_client.update_config_manager_plugin_backup_config.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_record_backup_treats_empty_deployed_commit_as_none(
     clients: tuple[MagicMock, AsyncMock],
 ) -> None:
