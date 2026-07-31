@@ -165,8 +165,10 @@ if [ -z "$BUILD_PIPELINE_ID" ]; then
         echo "Common causes:"
         echo "  - 'No stages / jobs for this pipeline': nothing matched on ${PR_REF}."
         echo "    The PR branch predates the pr-build CI definitions - rebase it onto main."
-        echo "  - 403/404: the job token cannot trigger pipelines in this project"
-        echo "    (check Settings > CI/CD > Job token permissions)."
+        echo "  - 403/404: several possible causes - NVCM_BUILD_TRIGGER_TOKEN may be"
+        echo "    invalid, revoked, or from another project, or ${PR_REF} may not"
+        echo "    exist or not be accessible. Check Settings > CI/CD > Pipeline"
+        echo "    triggers, and confirm the ref exists on the mirror."
         echo "  - 'Insufficient permissions': the trigger token lacks access to ${PR_REF}."
         exit 1
     fi
