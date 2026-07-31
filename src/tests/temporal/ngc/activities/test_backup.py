@@ -147,3 +147,24 @@ async def test_record_backup_treats_empty_deployed_commit_as_none(
     assert changed is False
     assert display.startswith("No diff to previous backup execution:")
     nautobot_client.update_config_manager_plugin_backup_config.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_backup_normalizes_empty_input_deployed_commit(
+    clients: tuple[MagicMock, AsyncMock],
+) -> None:
+    """An empty input deployed commit matches a stored null value."""
+    _, nautobot_client = clients
+    nautobot_client.load_config_manager_plugin_backup_config.return_value = {
+        "commit_id": "7",
+        "deployed_commit_id": None,
+        "workflow_id": "previous-workflow",
+    }
+
+    changed, display = await record_backup_config_manager_plugin(
+        _record_input(deployed_commit_id="")
+    )
+
+    assert changed is False
+    assert display.startswith("No diff to previous backup execution:")
+    nautobot_client.update_config_manager_plugin_backup_config.assert_not_awaited()

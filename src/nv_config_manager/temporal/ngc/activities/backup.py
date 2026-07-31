@@ -100,10 +100,11 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
         existing_backup = await nbclient.load_config_manager_plugin_backup_config(
             activity_input.device_id
         )
+        deployed_commit_id = activity_input.deployed_commit_id or None
         config_store_changed = existing_backup.get("commit_id") != activity_input.commit_id
         deployed_commit_changed = (
             existing_backup.get("deployed_commit_id") or None
-        ) != activity_input.deployed_commit_id
+        ) != deployed_commit_id
         if not config_store_changed and not deployed_commit_changed:
             # Check if it was updated by this workflow,
             # if so this may be a retry that occurred despite the update succeeding
@@ -128,7 +129,7 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
             activity_input.user,
             activity_input.commit_message,
             workflow_id,
-            activity_input.deployed_commit_id,
+            deployed_commit_id,
         )
     if config_store_changed:
         return True, f"Persisted new backup configuration:\n{markdown}"
