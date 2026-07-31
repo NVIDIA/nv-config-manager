@@ -140,6 +140,60 @@ const StatusField = ({
   );
 };
 
+type SiteFieldProps = {
+  form: ReturnType<typeof useForm<DeviceWorkflowFormSchema>>;
+  sites: { key: string; value: string }[];
+  isLoading: boolean;
+  disabled: boolean;
+  onChange: (value: string | string[]) => void;
+};
+
+const SiteField = ({
+  form,
+  sites,
+  isLoading,
+  disabled,
+  onChange,
+}: Readonly<SiteFieldProps>) => (
+  <WorkflowFormField
+    type="select"
+    control={form.control}
+    name="site"
+    label="Site"
+    options={sites}
+    isLoading={isLoading}
+    disabled={disabled}
+    handleChange={(_, value) => onChange(value)}
+  />
+);
+
+type DeviceFieldProps = {
+  form: ReturnType<typeof useForm<DeviceWorkflowFormSchema>>;
+  devices: DeviceOption[];
+  isLoading: boolean;
+  disabled: boolean;
+  onChange: (value: string | string[]) => void;
+};
+
+const DeviceField = ({
+  form,
+  devices,
+  isLoading,
+  disabled,
+  onChange,
+}: Readonly<DeviceFieldProps>) => (
+  <WorkflowFormField
+    type="select"
+    control={form.control}
+    name="device"
+    label="Device"
+    options={devices}
+    isLoading={isLoading}
+    disabled={disabled}
+    handleChange={(_, value) => onChange(value)}
+  />
+);
+
 export const DeviceWorkflowForm = ({
   title,
   onSubmit,
@@ -229,16 +283,16 @@ export const DeviceWorkflowForm = ({
       const isSiteValid = sites.some((option) => option.key === querySite);
       const siteId = sites.find((option) => option.key === querySite)?.value;
 
-      if (!isSiteValid) {
+      if (isSiteValid) {
+        if (siteId && form.getValues("site") !== siteId) {
+          form.setValue("site", siteId); // Set valid site from URL
+        }
+      } else {
         if (form.getValues("site") !== "") {
           form.setValue("site", ""); // Clear site if invalid
         }
         if (form.getValues("device") !== "") {
           form.setValue("device", ""); // Clear device if site is invalid
-        }
-      } else {
-        if (siteId && form.getValues("site") !== siteId) {
-          form.setValue("site", siteId); // Set valid site from URL
         }
       }
     }
@@ -254,10 +308,8 @@ export const DeviceWorkflowForm = ({
         if (form.getValues("device") !== queryDeviceId) {
           form.setValue("device", queryDeviceId); // Set valid device from URL
         }
-      } else {
-        if (form.getValues("device") !== "") {
-          form.setValue("device", ""); // Clear device if invalid
-        }
+      } else if (form.getValues("device") !== "") {
+        form.setValue("device", ""); // Clear device if invalid
       }
     }
   }, [queryDeviceId, deviceData, form, isManualDeviceChange]);
@@ -323,38 +375,6 @@ export const DeviceWorkflowForm = ({
     }
   };
 
-  const SiteField = () => {
-    return (
-      <WorkflowFormField
-        type="select"
-        control={form.control}
-        name="site"
-        label="Site"
-        options={sites}
-        isLoading={siteIsLoading}
-        disabled={isSubmitting || deviceIsLoading}
-        handleChange={(_, value) => handleSiteChange(value)}
-      />
-    );
-  };
-
-
-
-  const DeviceField = () => {
-    return (
-      <WorkflowFormField
-        type="select"
-        control={form.control}
-        name="device"
-        label="Device"
-        options={deviceData}
-        isLoading={deviceIsLoading || siteIsLoading}
-        disabled={isSubmitting || deviceIsLoading}
-        handleChange={(_, value) => handleDeviceChange(value)}
-      />
-    );
-  };
-
   return (
     <div className="flex items-center justify-center p-6">
       <Card className="h-full border-2 shadow-md justify-center">
@@ -367,7 +387,13 @@ export const DeviceWorkflowForm = ({
               onSubmit={form.handleSubmit(submitWrapper)}
               className="space-y-6"
             >
-              <SiteField />
+              <SiteField
+                form={form}
+                sites={sites}
+                isLoading={siteIsLoading}
+                disabled={isSubmitting || deviceIsLoading}
+                onChange={handleSiteChange}
+              />
               <TenantField
                 form={form}
                 tenants={tenants}
@@ -382,7 +408,13 @@ export const DeviceWorkflowForm = ({
                 isSubmitting={isSubmitting}
                 onManualChange={() => setIsManualStatusChange(true)}
               />
-              <DeviceField />
+              <DeviceField
+                form={form}
+                devices={deviceData}
+                isLoading={deviceIsLoading || siteIsLoading}
+                disabled={isSubmitting || deviceIsLoading}
+                onChange={handleDeviceChange}
+              />
               {showCommitConfirm && (
                 <FormField
                   control={form.control}

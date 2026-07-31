@@ -96,20 +96,28 @@ const isWorkflowPageSize = (pageSize: number): boolean =>
   workflowPageSizeOptions.includes(pageSize);
 
 const getStoredWorkflowPageSize = (): number => {
-  if (typeof window === "undefined") {
+  if (typeof globalThis.window === "undefined") {
     return workflowPageSizeOptions[0];
   }
 
-  const pageSize = Number(window.localStorage.getItem(workflowPageSizeStorageKey));
+  const pageSize = Number(
+    globalThis.window.localStorage.getItem(workflowPageSizeStorageKey)
+  );
   return isWorkflowPageSize(pageSize) ? pageSize : workflowPageSizeOptions[0];
 };
 
 const setStoredWorkflowPageSize = (pageSize: number) => {
-  if (typeof window === "undefined" || !isWorkflowPageSize(pageSize)) {
+  if (
+    typeof globalThis.window === "undefined" ||
+    !isWorkflowPageSize(pageSize)
+  ) {
     return;
   }
 
-  window.localStorage.setItem(workflowPageSizeStorageKey, String(pageSize));
+  globalThis.window.localStorage.setItem(
+    workflowPageSizeStorageKey,
+    String(pageSize)
+  );
 };
 
 const workflowApiFilterParams: Record<string, string> = {
@@ -292,7 +300,9 @@ const areColumnFiltersEqual = (
   );
 };
 
-function Filter({ column }: { column: Column<Workflow, unknown> }) {
+function Filter({
+  column,
+}: Readonly<{ column: Column<Workflow, unknown> }>) {
   const columnFilterValue = (column.getFilterValue() ?? "") as string;
   const { filterOptions, filterVariant, placeholder } = column.columnDef.meta ?? {};
   const selectValues = filterOptions?.map((option) => option.value) ?? [];
@@ -333,7 +343,9 @@ function Filter({ column }: { column: Column<Workflow, unknown> }) {
   );
 }
 
-function ColumnVisibilityMenu({ table }: { table: TanstackTable<Workflow> }) {
+function ColumnVisibilityMenu({
+  table,
+}: Readonly<{ table: TanstackTable<Workflow> }>) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -372,7 +384,74 @@ function ColumnVisibilityMenu({ table }: { table: TanstackTable<Workflow> }) {
   );
 }
 
-export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TValue>) {
+function DataTableRows({
+  isLoading,
+  table,
+  tableData,
+}: Readonly<{
+  isLoading: boolean;
+  table: TanstackTable<Workflow>;
+  tableData: Workflow[];
+}>) {
+  const isPageLoading =
+    isLoading &&
+    table.getState().pagination.pageIndex *
+      table.getState().pagination.pageSize >=
+      tableData.length;
+
+  if (isPageLoading) {
+    return (
+      <TableRow>
+        <TableCell
+          colSpan={table.getVisibleLeafColumns().length}
+          className="h-24 text-center"
+        >
+          <div className="flex items-center justify-center h-full">
+            <LoadingSpinner />
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  const rows = table.getRowModel().rows;
+  if (rows.length > 0) {
+    return rows.map((row) => (
+      <TableRow
+        className="border-border/60 odd:bg-background/35 even:bg-muted/10 hover:bg-muted/30"
+        key={row.id}
+        data-state={row.getIsSelected() && "selected"}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <TableCell
+            className={cn(
+              "border-r border-border/30 px-3 py-3 last:border-r-0",
+              cell.column.columnDef.meta?.className
+            )}
+            key={cell.id}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        ))}
+      </TableRow>
+    ));
+  }
+
+  return (
+    <TableRow>
+      <TableCell
+        colSpan={table.getVisibleLeafColumns().length}
+        className="h-24 text-center"
+      >
+        No results.
+      </TableCell>
+    </TableRow>
+  );
+}
+
+export function DataTable<TData, TValue>({
+  columns,
+}: Readonly<DataTableProps<TData, TValue>>) {
   const { config } = useRuntimeConfig();
   const apiURL = config?.workflowApiUrl;
   const pathname = usePathname();
@@ -824,53 +903,11 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
             ))}
           </TableHeader>
           <TableBody className="bg-card">
-            {isLoading &&
-            table.getState().pagination.pageIndex *
-              table.getState().pagination.pageSize >=
-              tableData.length ? (
-              <TableRow>
-                <TableCell
-                  colSpan={table.getVisibleLeafColumns().length}
-                  className="h-24 text-center"
-                >
-                  <div className="flex items-center justify-center h-full">
-                    <LoadingSpinner />
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  className="border-border/60 odd:bg-background/35 even:bg-muted/10 hover:bg-muted/30"
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      className={cn(
-                        "border-r border-border/30 px-3 py-3 last:border-r-0",
-                        cell.column.columnDef.meta?.className
-                      )}
-                      key={cell.id}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={table.getVisibleLeafColumns().length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
-            )}
+            <DataTableRows
+              isLoading={isLoading}
+              table={table}
+              tableData={tableData}
+            />
           </TableBody>
         </Table>
         <div className="flex items-center justify-between w-full border-t border-border/70 bg-muted/20 p-4">

@@ -18,9 +18,12 @@ import * as React from "react";
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { badgeVariants, BadgeProps } from "@/components/ui/badge";
-import { StateHistory, WorkflowStage } from "@/types/data-table.types";
+import {
+  StateHistory,
+  Workflow,
+  WorkflowStage,
+} from "@/types/data-table.types";
 import { Link } from "@/components/ui/link";
-import { Workflow } from "@/types/data-table.types";
 import { Option } from "@/types/workflow-form.types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -57,10 +60,7 @@ export function getInitialStage(stages: WorkflowStage[]): WorkflowStage | null {
   const failed = stages.find((stage) => stage.state === "FAILED");
 
   const completeStages = stages.filter((stage) => stage.state === "COMPLETE");
-  const lastCompleted =
-    completeStages.length > 0
-      ? completeStages[completeStages.length - 1]
-      : null;
+  const lastCompleted = completeStages.at(-1) ?? null;
 
   return inProgress ?? failed ?? lastCompleted ?? stages[0];
 }
@@ -175,7 +175,7 @@ export const startWorkflow = async (endpoint: string, params: object) => {
       }
     }
     const result = await response.json();
-    window.location.href = `/workflows/${result.id}`;
+    globalThis.window.location.href = `/workflows/${result.id}`;
   });
 };
 

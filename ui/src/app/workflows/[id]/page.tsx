@@ -31,7 +31,7 @@ import { Workflow } from "@/types/data-table.types";
 // Force dynamic rendering since we need runtime config
 export const dynamic = 'force-dynamic';
 
-export default function WorkflowPage({ params }: WorkflowPageProps) {
+export default function WorkflowPage({ params }: Readonly<WorkflowPageProps>) {
   const { id } = use(params);
   const { config } = useRuntimeConfig();
   const apiURL = config?.workflowApiUrl;
@@ -52,7 +52,7 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
         error={error}
         errorConfig={getErrorConfig(error)}
         reset={function (): void {
-          window.location.reload();
+          globalThis.window.location.reload();
         }}
       />
     );

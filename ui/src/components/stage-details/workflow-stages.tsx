@@ -460,8 +460,8 @@ export const WorkflowClientComponent: React.FC<
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {stage.state_history.map((state, index) => (
-                              <TableRow key={index}>
+                            {stage.state_history.map((state) => (
+                              <TableRow key={`${state.state}-${state.time}`}>
                                 <TableCell>
                                   <Badge
                                     className={handleBadgeClassName(

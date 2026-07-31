@@ -141,13 +141,11 @@ export default function ConfigHistoryPage({
       setSelectedVersions([version, null]);
     } else if (selectedVersions[1] === null) {
       // One version selected, select this as the second
-      if (version !== selectedVersions[0]) {
-        // Ensure from_version is always less than to_version
-        if (version < selectedVersions[0]) {
-          setSelectedVersions([version, selectedVersions[0]]);
-        } else {
-          setSelectedVersions([selectedVersions[0], version]);
-        }
+      // Ensure from_version is always less than to_version
+      if (version < selectedVersions[0]) {
+        setSelectedVersions([version, selectedVersions[0]]);
+      } else {
+        setSelectedVersions([selectedVersions[0], version]);
       }
     } else {
       // Both versions selected, replace with this one
