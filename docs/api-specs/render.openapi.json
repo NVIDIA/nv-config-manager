@@ -158,6 +158,11 @@
             "title": "Remaining Pending",
             "type": "integer"
           },
+          "reset_seq": {
+            "default": 0,
+            "title": "Reset Seq",
+            "type": "integer"
+          },
           "skipped": {
             "default": 0,
             "title": "Skipped",
@@ -409,7 +414,7 @@
     },
     "/v1/admin/consumers/reset-all": {
       "delete": {
-        "description": "Fast-forward every consumer past its backlog, acking pending messages unprocessed.",
+        "description": "Fast-forward every consumer past its backlog with the JetStream consumer reset API.",
         "operationId": "reset_all_consumers_v1_admin_consumers_reset_all_delete",
         "responses": {
           "200": {
@@ -499,7 +504,7 @@
     },
     "/v1/admin/consumers/{consumer_type}/reset": {
       "delete": {
-        "description": "Fast-forward a consumer past its backlog by acking pending messages unprocessed.\n\nThe consumer is kept in place rather than deleted, so this works identically on\nlocally owned streams and on streams imported from another NATS account.",
+        "description": "Fast-forward a consumer past its backlog with the JetStream consumer reset API.\n\nThe consumer is moved in place rather than deleted, so this works identically on\nlocally owned streams and on streams imported from another NATS account.",
         "operationId": "reset_consumer_v1_admin_consumers__consumer_type__reset_delete",
         "parameters": [
           {

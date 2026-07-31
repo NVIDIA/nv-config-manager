@@ -14,14 +14,16 @@
 # limitations under the License.
 """Tests for the admin v1 API endpoints."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from nats.errors import NoRespondersError
 from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js.errors import NotFoundError
 
-from nv_config_manager.render.api.admin_v1 import FAST_FORWARD_BATCH, fast_forward_consumer
+from nv_config_manager.render.api.admin_v1 import ConsumerResetRejected, fast_forward_consumer
 from nv_config_manager.render.api.main import app
 
 
@@ -67,34 +69,33 @@ def create_test_mocks():
     return mock_config_obj, mock_get_connection, mock_conn, mock_js
 
 
-def setup_fast_forward(mock_conn, mock_js, backlog):
-    """Wire the drain path so a bound subscription yields `backlog` messages then empties.
+def setup_consumer_reset(mock_conn, mock_js, backlog, last_seq=1000, remaining=0):
+    """Wire the reset path: `backlog` pending on entry, `remaining` once reset lands.
 
-    ``consumer_info`` reports the shrinking backlog, so the endpoint sees the same
-    before/after counts a real consumer would report.
+    ``consumer_info`` is read either side of the reset, so returning two counts mirrors
+    what a real consumer reports before and after its cursor moves.
     """
-    mock_conn.flush = AsyncMock()
-    pending = {"count": backlog}
+    seen: dict[str, int] = {}
 
     async def mock_consumer_info(stream, consumer):
-        return MockConsumerInfo(num_pending=pending["count"])
+        # Tracked per consumer so reset-all sees an entry backlog for each of them.
+        reads = seen.get(consumer, 0)
+        seen[consumer] = reads + 1
+        return MockConsumerInfo(num_pending=backlog if reads == 0 else remaining)
 
     mock_js.consumer_info.side_effect = mock_consumer_info
 
-    requested_batches: list[int] = []
+    async def mock_stream_info(stream):
+        info = MagicMock()
+        info.state.last_seq = last_seq
+        return info
 
-    async def mock_fetch(batch, timeout):
-        if pending["count"] <= 0:
-            raise NatsTimeoutError
-        requested_batches.append(batch)
-        count = min(batch, pending["count"])
-        pending["count"] -= count
-        return [MagicMock(ack=AsyncMock()) for _ in range(count)]
+    mock_js.stream_info.side_effect = mock_stream_info
 
-    subscription = MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
-    subscription.requested_batches = requested_batches
-    mock_js.pull_subscribe_bind = AsyncMock(return_value=subscription)
-    return subscription
+    mock_conn.request = AsyncMock(
+        return_value=MagicMock(data=json.dumps({"reset_seq": last_seq + 1}).encode())
+    )
+    return mock_conn.request
 
 
 class TestConsumerList:
@@ -268,12 +269,12 @@ class TestResetConsumer:
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
     def test_reset_consumer_success(self, mock_get_conn, mock_load_config):
-        """Reset walks the consumer past its backlog and reports how much it skipped."""
+        """Reset moves the consumer past its backlog and reports how much it skipped."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        setup_fast_forward(mock_conn, mock_js, backlog=50)
+        setup_consumer_reset(mock_conn, mock_js, backlog=50, last_seq=1000)
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/nautobot/reset")
@@ -286,6 +287,7 @@ class TestResetConsumer:
         assert data["status"] == "success"
         assert data["skipped"] == 50
         assert data["remaining_pending"] == 0
+        assert data["reset_seq"] == 1001
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
@@ -295,50 +297,77 @@ class TestResetConsumer:
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        setup_fast_forward(mock_conn, mock_js, backlog=5)
+        request = setup_consumer_reset(mock_conn, mock_js, backlog=5, last_seq=42)
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/nautobot/reset")
 
         assert response.status_code == 200
         mock_js.delete_consumer.assert_not_called()
-        # Binding names the stream so the client never resolves it via STREAM.NAMES.
-        mock_js.pull_subscribe_bind.assert_called_once_with(
-            durable="test-queue-nautobot", stream="nautobot"
-        )
+
+        # The reset subject carries the imported stream's prefix, and the target sits one
+        # past the last stored sequence so the consumer lands at the head of the stream.
+        subject, payload = request.await_args.args[0], request.await_args.args[1]
+        assert subject == "$JS.CUSTOM.API.CONSUMER.RESET.nautobot.test-queue-nautobot"
+        assert json.loads(payload) == {"seq": 43}
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
-    def test_reset_consumer_partial_when_budget_exhausted(self, mock_get_conn, mock_load_config):
-        """A backlog larger than one pass reports partial progress instead of hanging."""
+    def test_reset_consumer_reports_new_arrivals_as_success(self, mock_get_conn, mock_load_config):
+        """Reset is atomic, so a backlog afterwards is new traffic rather than a failure."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        mock_conn.flush = AsyncMock()
-
-        async def mock_consumer_info(stream, consumer):
-            return MockConsumerInfo(num_pending=1000)
-
-        mock_js.consumer_info.side_effect = mock_consumer_info
-
-        # The stream keeps handing back messages, so only the budget stops the loop.
-        async def mock_fetch(batch, timeout):
-            return [MagicMock(ack=AsyncMock()) for _ in range(batch)]
-
-        mock_js.pull_subscribe_bind = AsyncMock(
-            return_value=MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
-        )
+        setup_consumer_reset(mock_conn, mock_js, backlog=1000, remaining=7)
 
         client = TestClient(app)
-        with patch("nv_config_manager.render.api.admin_v1.FAST_FORWARD_BUDGET_SECONDS", 0.0):
-            response = client.delete("/v1/admin/consumers/device/reset")
+        response = client.delete("/v1/admin/consumers/device/reset")
 
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "partial"
-        assert data["remaining_pending"] == 1000
-        assert "Call reset again" in data["message"]
+        assert data["status"] == "success"
+        assert data["skipped"] == 1000
+        assert data["remaining_pending"] == 7
+        assert "arrived since" in data["message"]
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_consumer_unavailable_when_server_lacks_reset(
+        self, mock_get_conn, mock_load_config
+    ):
+        """A server below 2.14, or a stream missing the export, leaves the call unanswered."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        setup_consumer_reset(mock_conn, mock_js, backlog=10)
+        mock_conn.request = AsyncMock(side_effect=NoRespondersError)
+
+        client = TestClient(app)
+        response = client.delete("/v1/admin/consumers/device/reset")
+
+        assert response.status_code == 503
+        assert "2.14.0+" in response.json()["detail"]
+        mock_conn.close.assert_awaited_once()
+
+    @patch("nv_config_manager.render.api.admin_v1.load_config")
+    @patch("nv_config_manager.render.api.admin_v1.nats_connection")
+    def test_reset_consumer_unavailable_when_server_rejects(self, mock_get_conn, mock_load_config):
+        """The server refuses reset on an ineligible consumer; surface its reason."""
+        mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
+        mock_load_config.return_value = mock_config_obj
+        mock_get_conn.side_effect = mock_get_connection
+
+        setup_consumer_reset(mock_conn, mock_js, backlog=10)
+        rejection = {"error": {"err_code": 10166, "description": "deliver policy not supported"}}
+        mock_conn.request = AsyncMock(return_value=MagicMock(data=json.dumps(rejection).encode()))
+
+        client = TestClient(app)
+        response = client.delete("/v1/admin/consumers/device/reset")
+
+        assert response.status_code == 503
+        assert "deliver policy not supported" in response.json()["detail"]
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
@@ -373,29 +402,18 @@ class TestResetConsumer:
 
     @patch("nv_config_manager.render.api.admin_v1.load_config")
     @patch("nv_config_manager.render.api.admin_v1.nats_connection")
-    def test_reset_consumer_fetch_error(self, mock_get_conn, mock_load_config):
-        """An unexpected failure while draining surfaces as a server error."""
+    def test_reset_consumer_unexpected_error(self, mock_get_conn, mock_load_config):
+        """An unexpected failure during reset surfaces as a server error."""
         mock_config_obj, mock_get_connection, mock_conn, mock_js = create_test_mocks()
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        mock_conn.flush = AsyncMock()
-
-        async def mock_consumer_info(stream, consumer):
-            return MockConsumerInfo(num_pending=10)
-
-        mock_js.consumer_info.side_effect = mock_consumer_info
-
-        async def mock_fetch(batch, timeout):
-            raise Exception("Unexpected error")
-
-        mock_js.pull_subscribe_bind = AsyncMock(
-            return_value=MagicMock(fetch=mock_fetch, unsubscribe=AsyncMock())
-        )
+        setup_consumer_reset(mock_conn, mock_js, backlog=10)
+        mock_conn.request = AsyncMock(side_effect=Exception("Unexpected error"))
 
         client = TestClient(app)
         # Must be a type get_consumer_configs actually returns; "template" is in the
-        # enum but has no config, so it would 500 on a KeyError before reaching fetch.
+        # enum but has no config, so it would 500 on a KeyError before reaching reset.
         response = client.delete("/v1/admin/consumers/device/reset")
 
         assert response.status_code == 500
@@ -404,43 +422,54 @@ class TestResetConsumer:
 
 
 class TestFastForward:
-    """Tests for the drain helper that backs reset."""
+    """Tests for the reset helper that backs the endpoints."""
 
-    async def _drain(self, backlog):
-        mock_conn = MagicMock(flush=AsyncMock())
+    async def _reset(self, backlog, last_seq=1000, remaining=0, api_prefix="$JS.API"):
+        mock_conn = MagicMock()
         mock_js = MagicMock()
-        setup_fast_forward(mock_conn, mock_js, backlog=backlog)
-        config = {"durable_name": "test-queue-nautobot", "stream": "nautobot"}
-        return mock_conn, mock_js, await fast_forward_consumer(mock_conn, mock_js, config)
+        request = setup_consumer_reset(
+            mock_conn, mock_js, backlog=backlog, last_seq=last_seq, remaining=remaining
+        )
+        config = {
+            "durable_name": "test-queue-nautobot",
+            "stream": "nautobot",
+            "api_prefix": api_prefix,
+        }
+        return request, await fast_forward_consumer(mock_conn, mock_js, config)
 
     @pytest.mark.asyncio
-    async def test_batches_stay_under_max_ack_pending(self):
-        """Batches must stay small enough that unacked messages never cap the consumer."""
-        _, mock_js, (skipped, remaining) = await self._drain(600)
+    async def test_targets_one_past_the_last_stored_sequence(self):
+        """Reset asks for the sequence after the stream head so nothing stored is delivered."""
+        request, (skipped, remaining, reset_seq) = await self._reset(600, last_seq=5000)
 
-        assert (skipped, remaining) == (600, 0)
-        # The final batch asks only for what is left rather than overshooting the backlog.
-        assert mock_js.pull_subscribe_bind.return_value.requested_batches == [
-            FAST_FORWARD_BATCH,
-            FAST_FORWARD_BATCH,
-            600 - 2 * FAST_FORWARD_BATCH,
-        ]
+        assert (skipped, remaining, reset_seq) == (600, 0, 5001)
+        assert json.loads(request.await_args.args[1]) == {"seq": 5001}
 
     @pytest.mark.asyncio
-    async def test_acks_are_flushed_between_batches(self):
-        """Acks are fire-and-forget, so each batch flushes before asking for the next."""
-        mock_conn, _, (skipped, _) = await self._drain(600)
+    async def test_uses_the_streams_configured_api_prefix(self):
+        """An imported stream is reachable only under the prefix its account was mapped to."""
+        request, _ = await self._reset(10, api_prefix="$JS.CEREBRO.API")
 
-        assert skipped == 600
-        assert mock_conn.flush.await_count == 3
+        assert request.await_args.args[0].startswith("$JS.CEREBRO.API.CONSUMER.RESET.")
 
     @pytest.mark.asyncio
-    async def test_empty_backlog_fetches_nothing(self):
-        """A consumer already at the end of the stream needs no fetches at all."""
-        _, mock_js, (skipped, remaining) = await self._drain(0)
+    async def test_empty_backlog_still_resets(self):
+        """Reset costs one call regardless of backlog, so an idle consumer is not special-cased."""
+        request, (skipped, remaining, _) = await self._reset(0)
 
         assert (skipped, remaining) == (0, 0)
-        mock_js.pull_subscribe_bind.return_value.unsubscribe.assert_awaited_once()
+        request.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_response_is_rejected(self):
+        """A server without the reset API never replies, which must not look like success."""
+        mock_conn, mock_js = MagicMock(), MagicMock()
+        setup_consumer_reset(mock_conn, mock_js, backlog=5)
+        mock_conn.request = AsyncMock(side_effect=NatsTimeoutError)
+        config = {"durable_name": "test-queue-nautobot", "stream": "nautobot"}
+
+        with pytest.raises(ConsumerResetRejected, match="2.14.0"):
+            await fast_forward_consumer(mock_conn, mock_js, config)
 
 
 class TestResetAllConsumers:
@@ -454,7 +483,7 @@ class TestResetAllConsumers:
         mock_load_config.return_value = mock_config_obj
         mock_get_conn.side_effect = mock_get_connection
 
-        setup_fast_forward(mock_conn, mock_js, backlog=10)
+        setup_consumer_reset(mock_conn, mock_js, backlog=10)
 
         client = TestClient(app)
         response = client.delete("/v1/admin/consumers/reset-all")
@@ -591,8 +620,8 @@ class TestIntegration:
         assert response.status_code == 200
         assert response.json()["num_pending"] == 100
 
-        # Reset walks the consumer past those 100 messages without deleting it.
-        setup_fast_forward(mock_conn, mock_js, backlog=100)
+        # Reset moves the consumer past those 100 messages without deleting it.
+        setup_consumer_reset(mock_conn, mock_js, backlog=100)
 
         response = client.delete("/v1/admin/consumers/device/reset")
         assert response.status_code == 200

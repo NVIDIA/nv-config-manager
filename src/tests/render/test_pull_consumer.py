@@ -15,10 +15,12 @@
 """Tests for the NATS pull consumer module."""
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nats.aio.msg import Msg
+from nats.js.api import DeliverPolicy
 from nats.js.errors import NotFoundError, ServiceUnavailableError
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
@@ -420,6 +422,29 @@ async def test_ensure_consumer_exists_new_consumer(custom_ini, mock_jetstream):
     # Should call consumer_info and add_consumer
     mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
     mock_jetstream.add_consumer.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_consumer_exists_uses_resettable_deliver_policy(custom_ini, mock_jetstream):
+    """$JS.API.CONSUMER.RESET refuses deliver_policy=new, so consumers start by time."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+    mock_jetstream.consumer_info.side_effect = NotFoundError
+
+    before = datetime.now(UTC)
+    await consumer._ensure_consumer_exists()
+    after = datetime.now(UTC)
+
+    config = mock_jetstream.add_consumer.await_args.kwargs["config"]
+    assert config.deliver_policy is DeliverPolicy.BY_START_TIME
+    # Starting at creation time reproduces what deliver_policy=new gave us, so a new
+    # consumer still ignores everything already on the stream.
+    assert before <= config.opt_start_time <= after
 
 
 @pytest.mark.asyncio

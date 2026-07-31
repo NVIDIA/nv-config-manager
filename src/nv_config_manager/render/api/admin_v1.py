@@ -14,12 +14,13 @@
 # limitations under the License.
 """V1 Admin API Endpoints for NATS Consumer Management."""
 
-import time
+import json
 from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from nats.aio.client import Client
+from nats.errors import NoRespondersError
 from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js import JetStreamContext
 from nats.js.errors import NotFoundError
@@ -54,12 +55,9 @@ responses: dict[int | str, dict[str, Any]] = {
 router = APIRouter(prefix="/admin", responses=responses)
 logger = get_logger(__name__, category=LogCategory.RENDER_API)
 
-# Fast-forward tuning. The batch stays under the consumers' max_ack_pending so a drain
-# never stalls waiting for the server to register acks, and the budget bounds the request
-# so a large backlog returns partial progress rather than hanging.
-FAST_FORWARD_BATCH = 256
-FAST_FORWARD_FETCH_TIMEOUT_SECONDS = 2.0
-FAST_FORWARD_BUDGET_SECONDS = 30.0
+# Reset is a single server-side cursor move, so it needs only a normal request timeout
+# rather than a budget scaled to the size of the backlog.
+CONSUMER_RESET_TIMEOUT_SECONDS = 10.0
 
 
 class ConsumerInfo(BaseModel):
@@ -82,6 +80,7 @@ class ConsumerResetResponse(BaseModel):
     message: str
     skipped: int = 0
     remaining_pending: int = 0
+    reset_seq: int = 0
 
 
 class ConsumerListResponse(BaseModel):
@@ -121,52 +120,61 @@ def jetstream_for_consumer(nats_conn: Client, consumer_config: dict[str, str]) -
     return nats_conn.jetstream(prefix=consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX))
 
 
+class ConsumerResetRejected(Exception):
+    """The server refused a $JS.API.CONSUMER.RESET request."""
+
+    def __init__(self, description: str, err_code: int | None = None) -> None:
+        super().__init__(description)
+        self.description = description
+        self.err_code = err_code
+
+
 async def fast_forward_consumer(
     nats_conn: Client, jetstream: JetStreamContext, consumer_config: dict[str, str]
-) -> tuple[int, int]:
-    """Advance a consumer past its backlog by acking pending messages without processing them.
+) -> tuple[int, int, int]:
+    """Fast-forward a consumer past its backlog using $JS.API.CONSUMER.RESET.
 
-    This binds to the existing durable rather than deleting it. A stream imported from
-    another NATS account exports CONSUMER.MSG.NEXT and $JS.ACK but not the consumer
-    create/delete API, so fetching and acking is the only way to move a cursor there.
+    Reset moves the delivery cursor server-side in one call, so unlike deleting and
+    recreating the consumer it needs no consumer management rights on the stream, and
+    unlike draining it costs no round trip per message. Requires nats-server 2.14.0+
+    and a consumer whose deliver_policy is not `new` -- see ADR-60.
 
-    Returns the number of messages skipped and the backlog still outstanding.
+    Returns the backlog skipped, the backlog still outstanding, and the stream sequence
+    the consumer was reset to.
     """
     durable = consumer_config["durable_name"]
     stream = consumer_config["stream"]
+    api_prefix = consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX)
 
+    # Raises NotFoundError for an absent consumer, which callers turn into a 404 before
+    # any reset is attempted.
     backlog = (await jetstream.consumer_info(stream=stream, consumer=durable)).num_pending
 
-    # Naming the stream is required: resolving it from the subject would call the
-    # unexported STREAM.NAMES endpoint. Binding itself issues no JetStream API call.
-    subscription = await jetstream.pull_subscribe_bind(durable=durable, stream=stream)
+    # Reset leaves the consumer so the next message it delivers has a stream sequence
+    # >= seq, so one past the last stored sequence puts it at the head of the stream.
+    target_seq = (await jetstream.stream_info(stream)).state.last_seq + 1
 
-    skipped = 0
-    deadline = time.monotonic() + FAST_FORWARD_BUDGET_SECONDS
-
+    subject = f"{api_prefix}.CONSUMER.RESET.{stream}.{durable}"
     try:
-        # Stop at the backlog measured on entry so a busy stream cannot loop forever.
-        while skipped < backlog and time.monotonic() < deadline:
-            try:
-                messages = await subscription.fetch(
-                    batch=min(FAST_FORWARD_BATCH, backlog - skipped),
-                    timeout=FAST_FORWARD_FETCH_TIMEOUT_SECONDS,
-                )
-            except NatsTimeoutError:
-                break
+        response = await nats_conn.request(
+            subject,
+            json.dumps({"seq": target_seq}).encode(),
+            timeout=CONSUMER_RESET_TIMEOUT_SECONDS,
+        )
+    except (NoRespondersError, NatsTimeoutError) as exc:
+        raise ConsumerResetRejected(
+            f"No response on {subject}. Reset requires nats-server 2.14.0+, and on a"
+            " stream imported from another account an export covering the subject."
+        ) from exc
 
-            for message in messages:
-                await message.ack()
-            skipped += len(messages)
-
-            # Acks are fire-and-forget publishes, so flush before the next fetch to let
-            # the server clear them from the outstanding count.
-            await nats_conn.flush()
-    finally:
-        await subscription.unsubscribe()
+    payload = json.loads(response.data)
+    if error := payload.get("error"):
+        raise ConsumerResetRejected(
+            error.get("description", "consumer reset rejected"), error.get("err_code")
+        )
 
     remaining = (await jetstream.consumer_info(stream=stream, consumer=durable)).num_pending
-    return skipped, remaining
+    return backlog, remaining, int(payload.get("reset_seq", target_seq))
 
 
 @router.get("/consumers", response_model=ConsumerListResponse)
@@ -217,26 +225,23 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
         raise HTTPException(status_code=500, detail="Failed to list consumers") from exc
 
 
-def _reset_result(consumer_config: dict[str, str], skipped: int, remaining: int) -> tuple[str, str]:
-    """Describe the outcome of a fast-forward for the given consumer."""
-    durable = consumer_config["durable_name"]
-    if remaining:
-        return (
-            "partial",
-            f"Consumer '{durable}' skipped {skipped} message(s); {remaining} still pending."
-            f" Call reset again to continue.",
-        )
-    return (
-        "success",
-        f"Consumer '{durable}' fast-forwarded past {skipped} message(s); no backlog remains.",
+def _reset_message(consumer_config: dict[str, str], skipped: int, remaining: int) -> str:
+    """Describe the outcome of a reset for the given consumer."""
+    message = (
+        f"Consumer '{consumer_config['durable_name']}' fast-forwarded past {skipped} message(s)."
     )
+    if remaining:
+        # The reset itself is atomic, so a backlog now means new arrivals rather than
+        # progress left to make. Saying so avoids reading it as a failed reset.
+        message += f" {remaining} message(s) have arrived since."
+    return message
 
 
 @router.delete("/consumers/{consumer_type}/reset", response_model=ConsumerResetResponse)
 async def reset_consumer(consumer_type: ConsumerType, request: Request) -> ConsumerResetResponse:
-    """Fast-forward a consumer past its backlog by acking pending messages unprocessed.
+    """Fast-forward a consumer past its backlog with the JetStream consumer reset API.
 
-    The consumer is kept in place rather than deleted, so this works identically on
+    The consumer is moved in place rather than deleted, so this works identically on
     locally owned streams and on streams imported from another NATS account.
     """
 
@@ -249,17 +254,21 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
             jetstream = jetstream_for_consumer(nats_conn, config)
 
             try:
-                skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
+                skipped, remaining, reset_seq = await fast_forward_consumer(
+                    nats_conn, jetstream, config
+                )
             except NotFoundError as exc:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Consumer '{config['durable_name']}' not found",
                 ) from exc
+            except ConsumerResetRejected as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-            status, message = _reset_result(config, skipped, remaining)
             logger.info(
-                "Fast-forwarded consumer %s: skipped %d, %d still pending",
+                "Reset consumer %s to sequence %d: skipped %d, %d pending",
                 config["durable_name"],
+                reset_seq,
                 skipped,
                 remaining,
             )
@@ -267,10 +276,11 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
             return ConsumerResetResponse(
                 consumer_name=config["durable_name"],
                 stream=config["stream"],
-                status=status,
-                message=message,
+                status="success",
+                message=_reset_message(config, skipped, remaining),
                 skipped=skipped,
                 remaining_pending=remaining,
+                reset_seq=reset_seq,
             )
         finally:
             await nats_conn.close()
@@ -284,7 +294,7 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
 
 @router.delete("/consumers/reset-all", response_model=list[ConsumerResetResponse])
 async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
-    """Fast-forward every consumer past its backlog, acking pending messages unprocessed."""
+    """Fast-forward every consumer past its backlog with the JetStream consumer reset API."""
     try:
         results = []
         consumer_configs = get_consumer_configs()
@@ -295,12 +305,17 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                 jetstream = jetstream_for_consumer(nats_conn, config)
                 skipped = 0
                 remaining = 0
+                reset_seq = 0
                 try:
-                    skipped, remaining = await fast_forward_consumer(nats_conn, jetstream, config)
-                    status, message = _reset_result(config, skipped, remaining)
+                    skipped, remaining, reset_seq = await fast_forward_consumer(
+                        nats_conn, jetstream, config
+                    )
+                    status = "success"
+                    message = _reset_message(config, skipped, remaining)
                     logger.info(
-                        "Fast-forwarded consumer %s: skipped %d, %d still pending",
+                        "Reset consumer %s to sequence %d: skipped %d, %d pending",
                         config["durable_name"],
+                        reset_seq,
                         skipped,
                         remaining,
                     )
@@ -314,9 +329,7 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
 
                 except Exception as e:
                     status = "error"
-                    message = (
-                        f"Failed to fast-forward consumer '{config['durable_name']}': {str(e)}"
-                    )
+                    message = f"Failed to reset consumer '{config['durable_name']}': {str(e)}"
                     logger.error(f"Error processing consumer {consumer_type}: {e}")
 
                 results.append(
@@ -327,6 +340,7 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                         message=message,
                         skipped=skipped,
                         remaining_pending=remaining,
+                        reset_seq=reset_seq,
                     )
                 )
 

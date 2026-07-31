@@ -22,6 +22,7 @@ import os
 import signal
 import ssl
 from asyncio import AbstractEventLoop
+from datetime import UTC, datetime
 
 import nats
 import nats.errors
@@ -265,8 +266,13 @@ class PullConsumer:
             raise RuntimeError("JetStream context is None")
 
         try:
+            # by_start_time rather than new: $JS.API.CONSUMER.RESET refuses to move a
+            # consumer whose deliver_policy is new (ADR-60), and reset is how the admin
+            # API fast-forwards past a backlog. Starting at creation time reproduces
+            # what new gives us, so a freshly created consumer still ignores history.
             config = ConsumerConfig(
-                deliver_policy=DeliverPolicy.NEW,
+                deliver_policy=DeliverPolicy.BY_START_TIME,
+                opt_start_time=datetime.now(UTC),
                 ack_wait=360,
                 durable_name=self.queue,
                 filter_subject=self.subject,
