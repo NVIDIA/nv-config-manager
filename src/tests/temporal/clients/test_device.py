@@ -468,13 +468,32 @@ def test_get_hostname_and_running_image_use_facts(juniper_conn):
 
 
 def test_get_hostname_raises_when_absent(juniper_conn):
-    """A hostname the reachable device does not report is non-retryable."""
+    """A hostname still missing after a refresh on a reachable device is non-retryable."""
     device = MagicMock()
     device.facts = {"hostname": None}
     with patch.object(juniper_conn, "_get_device", return_value=device):
         with pytest.raises(ApplicationError) as excinfo:
             juniper_conn.get_hostname()
+    device.facts_refresh.assert_called_once_with(keys="hostname")
     assert excinfo.value.non_retryable is True
+
+
+def test_get_hostname_recovers_from_cached_none_fact(juniper_conn):
+    """A None cached by an earlier failed gather is refreshed rather than reported absent."""
+    device = MagicMock()
+    device.facts.get.side_effect = [None, "RTR1"]
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        assert juniper_conn.get_hostname() == "RTR1"
+    device.facts_refresh.assert_called_once_with(keys="hostname")
+
+
+def test_get_running_image_recovers_from_cached_none_fact(juniper_conn):
+    """The running image read recovers from a stale None the same way."""
+    device = MagicMock()
+    device.facts.get.side_effect = [None, "24.4R2-S3.7-EVO"]
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        assert juniper_conn.get_running_image() == "24.4R2-S3.7-EVO"
+    device.facts_refresh.assert_called_once_with(keys="version")
 
 
 def test_get_hostname_retries_when_fact_gathering_failed(juniper_conn):

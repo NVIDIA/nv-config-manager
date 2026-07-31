@@ -2457,8 +2457,9 @@ class JuniperConnection(NetworkConnection):
         """Return a PyEZ fact, or None when the device does not report one.
 
         The PyEZ fact cache swallows RPC and transport errors and caches None in
-        their place, so an empty fact is re-checked against a live RPC to tell a
-        value the device does not have from one that failed to read.
+        their place for the life of the session. An empty fact is therefore
+        re-checked against a live RPC: a failure there stays retryable, while a
+        device that answers gets the fact re-gathered before it is called absent.
         """
         device = self._get_device()
         value = device.facts.get(name)
@@ -2466,11 +2467,12 @@ class JuniperConnection(NetworkConnection):
             return value
         try:
             device.rpc.get_software_information()
+            device.facts_refresh(keys=name)
         except (RpcError, ConnectError) as error:
             raise NetworkDeviceException(
                 f"Failed to read the {name} fact from {self._host}: {error}"
             ) from error
-        return None
+        return device.facts.get(name)
 
     def _get_config(self, fmt: str) -> str:
         """Return the committed configuration in the requested format."""
