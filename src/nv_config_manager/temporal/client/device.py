@@ -2453,6 +2453,25 @@ class JuniperConnection(NetworkConnection):
                 f"RPC {rpc_name} failed on {self._host}: {error}"
             ) from error
 
+    def _get_fact(self, name: str) -> Any:
+        """Return a PyEZ fact, or None when the device does not report one.
+
+        The PyEZ fact cache swallows RPC and transport errors and caches None in
+        their place, so an empty fact is re-checked against a live RPC to tell a
+        value the device does not have from one that failed to read.
+        """
+        device = self._get_device()
+        value = device.facts.get(name)
+        if value:
+            return value
+        try:
+            device.rpc.get_software_information()
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to read the {name} fact from {self._host}: {error}"
+            ) from error
+        return None
+
     def _get_config(self, fmt: str) -> str:
         """Return the committed configuration in the requested format."""
         device = self._get_device()
@@ -2514,12 +2533,7 @@ class JuniperConnection(NetworkConnection):
 
     def get_hostname(self) -> str:
         """Get the system hostname."""
-        try:
-            hostname = self._get_device().facts.get("hostname")
-        except (RpcError, ConnectError) as error:
-            raise NetworkDeviceException(
-                f"Failed to read facts from {self._host}: {error}"
-            ) from error
+        hostname = self._get_fact("hostname")
         if not hostname:
             raise ApplicationError(
                 f"No hostname returned for {self._host}",
@@ -2529,12 +2543,7 @@ class JuniperConnection(NetworkConnection):
 
     def get_running_image(self) -> str:
         """Get the running Junos version on the device."""
-        try:
-            version = self._get_device().facts.get("version")
-        except (RpcError, ConnectError) as error:
-            raise NetworkDeviceException(
-                f"Failed to read facts from {self._host}: {error}"
-            ) from error
+        version = self._get_fact("version")
         if not version:
             raise NetworkDeviceException(
                 f"Unable to determine running image on {self._host}.", non_retryable=True

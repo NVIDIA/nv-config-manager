@@ -23,7 +23,9 @@ from jnpr.junos.exception import (
     CommitError,
     ConfigLoadError,
     ConnectAuthError,
+    ConnectClosedError,
     ProbeError,
+    RpcError,
 )
 from lxml import etree
 from temporalio.exceptions import ApplicationError
@@ -466,12 +468,47 @@ def test_get_hostname_and_running_image_use_facts(juniper_conn):
 
 
 def test_get_hostname_raises_when_absent(juniper_conn):
-    """A missing hostname fact raises a non-retryable error."""
+    """A hostname the reachable device does not report is non-retryable."""
     device = MagicMock()
     device.facts = {"hostname": None}
     with patch.object(juniper_conn, "_get_device", return_value=device):
-        with pytest.raises(ApplicationError):
+        with pytest.raises(ApplicationError) as excinfo:
             juniper_conn.get_hostname()
+    assert excinfo.value.non_retryable is True
+
+
+def test_get_hostname_retries_when_fact_gathering_failed(juniper_conn):
+    """PyEZ caches None on a failed fact read, so a dead session stays retryable."""
+    device = MagicMock()
+    device.facts = {"hostname": None}
+    device.rpc.get_software_information.side_effect = RpcError(rsp=_rpc_error_rsp("session down"))
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(NetworkDeviceException) as excinfo:
+            juniper_conn.get_hostname()
+    assert not excinfo.value.non_retryable
+
+
+def test_get_running_image_retries_when_fact_gathering_failed(juniper_conn):
+    """The running image read makes the same retryable/non-retryable distinction."""
+    device = MagicMock()
+    device.facts = {"version": None}
+    device.rpc.get_software_information.side_effect = ConnectClosedError(
+        dev=SimpleNamespace(hostname="test-router")
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(NetworkDeviceException) as excinfo:
+            juniper_conn.get_running_image()
+    assert not excinfo.value.non_retryable
+
+
+def test_get_running_image_raises_non_retryable_when_absent(juniper_conn):
+    """A version the reachable device does not report is non-retryable."""
+    device = MagicMock()
+    device.facts = {"version": None}
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(NetworkDeviceException) as excinfo:
+            juniper_conn.get_running_image()
+    assert excinfo.value.non_retryable is True
 
 
 def test_get_uptime_parses_seconds(juniper_conn):
