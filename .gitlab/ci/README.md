@@ -209,6 +209,7 @@ untrusted `pull-request/*` builds. Never protect `pull-request/*` refs.
 | Variable | Purpose |
 | -------- | ------- |
 | `NVCM_MIRROR_API_TOKEN` | Project access token (Reporter, `read_api`) used to poll build pipelines and list jobs; protected + masked |
+| `NVCM_BUILD_TRIGGER_TOKEN` | Pipeline trigger token (Settings → CI/CD → Pipeline triggers) used to start the secret-free build on `pull-request/<n>`. A job token cannot trigger a pipeline in its own project (GitLab returns HTTP 422), and a trigger token can only start pipelines, nothing else. Protected + masked, expand off |
 | `NVCM_TEST_ENV_TARGETS` | One record per env: `env\|env_branch\|namespace\|release_name\|baseline_values\|state_dir` (see `scripts/test_env_config.sh`) |
 | `NVCM_CHART_REPO` | Helm repo URL ArgoCD reads the promoted chart from, e.g. `https://helm.ngc.nvidia.com/nvidian/cfa` (must match the `ngc` target in `NVCM_CHART_TARGETS`); written into deploy-state as `chartRepo` |
 | `NVCM_UPSTREAM_GITHUB_REPO` | Optional override for the upstream GitHub repo checked by the stale-HEAD guard (default `NVIDIA/nv-config-manager`) |

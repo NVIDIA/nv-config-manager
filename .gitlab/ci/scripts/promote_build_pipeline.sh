@@ -16,7 +16,9 @@
 #             NVCM_PROMOTE_REQUIRE_PR_HEAD (default false),
 #             NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE (default false)
 # Requires: NVCM_MIRROR_API_TOKEN (read_api; polling/job-listing endpoints are
-#           not in the CI_JOB_TOKEN allowlist), CI_JOB_TOKEN (trigger + clone)
+#           not in the CI_JOB_TOKEN allowlist), NVCM_BUILD_TRIGGER_TOKEN
+#           (pipeline trigger token - a job token cannot trigger a pipeline in
+#           its own project), CI_JOB_TOKEN (repo clone)
 # Output:   promote.env (dotenv + file artifact) - PR_NUM, PR_REF, PR_SHA,
 #           PR_SHORT_SHA,
 #           PROMOTE_VERSION, BUILD_PIPELINE_ID, BUILD_JOB_ID_<IMAGE> x9,
@@ -26,6 +28,8 @@ set -euo pipefail
 : "${NVCM_PROMOTE_PR:?Set NVCM_PROMOTE_PR to the GitHub PR number}"
 : "${NVCM_PROMOTE_ENV:?Set NVCM_PROMOTE_ENV to the target environment}"
 : "${NVCM_MIRROR_API_TOKEN:?NVCM_MIRROR_API_TOKEN (read_api) is required}"
+# NVCM_BUILD_TRIGGER_TOKEN is checked lazily at the trigger site rather than
+# here: a run that reuses an existing successful build never needs it.
 
 if ! printf '%s' "$NVCM_PROMOTE_PR" | grep -Eq '^[0-9]+$'; then
     echo "ERROR: NVCM_PROMOTE_PR must be a PR number, got '${NVCM_PROMOTE_PR}'"
@@ -133,20 +137,37 @@ fi
 
 # -----------------------------------------------------------------------------
 # Otherwise trigger a fresh build on the pull-request ref and poll it.
-# CI_JOB_TOKEN is a valid same-project trigger token. NO variables are passed.
+# Uses a pipeline trigger token (NVCM_BUILD_TRIGGER_TOKEN): GitLab returns 422
+# for a job token triggering its own project. NO variables are passed.
 # -----------------------------------------------------------------------------
 if [ -z "$BUILD_PIPELINE_ID" ]; then
+    : "${NVCM_BUILD_TRIGGER_TOKEN:?NVCM_BUILD_TRIGGER_TOKEN required to trigger a build (Settings > CI/CD > Pipeline triggers)}"
     echo "Triggering build pipeline on ${PR_REF}..."
-    trigger_response="$(curl -fsS --max-time 30 -X POST \
-        -F "token=${CI_JOB_TOKEN}" \
+    # No `-f`: it suppresses the response body on an HTTP error and, under
+    # `set -e`, aborts before the diagnostics below can run. GitLab puts the
+    # actual reason (e.g. "No stages / jobs for this pipeline") in the body, so
+    # capture status and body and always surface them.
+    # A pipeline TRIGGER token, not CI_JOB_TOKEN: GitLab rejects a job token
+    # triggering a pipeline in its own project (HTTP 422). A trigger token is
+    # also the tighter credential - it can only start pipelines, nothing else.
+    # Still no variables are passed, so nothing leaks into the untrusted build.
+    trigger_raw="$(curl -sS --max-time 30 -X POST -w '\n%{http_code}' \
+        -F "token=${NVCM_BUILD_TRIGGER_TOKEN}" \
         -F "ref=${PR_REF}" \
-        "${api}/trigger/pipeline")"
-    BUILD_PIPELINE_ID="$(printf '%s' "$trigger_response" | jq -r '.id // empty')"
+        "${api}/trigger/pipeline" || true)"
+    trigger_http="$(printf '%s' "$trigger_raw" | tail -n 1)"
+    trigger_response="$(printf '%s' "$trigger_raw" | sed '$d')"
+    BUILD_PIPELINE_ID="$(printf '%s' "$trigger_response" | jq -r '.id // empty' 2>/dev/null || true)"
     if [ -z "$BUILD_PIPELINE_ID" ]; then
-        echo "ERROR: failed to trigger build pipeline:"
+        echo "ERROR: failed to trigger build pipeline (HTTP ${trigger_http:-000}):"
         printf '%s\n' "$trigger_response"
-        echo "Hint: if GitLab reports an empty pipeline, the PR branch predates"
-        echo "the pr-build CI definitions - ask the author to rebase onto main."
+        echo ""
+        echo "Common causes:"
+        echo "  - 'No stages / jobs for this pipeline': nothing matched on ${PR_REF}."
+        echo "    The PR branch predates the pr-build CI definitions - rebase it onto main."
+        echo "  - 403/404: the job token cannot trigger pipelines in this project"
+        echo "    (check Settings > CI/CD > Job token permissions)."
+        echo "  - 'Insufficient permissions': the trigger token lacks access to ${PR_REF}."
         exit 1
     fi
     echo "Build pipeline: ${CI_PROJECT_URL}/-/pipelines/${BUILD_PIPELINE_ID}"
