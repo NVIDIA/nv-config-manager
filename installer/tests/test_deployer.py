@@ -33,6 +33,7 @@ from nv_config_manager_installer.deployer import (
     DeployOptions,
     DeployStep,
     StepStatus,
+    _envoy_proxy_podmonitor_manifest,
     _get_image_digest_tag,
     _hash_content_dir,
     _kind_preload_images,
@@ -528,6 +529,92 @@ class TestInstallCrds:
             ["helm", "show", "crds", str(charts_dir / "gateway-helm-v1.6.5.tgz")]
         ]
         assert not any("github.com/cert-manager" in cmd for cmd in rendered_commands)
+
+    def _run_install_crds(
+        self,
+        tmp_path,
+        monkeypatch,
+        *,
+        install_envoy_gateway: bool,
+        observability_enabled: bool,
+    ) -> list[list[str]]:
+        """Drive ``_install_crds`` and return the logged kubectl/helm commands."""
+        (tmp_path / "helm").mkdir()
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        logged_commands: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            if cmd[:3] == ["helm", "show", "crds"]:
+                return MagicMock(returncode=0, stdout=_ENVOY_GATEWAY_CRDS, stderr="")
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.infrastructure.monitoring.observability_enabled = observability_enabled
+        deployer = Deployer(
+            config,
+            DeployOptions(
+                chart_dir=str(tmp_path / "helm"),
+                install_envoy_gateway=install_envoy_gateway,
+            ),
+            RecordingCallback(),
+        )
+        deployer._install_crds()
+        return logged_commands
+
+    @staticmethod
+    def _is_envoy_podmonitor_apply(cmd: list[str]) -> bool:
+        return cmd[:2] == ["kubectl", "apply"] and any(
+            "envoy-proxy-podmonitor.yaml" in part for part in cmd
+        )
+
+    def test_installs_envoy_proxy_podmonitor_when_observability_on(self, tmp_path, monkeypatch):
+        logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            install_envoy_gateway=True,
+            observability_enabled=True,
+        )
+        assert any(self._is_envoy_podmonitor_apply(cmd) for cmd in logged)
+
+    def test_skips_envoy_proxy_podmonitor_when_observability_off(self, tmp_path, monkeypatch):
+        logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            install_envoy_gateway=True,
+            observability_enabled=False,
+        )
+        assert not any(self._is_envoy_podmonitor_apply(cmd) for cmd in logged)
+
+    def test_skips_envoy_proxy_podmonitor_when_gateway_not_installed(self, tmp_path, monkeypatch):
+        logged = self._run_install_crds(
+            tmp_path,
+            monkeypatch,
+            install_envoy_gateway=False,
+            observability_enabled=True,
+        )
+        assert not any(self._is_envoy_podmonitor_apply(cmd) for cmd in logged)
+
+    def test_envoy_proxy_podmonitor_manifest_shape(self):
+        manifest = _envoy_proxy_podmonitor_manifest()
+        assert manifest["apiVersion"] == "monitoring.coreos.com/v1"
+        assert manifest["kind"] == "PodMonitor"
+        assert manifest["metadata"]["namespace"] == "envoy-gateway-system"
+        # Cluster-scoped: one PodMonitor covers every per-release gateway proxy.
+        assert manifest["spec"]["namespaceSelector"] == {"any": True}
+        assert manifest["spec"]["selector"]["matchLabels"] == {
+            "app.kubernetes.io/component": "proxy",
+            "app.kubernetes.io/managed-by": "envoy-gateway",
+        }
+        endpoint = manifest["spec"]["podMetricsEndpoints"][0]
+        assert endpoint["port"] == "metrics"
+        assert endpoint["path"] == "/stats/prometheus"
 
 
 class TestGatewayPatching:

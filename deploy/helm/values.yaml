@@ -2921,6 +2921,17 @@ monitoring:
       scrapeProtocols:
         - PrometheusText1.0.0
     # Per-endpoint metricRelabelings for global.customLabels are rendered in monitoring.yaml (job-based).
+    #
+    # NOTE: Envoy Gateway data-plane proxy metrics are NOT scraped by this chart.
+    # Envoy Gateway exposes Prometheus metrics on each managed proxy pod's named
+    # "metrics" port (/stats/prometheus) but ships no PodMonitor, and its proxy
+    # pods are a shared, cluster-scoped resource rather than a per-release one.
+    # Scraping them is owned by whoever installs Envoy Gateway: the TUI installer
+    # applies a single cluster-scoped PodMonitor in the gateway namespace
+    # (see Deployer._install_crds), and production clusters ship an equivalent
+    # one with their Envoy Gateway deployment. Adding a per-release PodMonitor
+    # here would duplicate-scrape every gateway proxy, so it is intentionally
+    # omitted.
 # =============================================================================
 # Local Observability Stack (subcharts)
 # =============================================================================
