@@ -23,7 +23,8 @@ from nats.aio.client import Client
 from nats.errors import NoRespondersError
 from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js import JetStreamContext
-from nats.js.errors import NotFoundError
+from nats.js.api import ConsumerInfo as ConsumerInfoType
+from nats.js.errors import NotFoundError, ServiceUnavailableError
 from pydantic import BaseModel
 
 from nv_config_manager.common.config import (
@@ -129,6 +130,23 @@ class ConsumerResetRejected(Exception):
         self.err_code = err_code
 
 
+async def _stream_head_sequence(
+    jetstream: JetStreamContext, stream: str, info: ConsumerInfoType
+) -> int:
+    """Return the last stream sequence a reset should move the consumer past.
+
+    STREAM.INFO is authoritative but is not exported on a stream imported from another
+    account, so fall back to what the consumer itself reports. The fallback lands past
+    everything pending for this consumer, which is what a fast-forward needs even though
+    it can sit below the true head when other subjects are interleaved.
+    """
+    try:
+        return int((await jetstream.stream_info(stream)).state.last_seq)
+    except (ServiceUnavailableError, NotFoundError):
+        delivered = info.delivered.stream_seq if info.delivered else 0
+        return int(delivered + (info.num_pending or 0))
+
+
 async def fast_forward_consumer(
     nats_conn: Client, jetstream: JetStreamContext, consumer_config: dict[str, str]
 ) -> tuple[int, int, int]:
@@ -148,11 +166,12 @@ async def fast_forward_consumer(
 
     # Raises NotFoundError for an absent consumer, which callers turn into a 404 before
     # any reset is attempted.
-    backlog = (await jetstream.consumer_info(stream=stream, consumer=durable)).num_pending
+    info = await jetstream.consumer_info(stream=stream, consumer=durable)
+    backlog = info.num_pending
 
     # Reset leaves the consumer so the next message it delivers has a stream sequence
     # >= seq, so one past the last stored sequence puts it at the head of the stream.
-    target_seq = (await jetstream.stream_info(stream)).state.last_seq + 1
+    target_seq = await _stream_head_sequence(jetstream, stream, info) + 1
 
     subject = f"{api_prefix}.CONSUMER.RESET.{stream}.{durable}"
     try:

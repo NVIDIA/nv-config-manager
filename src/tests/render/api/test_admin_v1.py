@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from nats.errors import NoRespondersError
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.errors import NotFoundError
+from nats.js.errors import NotFoundError, ServiceUnavailableError
 
 from nv_config_manager.render.api.admin_v1 import ConsumerResetRejected, fast_forward_consumer
 from nv_config_manager.render.api.main import app
@@ -30,11 +30,12 @@ from nv_config_manager.render.api.main import app
 class MockConsumerInfo:
     """Mock consumer info object."""
 
-    def __init__(self, num_pending=0, num_ack_pending=0, consumer_seq=100):
+    def __init__(self, num_pending=0, num_ack_pending=0, consumer_seq=100, stream_seq=500):
         self.num_pending = num_pending
         self.num_ack_pending = num_ack_pending
         self.delivered = MagicMock()
         self.delivered.consumer_seq = consumer_seq
+        self.delivered.stream_seq = stream_seq
 
 
 def create_test_mocks():
@@ -459,6 +460,19 @@ class TestFastForward:
 
         assert (skipped, remaining) == (0, 0)
         request.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_consumer_state_without_stream_info(self):
+        """An imported stream exports no STREAM.INFO, so the target comes from the consumer."""
+        mock_conn, mock_js = MagicMock(), MagicMock()
+        request = setup_consumer_reset(mock_conn, mock_js, backlog=40, last_seq=9999)
+        mock_js.stream_info.side_effect = ServiceUnavailableError
+        config = {"durable_name": "test-queue-nautobot", "stream": "nautobot"}
+
+        await fast_forward_consumer(mock_conn, mock_js, config)
+
+        # delivered.stream_seq (500) + num_pending (40), then one past that.
+        assert json.loads(request.await_args.args[1]) == {"seq": 541}
 
     @pytest.mark.asyncio
     async def test_no_response_is_rejected(self):
