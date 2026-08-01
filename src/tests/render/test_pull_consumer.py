@@ -82,7 +82,16 @@ def mock_jetstream():
     mock_js.pull_subscribe = AsyncMock()
     mock_js.consumer_info = AsyncMock()
     mock_js.add_consumer = AsyncMock()
+    mock_js.delete_consumer = AsyncMock()
     return mock_js
+
+
+def existing_consumer(deliver_policy, ack_floor_stream_seq=0):
+    """Consumer info for a durable that already exists on the stream."""
+    info = MagicMock()
+    info.config.deliver_policy = deliver_policy
+    info.ack_floor.stream_seq = ack_floor_stream_seq
+    return info
 
 
 @pytest.fixture
@@ -458,13 +467,56 @@ async def test_ensure_consumer_exists_existing_consumer(custom_ini, mock_jetstre
     )
     consumer.jetstream = mock_jetstream
 
-    # Mock consumer_info to succeed (consumer exists)
-    mock_jetstream.consumer_info.return_value = {"name": consumer.queue}
+    # Mock consumer_info to succeed (consumer exists) with a reset-eligible policy
+    mock_jetstream.consumer_info.return_value = existing_consumer(DeliverPolicy.BY_START_TIME)
 
     await consumer._ensure_consumer_exists()
 
     # Should call consumer_info but NOT add_consumer
     mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
+    mock_jetstream.add_consumer.assert_not_called()
+    mock_jetstream.delete_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_existing_consumer_with_blocking_policy_is_recreated(custom_ini, mock_jetstream):
+    """deliver_policy is immutable, so a consumer that cannot be reset must be rebuilt."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+    mock_jetstream.consumer_info.return_value = existing_consumer(
+        DeliverPolicy.NEW, ack_floor_stream_seq=820
+    )
+
+    await consumer._ensure_consumer_exists()
+
+    mock_jetstream.delete_consumer.assert_awaited_once()
+    config = mock_jetstream.add_consumer.await_args.kwargs["config"]
+    assert config.deliver_policy is DeliverPolicy.BY_START_SEQUENCE
+    # Resuming one past the ack floor keeps the backlog instead of skipping it.
+    assert config.opt_start_seq == 821
+
+
+@pytest.mark.asyncio
+async def test_blocking_policy_on_imported_stream_is_not_recreated(custom_ini, mock_jetstream):
+    """An imported stream exports no consumer delete, so warn rather than attempt it."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="nautobot",
+        subject="nautobot",
+        queue_suffix="nautobot",
+        api_prefix="$JS.CEREBRO.API",
+    )
+    consumer.jetstream = mock_jetstream
+    mock_jetstream.consumer_info.return_value = existing_consumer(DeliverPolicy.NEW)
+
+    await consumer._ensure_consumer_exists()
+
+    mock_jetstream.delete_consumer.assert_not_called()
     mock_jetstream.add_consumer.assert_not_called()
 
 

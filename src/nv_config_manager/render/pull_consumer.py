@@ -29,7 +29,7 @@ import nats.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.js import JetStreamContext
-from nats.js.api import ConsumerConfig, DeliverPolicy
+from nats.js.api import ConsumerConfig, ConsumerInfo, DeliverPolicy
 from nats.js.errors import FetchTimeoutError, NotFoundError, ServiceUnavailableError
 from prometheus_client import start_http_server
 
@@ -53,6 +53,16 @@ from nv_config_manager.render.exceptions import RenderException
 from nv_config_manager.render.lock import create_lock
 
 configure_logging(service="render")
+
+# $JS.API.CONSUMER.RESET only accepts these, so a consumer outside the set can never be
+# fast-forwarded by the admin API. See ADR-60.
+RESETTABLE_DELIVER_POLICIES = frozenset(
+    {
+        DeliverPolicy.ALL,
+        DeliverPolicy.BY_START_SEQUENCE,
+        DeliverPolicy.BY_START_TIME,
+    }
+)
 
 
 class PullConsumer:
@@ -283,8 +293,9 @@ class PullConsumer:
             # Only a genuinely absent consumer should trigger creation. Treating any
             # failure as absence turns transient errors into spurious create attempts.
             try:
-                await self.jetstream.consumer_info(self.stream, self.queue)
+                existing = await self.jetstream.consumer_info(self.stream, self.queue)
                 self.logger.info("Consumer %s already exists", self.queue)
+                await self._migrate_deliver_policy(existing)
             except NotFoundError:
                 try:
                     await self.jetstream.add_consumer(
@@ -303,6 +314,57 @@ class PullConsumer:
         except Exception as e:
             self.logger.error("Failed to ensure consumer exists: %s", str(e))
             raise
+
+    async def _migrate_deliver_policy(self, existing: ConsumerInfo) -> None:
+        """Recreate a pre-existing consumer whose deliver_policy forbids reset.
+
+        deliver_policy is immutable, so a consumer created before this policy change
+        keeps a value $JS.API.CONSUMER.RESET rejects (ADR-60) and can never be
+        fast-forwarded. Recreating at the current ack floor rather than at the current
+        time makes it reset-eligible without abandoning an in-flight backlog.
+        """
+        if self.jetstream is None:
+            raise RuntimeError("JetStream context is None")
+
+        policy = existing.config.deliver_policy
+        if policy in RESETTABLE_DELIVER_POLICIES:
+            return
+
+        # Recreating means deleting first, which an imported stream does not export.
+        if self.api_prefix != DEFAULT_NATS_API_PREFIX:
+            self.logger.warning(
+                "Consumer %s on imported stream %s has deliver_policy=%s, which blocks "
+                "consumer reset. The account owning %s must recreate it with one of %s.",
+                self.queue,
+                self.stream,
+                policy,
+                self.api_prefix,
+                sorted(p.value for p in RESETTABLE_DELIVER_POLICIES),
+            )
+            return
+
+        # Resume from the first message this consumer has not acked, so nothing pending
+        # is skipped and nothing already acked is replayed.
+        resume_from = (existing.ack_floor.stream_seq if existing.ack_floor else 0) + 1
+        self.logger.info(
+            "Migrating consumer %s from deliver_policy=%s to by_start_sequence at %d",
+            self.queue,
+            policy,
+            resume_from,
+        )
+
+        await self.jetstream.delete_consumer(stream=self.stream, consumer=self.queue)
+        await self.jetstream.add_consumer(
+            stream=self.stream,
+            config=ConsumerConfig(
+                deliver_policy=DeliverPolicy.BY_START_SEQUENCE,
+                opt_start_seq=resume_from,
+                ack_wait=360,
+                durable_name=self.queue,
+                filter_subject=self.subject,
+            ),
+        )
+        self.logger.info("Consumer %s migrated successfully", self.queue)
 
     async def _resilient_message_handler(self, msg: Msg) -> None:
         """Wrapper around message_handler with additional error handling."""
