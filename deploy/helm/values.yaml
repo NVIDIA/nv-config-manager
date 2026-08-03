@@ -78,7 +78,7 @@ global:
   # the installer overrides these with local image names when building images.
   # Checked-in service repositories intentionally use registry.example.com placeholders.
   # Internal CI rewrites these to the configured image target when publishing charts or
-  # updating downstream kiwi-argocd values. Replace the placeholder with the public
+  # updating downstream deployment values. Replace the placeholder with the public
   # NVIDIA registry path when public publishing is enabled.
   # Service image tags are optional. When omitted, templates use appVersion if
   # a pipeline supplies it, otherwise the chart version.
@@ -507,14 +507,14 @@ externalServices:
     credsPath: /etc/nv-config-manager/secrets/nats.creds
     streams:
       configManager:
-        name: kiwi
+        name: nv-config-manager
         subjects:
-          - kiwi.nautobotchange
-          - kiwi.devicechange
-          - kiwi.workflow.result
-        renderChangeSubject: kiwi.nautobotchange
-        deviceChangeSubject: kiwi.devicechange
-        archiveSubject: kiwi.workflow.result
+          - nv-config-manager.nautobotchange
+          - nv-config-manager.devicechange
+          - nv-config-manager.workflow.result
+        renderChangeSubject: nv-config-manager.nautobotchange
+        deviceChangeSubject: nv-config-manager.devicechange
+        archiveSubject: nv-config-manager.workflow.result
       nautobot:
         name: nautobot
         subjects:
