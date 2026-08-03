@@ -87,6 +87,7 @@ ACTIVITY_NO_RETRY_POLICY = RetryPolicy(maximum_attempts=1)
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 DEFAULT_CONFIG_MANAGER_STATUS = ["Active", "Provisioned"]
 DEFAULT_CONFIG_MANAGER_TENANT = None
+CANONICAL_SITE_SEARCH_ATTRIBUTE_PATCH = "site-cable-validation-canonical-site-v1"
 # list of search attributes to clone from parent to child
 CLONE_SEARCH_ATTRS = [
     USER_SEARCH_ATTRIBUTE,
@@ -432,6 +433,13 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
                 device_type_ids=workflow_input.device_type_ids,
             )
         )
+
+        # The UI submits the Nautobot location ID, while device records contain
+        # the human-readable site name expected in workflow search results.
+        if devices_output.devices and workflow.patched(CANONICAL_SITE_SEARCH_ATTRIBUTE_PATCH):
+            workflow.upsert_search_attributes(
+                {SITE_SEARCH_ATTRIBUTE: [devices_output.devices[0].site]}
+            )
 
         if not devices_output.devices:
             self.set_stage_state("validate_devices", StateEnum.UNREACHABLE)

@@ -76,6 +76,7 @@ ROLES_FOR_CABLE_VALIDATION = [
     "smn-spine",
     "smn-leaf",
 ]
+SITE_ID = "00000000-0000-0000-0000-000000000001"
 
 
 @activity.defn(name="get_network_devices")
@@ -87,6 +88,19 @@ async def mock_get_network_devices(
             NetworkDeviceData.from_nautobot_graphql(device)
             for device in DEVICE_CONNECTION_DATA_VALID.values()
             if device["location"]["name"] == activity_input.site
+        ]
+    )
+
+
+@activity.defn(name="get_network_devices")
+async def mock_get_network_devices_by_site_id(
+    activity_input: GetNetworkDevicesInput,
+) -> GetNetworkDevicesOutput:
+    assert activity_input.site == SITE_ID
+    return GetNetworkDevicesOutput(
+        devices=[
+            NetworkDeviceData.from_nautobot_graphql(device)
+            for device in DEVICE_CONNECTION_DATA_VALID.values()
         ]
     )
 
@@ -625,7 +639,7 @@ async def test_cable_validation_workflow_all_valid(_, mock_nb_client, env):
         task_queue=task_queue_name,
         workflows=[SiteCableValidationWorkflow, MockedDeviceCableValidationAllValid],
         activities=[
-            mock_get_network_devices,
+            mock_get_network_devices_by_site_id,
             mock_get_ui_base_url,
             mock_publish_nats,
             format_results,
@@ -633,7 +647,7 @@ async def test_cable_validation_workflow_all_valid(_, mock_nb_client, env):
         activity_executor=ThreadPoolExecutor(5),
     ):
         workflow_input = SiteCableValidationInput(
-            site="SITEA",
+            site=SITE_ID,
             roles=ROLES_FOR_CABLE_VALIDATION,
             raise_for_invalid=False,
         )
@@ -650,6 +664,9 @@ async def test_cable_validation_workflow_all_valid(_, mock_nb_client, env):
         result = await handle.result()
 
         assert result.markdown == "No invalid cabling found."
+
+        description = await handle.describe()
+        assert description.search_attributes["Site"] == ["SITEA"]
 
         stages = await handle.query("stages")
         assert stages[2]["output"]["display"] == "No invalid cabling found."
