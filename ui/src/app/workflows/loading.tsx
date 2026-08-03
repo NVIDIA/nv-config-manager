@@ -26,7 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const WorkflowsListSkeleton = () => {
   return (
-    <div className="container py-6">
+    <div className="w-full px-8 py-6">
       <div className="mb-4 flex flex-row items-center justify-between">
         <div className="space-y-4">
           <Skeleton className="h-8 w-36" />

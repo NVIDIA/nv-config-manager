@@ -150,9 +150,16 @@ function FilterableValue({
   param: string;
   value: string;
 }) {
+  const title =
+    typeof children === "string" || typeof children === "number"
+      ? String(children)
+      : value;
+
   return (
-    <span className="inline-flex items-center gap-0.5">
-      <span>{children}</span>
+    <span className="inline-flex max-w-full min-w-0 items-center gap-0.5">
+      <span className="min-w-0 truncate" title={title}>
+        {children}
+      </span>
       <FilterValueIcon label={label} param={param} value={value} />
     </span>
   );
@@ -227,7 +234,7 @@ function SearchAttributeCell({
   }
 
   return (
-    <div className="flex flex-wrap gap-x-2 gap-y-1">
+    <div className="flex max-w-full min-w-0 flex-wrap gap-x-2 gap-y-1">
       {values.map((value, index) => {
         const stringValue = String(value);
 
@@ -271,8 +278,14 @@ export const getWorkflowColumns = (
       cell: ({ row }) => {
         const id = row.original.id;
         return (
-          <Link href={`/workflows/${id}`} title="View workflow details">
-            {id}
+          <Link
+            className="block max-w-full min-w-0"
+            href={`/workflows/${id}`}
+            title="View workflow details"
+          >
+            <span className="block truncate" title={id}>
+              {id}
+            </span>
           </Link>
         );
       },
