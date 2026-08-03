@@ -14,6 +14,13 @@
 {{- $serviceName := include "nv-config-manager.componentName" (dict "root" . "component" "render") }}
 {{- $autoscaling := .Values.renderService.autoscaling }}
 {{- $prometheus := $autoscaling.prometheus }}
+{{- /*
+Fall back to the Prometheus this release deploys itself. Deployments pointing at
+an external Prometheus set serverAddress explicitly and are unaffected. The
+helper is shared with the NetworkPolicy that opens KEDA's path to that address,
+so the two cannot disagree about which Prometheus KEDA queries.
+*/}}
+{{- $promAddress := $prometheus.serverAddress | default (include "nv-config-manager.inClusterPrometheusAddress" .) }}
 
 {{- /* Iterate over each consumer type */ -}}
 {{- if $autoscaling.consumers }}
@@ -21,6 +28,21 @@
 {{- $consumerConfig := index $autoscaling.consumers $consumerType }}
 {{- $streamName := ternary $.Values.externalServices.nats.streams.nautobot.name $.Values.externalServices.nats.streams.configManager.name (eq $consumerType "nautobot") }}
 {{- if $consumerConfig.enabled }}
+{{- /*
+On a shared external Prometheus the query below has to pick this environment's
+consumer out of every other environment's. consumer_name is what actually does
+that, since it carries nats.queue. The namespace label does not: cells reuse
+namespace names, so several unrelated ones report under the same namespace to
+the same Prometheus.
+
+Require it regardless. It narrows the query enough that a consumer_name which
+stops being unique -- two environments sharing a nats.queue, or a rename that
+reuses a retired name -- scales this deployment on its own backlog instead of
+silently on someone else's.
+*/}}
+{{- if and $prometheus.serverAddress (not $prometheus.natsMetricsNamespace) }}
+{{- fail (printf "renderService.autoscaling.prometheus.natsMetricsNamespace is required for the %s consumer when serverAddress points at an external Prometheus, otherwise the trigger query can match NATS series from another environment." $consumerType) }}
+{{- end }}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -35,10 +57,28 @@ metadata:
 spec:
   scaleTargetRef:
     name: {{ $serviceName }}-consumer-{{ $consumerType }}
-  minReplicaCount: {{ $consumerConfig.minReplicas | default 1 }}
+{{- /*
+  Not `default 1`: sprig treats 0 as empty, so an explicit minReplicas: 0 would
+  silently become 1 and scale-to-zero -- the one mode pollingInterval and
+  cooldownPeriod below exist for -- could never be configured.
+  */}}
+{{- $minReplicas := 1 }}
+{{- if hasKey $consumerConfig "minReplicas" }}
+{{- $minReplicas = $consumerConfig.minReplicas }}
+{{- end }}
+  minReplicaCount: {{ $minReplicas }}
   maxReplicaCount: {{ $consumerConfig.maxReplicas | default 10 }}
+  {{- /*
+  Only meaningful when scaling from zero: above zero the HPA drives scaling off
+  KEDA's metrics adapter and both knobs are inert, which KEDA reports as an
+  admission warning on every install. Rendering them conditionally keeps them
+  available for scale-to-zero deployments without emitting settings that do
+  nothing.
+  */}}
+  {{- if eq (int $minReplicas) 0 }}
   pollingInterval: {{ $autoscaling.pollingInterval | default 30 }}
   cooldownPeriod: {{ $autoscaling.cooldownPeriod | default 300 }}
+  {{- end }}
   triggers:
     - type: prometheus
       {{- if $prometheus.tls.enabled }}
@@ -46,11 +86,18 @@ spec:
         name: {{ $serviceName }}-prometheus-auth
       {{- end }}
       metadata:
-        serverAddress: {{ $prometheus.serverAddress | quote }}
+        {{- /*
+        Empty means autoscaling is on with no Prometheus to query: the release
+        deploys none and no external one was named. KEDA would accept the
+        ScaledObject and then never scale, so fail the render instead.
+        */}}
+        serverAddress: {{ required (printf "renderService.autoscaling is enabled for the %s consumer but no Prometheus endpoint is available. Set renderService.autoscaling.prometheus.serverAddress to an external Prometheus, or enable the in-cluster one via prometheus.enabled." $consumerType) $promAddress | quote }}
         # Query NATS consumer pending messages
         # consumer_name matches what the render service creates: {nats.queue}-{type}
+        #   and is what distinguishes this environment from every other one
         # is_consumer_leader="true" avoids double-counting in HA
-        # namespace filter prevents cross-environment matching
+        # namespace narrows the series further where it is set; see the note above
+        #   on why it is not sufficient on its own
         query: |
           max(nats_consumer_num_pending{is_consumer_leader="true", stream_name="{{ $streamName }}", consumer_name="{{ $.Values.externalServices.nats.queue }}-{{ $consumerType }}"{{- if $prometheus.natsMetricsNamespace }}, namespace="{{ $prometheus.natsMetricsNamespace }}"{{- end }}})
         threshold: {{ $consumerConfig.targetPendingPerPod | default 10 | quote }}

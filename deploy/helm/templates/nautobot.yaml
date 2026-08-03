@@ -109,6 +109,31 @@ spec:
               port: monitor
             initialDelaySeconds: 5
             periodSeconds: 5
+        {{- if .Values.nautobotNats.metrics.enabled }}
+        # prometheus-nats-exporter: polls the NATS monitoring endpoint (:8222)
+        # and re-exposes nats_* Prometheus metrics on :{{ .Values.nautobotNats.metrics.port | default 7777 }}.
+        # -jsz=all emits the JetStream nats_consumer_num_pending series KEDA
+        # render autoscaling scrapes; -varz adds cheap server-health stats;
+        # -prefix=nats yields the nats_ metric names. -connz is intentionally
+        # omitted: KEDA doesn't need it and it makes NATS enumerate every
+        # connection on each scrape for stats we don't dashboard.
+        - name: prom-exporter
+          image: "{{ .Values.global.images.natsExporter.repository }}:{{ .Values.global.images.natsExporter.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          {{- include "nv-config-manager.containerSecurityContext" . | nindent 10 }}
+          args:
+            - -port={{ .Values.nautobotNats.metrics.port | default 7777 }}
+            - -varz
+            - -jsz=all
+            - -prefix=nats
+            - -use_internal_server_id
+            - http://localhost:8222/
+          ports:
+            - containerPort: {{ .Values.nautobotNats.metrics.port | default 7777 }}
+              name: prom-metrics
+          resources:
+            {{- toYaml .Values.nautobotNats.metrics.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: config
           configMap:

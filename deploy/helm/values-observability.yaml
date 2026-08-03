@@ -79,6 +79,55 @@ monitoring:
     enabled: true
     blackboxExporterUrl: "blackbox-exporter:9115"
 
+# -----------------------------------------------------------------------------
+# Nautobot NATS metrics exporter
+# -----------------------------------------------------------------------------
+# Turn on the prometheus-nats-exporter sidecar + NATS PodMonitor so the
+# observability path (local-dev + the opt-in kind integration run) actually
+# exercises NATS JetStream metric collection — the prerequisite for KEDA render
+# autoscaling on nats_consumer_num_pending. The installer flips
+# monitoring.{enabled,podMonitors.enabled} on when observability_enabled; this
+# makes the sidecar + PodMonitor render alongside them (see
+# templates/nautobot.yaml and templates/monitoring.yaml). Both default to off in
+# values.yaml, so only this overlay (and real deployments that opt in) run them.
+# test_nats_exporter.py asserts the PodMonitor CR + exporter sidecar exist when
+# OBSERVABILITY=true.
+nautobotNats:
+  metrics:
+    enabled: true
+
+# -----------------------------------------------------------------------------
+# KEDA render autoscaling
+# -----------------------------------------------------------------------------
+# Consume the metric the exporter above produces, so the chain is exercised end
+# to end: exporter -> NATS PodMonitor -> Alloy -> Prometheus -> KEDA trigger.
+# KEDA marks a ScaledObject Ready only once it resolves the trigger query
+# against Prometheus, which is what turns a wrong metric name or label filter in
+# templates/render-service-scaledobject.yaml into a CI failure rather than a
+# production surprise. test_keda_autoscaling.py asserts that when
+# OBSERVABILITY=true. The deployer installs the KEDA operator as a sibling
+# release when observability_enabled is set (Deployer._install_crds).
+#
+# prometheus.serverAddress is deliberately left unset: the ScaledObject template
+# defaults it to the Prometheus this release deploys, so the namespace stays out
+# of this file.
+#
+# The replica counts are kind-sized. Production defaults (device 6-30, nautobot
+# 3-15) would ask a single-node cluster for more render consumers than it can
+# schedule. minReplicas 1 still keeps a consumer running, so a broken trigger
+# can't be mistaken for an idle one, and maxReplicas 2 bounds the blast radius
+# if a test leaves messages pending.
+renderService:
+  autoscaling:
+    enabled: true
+    consumers:
+      device:
+        minReplicas: 1
+        maxReplicas: 2
+      nautobot:
+        minReplicas: 1
+        maxReplicas: 2
+
 # NOTE: prometheus-operator-crds is NOT configured here. It's installed
 # as a sibling Helm release by the deployer (Deployer._install_crds) before
 # this chart, to avoid the helm validation deadlock where the parent chart

@@ -139,6 +139,11 @@ global:
     natsBox:
       repository: docker.io/natsio/nats-box
       tag: "0.14.3"
+    # prometheus-nats-exporter sidecar (optional; nautobotNats.metrics.enabled).
+    # Polls the NATS monitoring endpoint and exposes nats_* Prometheus metrics.
+    natsExporter:
+      repository: docker.io/natsio/prometheus-nats-exporter
+      tag: "0.20.1"
     # Project-owned Temporal images use distroless runtimes. temporalServer
     # and temporalUi may be replaced with compatible upstream or locally built
     # images. temporalBootstrap is intentionally project-owned: it contains
@@ -2161,6 +2166,12 @@ networkPolicy:
   # Useful for: cnpg-system (CNPG operator needs HTTP to instance status port 8000),
   # monitoring (prometheus), logging, or other platform services
   additionalAllowedNamespaces: []
+  # Namespace the KEDA operator runs in. Only used when render autoscaling is on
+  # *and* Prometheus runs in this namespace (the observability overlay): KEDA
+  # queries it from its own namespace, so the same-namespace rule above does not
+  # cover it and the trigger would silently fail to resolve. Must match where
+  # KEDA is installed (_KEDA_NAMESPACE in the installer's deployer.py).
+  kedaNamespace: keda
 # =============================================================================
 # Reference Grants (for cross-namespace service references)
 # =============================================================================
@@ -2830,6 +2841,26 @@ nautobotNats:
     maxFile: 10G # Max file storage (increase for production or use nats-ready binary)
   # Max payload size (8MB)
   maxPayload: 8388608
+  # Prometheus metrics exporter (prometheus-nats-exporter sidecar).
+  # Off by default (zero blast radius). When enabled, a sidecar polls the NATS
+  # monitoring endpoint (:8222) and re-exposes nats_* Prometheus metrics on the
+  # port below — including the JetStream nats_consumer_num_pending series that
+  # KEDA render autoscaling (renderService.autoscaling) scrapes. Pair with
+  # monitoring.podMonitors.enabled so Prometheus scrapes the exporter.
+  metrics:
+    enabled: false
+    # Port the exporter serves /metrics on (scraped by the NATS PodMonitor).
+    port: 7777
+    # Resources for the prometheus-nats-exporter sidecar. -jsz=all scrapes every
+    # JetStream stream/consumer, so the transient response scales with consumer
+    # count; the memory limit is set above the observed footprint to avoid OOM
+    # kills on larger deployments. Tune here if you run many consumers.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
   # NATS resources
   resources:
     requests:

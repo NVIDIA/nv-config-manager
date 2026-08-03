@@ -32,6 +32,7 @@
 {{- $mcpName := include "nv-config-manager.componentName" (dict "root" . "component" "mcp") }}
 {{- $temporalName := include "nv-config-manager.componentName" (dict "root" . "component" "temporal") }}
 {{- $nautobotName := include "nv-config-manager.componentName" (dict "root" . "component" "nautobot") }}
+{{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") }}
 {{- $uiName := include "nv-config-manager.componentName" (dict "root" . "component" "ui") }}
 
 {{- /* Determine gateway availability and scheme for probes */}}
@@ -702,6 +703,50 @@ spec:
     - port: http
       # Nautobot serves metrics at /metrics/ (trailing slash); /metrics 404s.
       path: /metrics/
+      interval: {{ $scrapeInterval }}
+      scrapeTimeout: {{ $scrapeTimeout }}
+      {{- if .Values.global.customLabels }}
+      metricRelabelings:
+        {{- include "nv-config-manager.podMonitorMetricRelabelings" . | nindent 8 }}
+      {{- end }}
+{{- end }}
+
+{{- /* Nautobot NATS exporter PodMonitor (JetStream metrics for KEDA autoscaling).
+       Gated on the same condition as the NATS Deployment (templates/nautobot.yaml):
+       only when Nautobot/NATS is deployed by this chart. With an external
+       Nautobot/NATS (externalServices.nautobot.local=false) there is no in-cluster
+       NATS pod / exporter sidecar to scrape, so the PodMonitor must not render. */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.nautobotNats.metrics.enabled .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $natsName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "nv-config-manager.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nautobot-nats
+    {{- with $monitoringCRLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- include "nv-config-manager.podTargetLabels" . | nindent 2 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $natsName }}
+    matchExpressions:
+      # The nats-box utility pod shares the app.kubernetes.io/name label but,
+      # unlike the nats server pod, carries an app.kubernetes.io/component label.
+      # Excluding pods that have that label isolates the server (the only pod
+      # exposing the prom-metrics port) so the PodMonitor targets only it.
+      - key: app.kubernetes.io/component
+        operator: DoesNotExist
+  podMetricsEndpoints:
+    - port: prom-metrics
+      path: /metrics
       interval: {{ $scrapeInterval }}
       scrapeTimeout: {{ $scrapeTimeout }}
       {{- if .Values.global.customLabels }}

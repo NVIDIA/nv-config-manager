@@ -122,6 +122,12 @@ renderService:
   templatePlugins:
     enabled: true
     pvcName: render-service-template-plugins
+  # No images of its own (a ScaledObject only references a scale target), but
+  # this file's contract is that every feature is on, so a future consumer
+  # extracting anything other than images sees the autoscaling path too. The
+  # KEDA operator's own images come from its chart in create-airgapped.sh.
+  autoscaling:
+    enabled: true
 
 # =============================================================================
 # Network ZTP
@@ -205,6 +211,10 @@ nautobotNats:
     enabled: true
     # This captures nv-config-manager-nats-ready image
     useNatsCli: false
+  # Enable the metrics exporter so the prometheus-nats-exporter sidecar renders
+  # and its image is captured for the air-gapped mirror.
+  metrics:
+    enabled: true
 
 # =============================================================================
 # CNPG - enable all clusters

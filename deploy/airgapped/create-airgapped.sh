@@ -426,6 +426,10 @@ load_external_charts() {
     echo "oci://ghcr.io/cloudnative-pg/charts/cloudnative-pg:${CNPG_OPERATOR_VERSION}"
     echo "oci://quay.io/jetstack/charts/cert-manager:${CERT_MANAGER_VERSION}"
     echo "helm://https://prometheus-community.github.io/helm-charts|prometheus-operator-crds:28.0.1"
+    # Reconciles the render-consumer ScaledObjects. Keep the version in sync with
+    # _KEDA_CHART_VERSION in installer/src/nv_config_manager_installer/deployer.py,
+    # which resolves this tarball out of the bundle when airgapped.
+    echo "helm://https://kedacore.github.io/charts|keda:2.20.1"
     if [[ "$INCLUDE_AGPL_OBSERVABILITY" == true ]]; then
         echo "helm://https://prometheus-community.github.io/helm-charts|kube-prometheus-stack:${PROMETHEUS_OPERATOR_VERSION}"
     fi

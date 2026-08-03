@@ -21,8 +21,9 @@ from pathlib import Path
 
 import yaml
 
-from nv_config_manager_installer.helm_values import generate_helm_values
+from nv_config_manager_installer.helm_values import _GLOBAL_IMAGE_DEFAULTS, generate_helm_values
 from nv_config_manager_installer.schema import (
+    NV_CONFIG_MANAGER_IMAGE_KEYS,
     ClusterConfig,
     ContentConfig,
     ExternalServicesConfig,
@@ -261,6 +262,24 @@ class TestGenerateHelmValues:
         assert values["nautobotNats"]["jetstream"]["enabled"] is True
         assert values["nautobotNats"]["natsReady"]["useNatsCli"] is True
 
+    def test_neither_secrets_method_overrides_stream_names(self):
+        """Both paths leave stream naming to the chart.
+
+        Emitting names from only one path is what let the two drift apart
+        before, which pointed the autoscaling trigger at a stream with no
+        consumers. A single source keeps the INI and the chart in step.
+        """
+        eso = _make_config(
+            secrets=SecretsConfig(
+                method=SecretsMethod.ESO,
+                vault=VaultConfig(server="https://vault.test", secrets_path="nv-config-manager"),
+            ),
+        )
+
+        for config in (_make_config(), eso):
+            nats = _gen(config)["externalServices"].get("nats", {})
+            assert "streams" not in nats
+
     def test_nautobot_disabled(self):
         config = _make_config(
             services=ServicesConfig(nautobot=False),
@@ -271,7 +290,7 @@ class TestGenerateHelmValues:
         assert values["nautobot"]["enabled"] is False
         assert "admin" not in values["nautobot"]
         assert values["nautobotNats"]["enabled"] is False
-        assert "nats" not in values["externalServices"]
+        assert "server" not in values["externalServices"].get("nats", {})
 
     def test_cnpg_per_database_clusters(self):
         values = _gen(_make_config())
@@ -782,7 +801,7 @@ class TestGenerateHelmValues:
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is False
         assert ext["nautobot"]["server"] == "https://nb.prod.example.com"
-        assert "nats" not in ext
+        assert "server" not in ext.get("nats", {})
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert values["mcp"]["enabled"] is True
@@ -959,6 +978,14 @@ class TestImagesInHelmValues:
         assert (
             images["redis"]["repository"] == "registry.example.com/nv-config-manager/library/redis"
         )
+        # The optional prometheus-nats-exporter sidecar (nautobotNats.metrics) must
+        # also be rewritten to the mirror; otherwise an air-gapped cluster with
+        # metrics enabled tries to pull it from docker.io and ImagePullBackOffs.
+        assert (
+            images["natsExporter"]["repository"]
+            == "registry.example.com/nv-config-manager/natsio/prometheus-nats-exporter"
+        )
+        assert images["natsExporter"]["tag"] == "0.20.1"
         assert (
             images["temporalServer"]["repository"]
             == "registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal"
@@ -1005,6 +1032,38 @@ class TestImagesInHelmValues:
         assert values.get("grafana", {}).get("enabled") is not True
         assert values.get("loki", {}).get("enabled") is not True
         assert values["monitoring"]["prometheus"]["namespace"] == "nv-config-manager"
+
+    def test_all_global_images_registered_for_registry_override(self):
+        """Every chart global.images key must be in the installer's override tables.
+
+        The installer rewrites global.images.<key>.repository to the configured /
+        mirror registry only for keys it knows about — NV_CONFIG_MANAGER_IMAGE_KEYS
+        (project images) plus _GLOBAL_IMAGE_DEFAULTS (third-party). A global.images
+        entry the chart ships but the installer doesn't register is left at its
+        docker.io default, so a registry/air-gapped install ImagePullBackOffs on it
+        (exactly the gap that left the prometheus-nats-exporter sidecar unmirrored).
+
+        Asserts the two sides stay in lockstep so adding a chart image without
+        registering it (or vice-versa) fails here instead of at deploy time.
+        """
+        chart_values = Path(__file__).resolve().parents[2] / "deploy" / "helm" / "values.yaml"
+        data = yaml.safe_load(chart_values.read_text())
+        chart_keys = set(data["global"]["images"])
+
+        registered = {key for key, _ in NV_CONFIG_MANAGER_IMAGE_KEYS} | set(_GLOBAL_IMAGE_DEFAULTS)
+
+        missing = chart_keys - registered
+        assert not missing, (
+            "global.images key(s) in deploy/helm/values.yaml are not registered in the "
+            "installer override tables (NV_CONFIG_MANAGER_IMAGE_KEYS / _GLOBAL_IMAGE_DEFAULTS), "
+            f"so registry/air-gapped installs won't rewrite their repository: {sorted(missing)}"
+        )
+
+        stale = registered - chart_keys
+        assert not stale, (
+            "installer override tables reference global.images key(s) that no longer exist in "
+            f"deploy/helm/values.yaml (remove them to keep the tables honest): {sorted(stale)}"
+        )
 
 
 class TestMonitoringHelmValues:
