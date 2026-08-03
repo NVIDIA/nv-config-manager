@@ -21,7 +21,7 @@ import base64
 import re
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import brotli
 from fastapi import APIRouter, HTTPException, Request
@@ -47,6 +47,7 @@ from nv_config_manager.temporal.api.dynamic_endpoints import (
 )
 from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
+from nv_config_manager.temporal.client.nautobot import NautobotClient
 from nv_config_manager.temporal.client.redis import RedisClient
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
 from nv_config_manager.temporal.common.mixins.stage import (
@@ -481,6 +482,59 @@ async def cache_workflow_input(workflow_id: str, body: BaseModel) -> None:
     await cache.cache_query(workflow_id, "input", body.model_dump(mode="json"))
 
 
+def is_uuid4(value: str) -> bool:
+    """Return whether a string contains a version 4 UUID."""
+    try:
+        return UUID(value).version == 4
+    except ValueError:
+        return False
+
+
+async def canonicalize_location_input(body: BaseModel) -> BaseModel:
+    """Validate and canonicalize a workflow location reference before submission."""
+    location_input = next(
+        (
+            (field_name, value.strip())
+            for field_name in ("site", "location")
+            if isinstance(value := getattr(body, field_name, None), str) and value.strip()
+        ),
+        None,
+    )
+    if location_input is None:
+        return body
+
+    location_field, location_reference = location_input
+
+    lookup_field = "id" if is_uuid4(location_reference) else "name"
+    lookup_value = str(UUID(location_reference)) if lookup_field == "id" else location_reference
+    client = NautobotClient()
+    async with client:
+        response = await client.get(
+            "dcim/locations/",
+            params={lookup_field: lookup_value},
+        )
+
+    matching_locations = [
+        location
+        for location in response.get("results", [])
+        if str(location.get(lookup_field)) == lookup_value
+    ]
+    if len(matching_locations) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Ambiguous site or location: {location_reference}",
+        )
+    location = matching_locations[0] if matching_locations else None
+
+    location_name = location.get("name") if location else None
+    if location_name is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown site or location: {location_reference}",
+        )
+    return body.model_copy(update={location_field: location_name})
+
+
 async def start_workflow(
     request: Request,
     workflow_class: type[BaseMixin],
@@ -526,6 +580,8 @@ async def start_workflow(
     search_attributes[EXECUTE_ROLES_SEARCH_ATTRIBUTE] = sorted(execute_roles)
     search_attributes.setdefault(PENDING_APPROVAL_SEARCH_ATTRIBUTE, [False])
     search_attributes.setdefault(FAILED_STAGE_SEARCH_ATTRIBUTE, [False])
+
+    body = await canonicalize_location_input(body)
 
     client = await get_client()
     handle: WorkflowHandle = await client.start_workflow(
