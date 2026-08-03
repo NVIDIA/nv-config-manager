@@ -33,7 +33,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Option {
   value: string;
@@ -52,6 +51,29 @@ interface SelectBoxProps {
   disabled?: boolean;
   searchable?: boolean;
 }
+
+const filterOption = (
+  value: string,
+  search: string,
+  keywords: string[] = [],
+) => {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) return 1;
+
+  const candidates = [value, ...keywords].map((candidate) =>
+    candidate.toLowerCase(),
+  );
+
+  if (candidates.some((candidate) => candidate === normalizedSearch)) return 1;
+  if (candidates.some((candidate) => candidate.startsWith(normalizedSearch))) {
+    return 0.75;
+  }
+  if (candidates.some((candidate) => candidate.includes(normalizedSearch))) {
+    return 0.5;
+  }
+
+  return 0;
+};
 
 const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
   (
@@ -189,7 +211,7 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
           className="w-[var(--radix-popover-trigger-width)] p-0"
           align="start"
         >
-          <Command>
+          <Command filter={filterOption}>
             {searchable ? (
               <div className="relative">
                 <CommandInput
@@ -212,50 +234,47 @@ const SelectBox = React.forwardRef<HTMLInputElement, SelectBoxProps>(
               </div>
             ) : null}
 
-            <CommandList>
+            <CommandList className="max-h-64">
               <CommandEmpty>
                 {emptyPlaceholder ?? "No results found."}
               </CommandEmpty>
               <CommandGroup>
-                <ScrollArea>
-                  <div className="max-h-64">
-                    {options?.map((option) => {
-                      const isSelected =
-                        Array.isArray(value) && value.includes(option.value);
-                      return (
-                        <CommandItem
-                          key={option.value}
-                          // value={option.value}
-                          onSelect={() => handleSelect(option.value)}
+                {options?.map((option) => {
+                  const isSelected =
+                    Array.isArray(value) && value.includes(option.value);
+                  return (
+                    <CommandItem
+                      key={option.value}
+                      value={option.value}
+                      keywords={[option.key]}
+                      onSelect={() => handleSelect(option.value)}
+                    >
+                      {multiple && (
+                        <div
+                          className={cn(
+                            "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                            isSelected
+                              ? "bg-primary text-primary-foreground"
+                              : "opacity-50 [&_svg]:invisible",
+                          )}
                         >
-                          {multiple && (
-                            <div
-                              className={cn(
-                                "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                isSelected
-                                  ? "bg-primary text-primary-foreground"
-                                  : "opacity-50 [&_svg]:invisible",
-                              )}
-                            >
-                              <CheckIcon />
-                            </div>
+                          <CheckIcon />
+                        </div>
+                      )}
+                      <span>{option.key}</span>
+                      {!multiple && option.value === value && (
+                        <CheckIcon
+                          className={cn(
+                            "ml-auto",
+                            option.value === value
+                              ? "opacity-100"
+                              : "opacity-0",
                           )}
-                          <span>{option.key}</span>
-                          {!multiple && option.value === value && (
-                            <CheckIcon
-                              className={cn(
-                                "ml-auto",
-                                option.value === value
-                                  ? "opacity-100"
-                                  : "opacity-0",
-                              )}
-                            />
-                          )}
-                        </CommandItem>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
+                        />
+                      )}
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
           </Command>

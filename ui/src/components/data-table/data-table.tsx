@@ -848,7 +848,7 @@ export function DataTable<TData, TValue>({ columns }: DataTableProps<TData, TVal
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       className={cn(
-                        "border-r border-border/30 px-3 py-3 last:border-r-0",
+                        "overflow-hidden border-r border-border/30 px-3 py-3 last:border-r-0",
                         cell.column.columnDef.meta?.className
                       )}
                       key={cell.id}
