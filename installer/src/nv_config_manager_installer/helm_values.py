@@ -635,11 +635,6 @@ def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:
     return postgres
 
 
-# The chart defaults these to the legacy "kiwi" names that the ESO deployments
-# run on. The kubernetes secrets path never delivered them into the assembled
-# INI, so those deployments have always fallen back to the application defaults
-# below. Pin them explicitly now that the path does deliver them, otherwise
-# closing that gap would relocate the JetStream identity of a running install.
 _KUBERNETES_CONFIG_MANAGER_STREAM = {
     "name": "nv-config-manager",
     "subjects": [
