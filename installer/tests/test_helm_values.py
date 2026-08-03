@@ -262,37 +262,23 @@ class TestGenerateHelmValues:
         assert values["nautobotNats"]["jetstream"]["enabled"] is True
         assert values["nautobotNats"]["natsReady"]["useNatsCli"] is True
 
-    def test_kubernetes_secrets_pin_config_manager_stream(self):
-        """The kubernetes path must keep the application's own stream names.
+    def test_neither_secrets_method_overrides_stream_names(self):
+        """Both paths leave stream naming to the chart.
 
-        Those deployments ran without stream keys in the assembled INI, so the
-        app supplied its defaults. The chart still defaults to the legacy kiwi
-        names, so without this pin an upgrade would relocate a live stream.
+        Emitting names from only one path is what let the two drift apart
+        before, which pointed the autoscaling trigger at a stream with no
+        consumers. A single source keeps the INI and the chart in step.
         """
-        streams = _gen(_make_config())["externalServices"]["nats"]["streams"]
-
-        cm = streams["configManager"]
-        assert cm["name"] == "nv-config-manager"
-        assert cm["subjects"] == [
-            "nv-config-manager.nautobotchange",
-            "nv-config-manager.devicechange",
-            "nv-config-manager.workflow.result",
-        ]
-        assert cm["renderChangeSubject"] == "nv-config-manager.nautobotchange"
-        assert cm["deviceChangeSubject"] == "nv-config-manager.devicechange"
-        assert cm["archiveSubject"] == "nv-config-manager.workflow.result"
-
-    def test_eso_secrets_leave_stream_names_to_the_chart(self):
-        """ESO deployments must keep inheriting the chart's kiwi defaults."""
-        config = _make_config(
+        eso = _make_config(
             secrets=SecretsConfig(
                 method=SecretsMethod.ESO,
                 vault=VaultConfig(server="https://vault.test", secrets_path="nv-config-manager"),
             ),
         )
-        values = _gen(config)
 
-        assert "streams" not in values["externalServices"].get("nats", {})
+        for config in (_make_config(), eso):
+            nats = _gen(config)["externalServices"].get("nats", {})
+            assert "streams" not in nats
 
     def test_nautobot_disabled(self):
         config = _make_config(
