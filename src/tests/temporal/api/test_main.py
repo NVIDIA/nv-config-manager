@@ -20,6 +20,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from temporalio.client import WorkflowExecutionStatus, WorkflowHandle
 
 from nv_config_manager.temporal.api.links import temporal_ui_workflow_href
@@ -42,6 +43,12 @@ from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow impor
 from nv_config_manager.temporal.ngc.workflows.deploy import DeployInput, DeployWorkflow
 
 TEMPORAL_UI_WORKFLOW_BASE = "https://temporal-ui.example.com/namespaces/default/workflows"
+
+
+class LocationWorkflowInput(BaseModel):
+    """Minimal location-based input for workflow start tests."""
+
+    site: str
 
 
 def test_healthcheck():
@@ -154,6 +161,73 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         },
     )
     mock_cache_input.assert_awaited_once_with("mockuuid", body)
+
+    # Location UUIDs are validated and canonicalized in the workflow input.
+    mock_connect.reset_mock()
+    mock_cache_input.reset_mock()
+    mock_rbac_instance.get_workflow_roles.return_value = {
+        "read_roles": {"all"},
+        "execute_roles": {"all"},
+    }
+    request.state.roles = {"all"}
+    location_id = "b6f4972a-c6ab-4be1-96ac-72f4efc4f328"
+    location_body = LocationWorkflowInput(site=location_id)
+    location_client = MagicMock()
+    location_client.__aenter__.return_value = location_client
+    location_client.get = AsyncMock(
+        return_value={
+            "count": 1,
+            "results": [{"id": location_id, "name": "SJC01"}],
+        }
+    )
+    with patch(
+        "nv_config_manager.temporal.api.workflow_v1.NautobotClient",
+        return_value=location_client,
+    ):
+        result = await start_workflow(request, HelloWorld, location_body)
+
+    assert result == "mockuuid"
+    canonical_location_body = LocationWorkflowInput(site="SJC01")
+    mock_connect.return_value.start_workflow.assert_called_with(
+        HelloWorld.run,
+        canonical_location_body,
+        id="mockuuid",
+        task_queue="default-task-queue",
+        search_attributes={
+            "ExecuteRoles": ["all"],
+            FAILED_STAGE_SEARCH_ATTRIBUTE: [False],
+            PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
+            "ReadRoles": ["all"],
+            "User": ["testuser"],
+        },
+    )
+    mock_cache_input.assert_awaited_once_with("mockuuid", canonical_location_body)
+    assert location_body.site == location_id
+    location_client.get.assert_awaited_once_with(
+        "dcim/locations/",
+        params={"id": location_id},
+    )
+
+    # Invalid references fail before a Temporal workflow is created.
+    mock_connect.reset_mock()
+    location_client.get.reset_mock()
+    location_client.get.return_value = {"count": 0, "results": []}
+    location_body = LocationWorkflowInput(site="missing-site")
+    with (
+        patch(
+            "nv_config_manager.temporal.api.workflow_v1.NautobotClient",
+            return_value=location_client,
+        ),
+        pytest.raises(HTTPException, match="Unknown site or location") as exc_info,
+    ):
+        await start_workflow(request, HelloWorld, location_body)
+
+    assert exc_info.value.status_code == 422
+    mock_connect.return_value.start_workflow.assert_not_called()
+    location_client.get.assert_awaited_once_with(
+        "dcim/locations/",
+        params={"name": "missing-site"},
+    )
 
     # Test that more strict workflow permissions are respected
     mock_connect.reset_mock()
