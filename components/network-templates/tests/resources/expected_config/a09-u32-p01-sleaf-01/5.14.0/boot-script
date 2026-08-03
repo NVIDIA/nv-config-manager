@@ -50,7 +50,11 @@ if ! grep -q "VERSION_ID=5.14.0" /etc/os-release; then
   FIRMWARE_URL="http://192.0.2.10/v1/device/696e142c-ff53-4b3a-9724-3d509a1eb73b/firmware"
   if /usr/cumulus/bin/onie-install -fa -i "$FIRMWARE_URL"; then
     touch "$FIRMWARE_REBOOT_MARKER"
-    reboot
+    if ! reboot; then
+      rm -f "$FIRMWARE_REBOOT_MARKER"
+      echo "Failed to initiate reboot."
+      exit 1
+    fi
     exit 0
   else
     echo "Firmware installation failed with exit code $?"
