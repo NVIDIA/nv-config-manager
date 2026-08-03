@@ -56,14 +56,14 @@ externalServices:
     local: true
     streams:
       configManager:
-        name: kiwi
+        name: nv-config-manager
         subjects:
-          - kiwi.nautobotchange
-          - kiwi.devicechange
-          - kiwi.workflow.result
-        renderChangeSubject: kiwi.nautobotchange
-        deviceChangeSubject: kiwi.devicechange
-        archiveSubject: kiwi.workflow.result
+          - nv-config-manager.nautobotchange
+          - nv-config-manager.devicechange
+          - nv-config-manager.workflow.result
+        renderChangeSubject: nv-config-manager.nautobotchange
+        deviceChangeSubject: nv-config-manager.devicechange
+        archiveSubject: nv-config-manager.workflow.result
       nautobot:
         name: nautobot
         subjects:

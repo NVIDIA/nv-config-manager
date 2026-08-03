@@ -27,7 +27,7 @@ the public repository.
 | -------- | ------- |
 | `NVCM_IMAGE_TARGETS` | Newline-delimited image targets, one `name\|repository_prefix\|token_variable` record per target |
 | `NVCM_IMAGE_TARGET` | Optional default image target for build/publish jobs; the first `NVCM_IMAGE_TARGETS` record is used when unset |
-| `NVCM_VALUES_IMAGE_TARGET` | Image target name used when publishing charts and updating downstream `kiwi-argocd` values |
+| `NVCM_VALUES_IMAGE_TARGET` | Image target name used when publishing charts and updating downstream deployment values |
 | `NVCM_IMAGE_REPOSITORY` | Legacy/default image repository prefix; when `NVCM_IMAGE_TARGETS` is set, jobs derive this from the selected image target |
 | `NVCM_NGC_API_BASE` | Base registry API URL |
 | `NVCM_NGC_ORG` | Registry organization used by tag existence checks |
@@ -144,7 +144,7 @@ upstream oauth2-proxy image shipped by the Helm chart on both architectures.
 For the `kiwi-test` migration, keep Argo CD on the existing app and branch names:
 
 ```text
-NVCM_VALUES_REPO_PATH=kiwi/kiwi-argocd
+NVCM_VALUES_REPO_PATH=example/nv-config-manager-values
 NV_CONFIG_MANAGER_VALUES_REPO_URL=<unset>
 
 NVCM_TEST_NAMESPACE=kiwi-test

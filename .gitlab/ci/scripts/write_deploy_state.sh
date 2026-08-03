@@ -94,7 +94,7 @@ if git ls-remote --heads origin "${NVCM_ENV_BRANCH}" | grep -q "${NVCM_ENV_BRANC
     git checkout "${NVCM_ENV_BRANCH}"
 else
     echo "ERROR: env branch '${NVCM_ENV_BRANCH}' does not exist in ${values_repo_display}."
-    echo "Seed it from main first (see the kiwi-argocd README migration steps)."
+    echo "Seed it from main first (see the downstream values repository's README migration steps)."
     exit 1
 fi
 
@@ -127,7 +127,7 @@ if [ "$current_hold" = "true" ] && [ "$current_occupant" != "$occupant" ]; then
     exit 1
 fi
 
-# Baseline pin: the kiwi-argocd main SHA whose baseline values the render gate
+# Baseline pin: the downstream values repository main SHA whose baseline values the render gate
 # validated against, attested by test-promote-chart in chart.env (read above).
 # Consuming that exact SHA - rather than re-resolving origin/main here - keeps
 # the deployed baseline identical to the one that was validated even if main
