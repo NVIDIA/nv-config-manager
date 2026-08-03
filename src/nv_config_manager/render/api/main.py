@@ -18,20 +18,23 @@ from __future__ import annotations
 
 import uvicorn
 from fastapi import FastAPI
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.common.telemetry import setup_tracing
+from nv_config_manager.common.telemetry import (
+    group_fastapi_status_codes,
+    instrument_fastapi_app,
+    setup_tracing,
+)
 from nv_config_manager.render.api import admin_v1, render_v1
 
 configure_logging(service="render")
 setup_tracing("render")
 
 app = FastAPI()
-FastAPIInstrumentor.instrument_app(app)
+instrument_fastapi_app(app)
 
 
 def main() -> None:
@@ -42,6 +45,7 @@ def main() -> None:
         port=9000,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )
 
 
@@ -49,7 +53,10 @@ app.include_router(render_v1.router, prefix="/v1", tags=["render"])
 app.include_router(admin_v1.router, prefix="/v1", tags=["admin"])
 
 
-instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+instrumentator = Instrumentator(
+    should_group_status_codes=group_fastapi_status_codes(),
+    excluded_handlers=["/healthcheck", "/metrics"],
+)
 instrumentator.add(
     instrumentator_metrics.default(
         metric_namespace="nv-config-manager",

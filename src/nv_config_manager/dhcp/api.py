@@ -28,7 +28,6 @@ from aiohttp import ClientError, ClientResponseError
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
@@ -37,7 +36,11 @@ from pydantic import IPvAnyAddress, IPvAnyNetwork
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.common.telemetry import setup_tracing
+from nv_config_manager.common.telemetry import (
+    group_fastapi_status_codes,
+    instrument_fastapi_app,
+    setup_tracing,
+)
 from nv_config_manager.dhcp.kea import IpVersion, KeaClient, KeaException
 from nv_config_manager.dhcp.lease_dashboard import (
     DhcpSummaryResponse,
@@ -94,7 +97,7 @@ def _install_cors(application: FastAPI) -> None:
 
 app = FastAPI()
 _install_cors(app)
-FastAPIInstrumentor.instrument_app(app)
+instrument_fastapi_app(app)
 
 CACHE_LAST_REFRESH = Gauge(
     "cache_last_refresh_timestamp_seconds",
@@ -104,7 +107,10 @@ CACHE_LAST_REFRESH = Gauge(
     subsystem="dhcp",
 )
 
-instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+instrumentator = Instrumentator(
+    should_group_status_codes=group_fastapi_status_codes(),
+    excluded_handlers=["/healthcheck", "/metrics"],
+)
 instrumentator.add(
     instrumentator_metrics.default(
         metric_namespace="nv-config-manager",
@@ -323,6 +329,7 @@ def main() -> None:
         port=args.port,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )
 
 

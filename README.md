@@ -64,18 +64,31 @@ Install the repository hooks after cloning and whenever hook scripts change:
 
 Installed hooks:
 
-- `pre-commit`: formats all staged Python files outside ignored/generated
-  directories with `uv run ruff format`, re-stages those files, and checks SPDX
-  license headers for supported source files (`.py`, `.ts`, `.tsx`, `.js`,
-  `.jsx`, `.mjs`, `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`,
-  `components/`, `db/migrations/`, `scripts/`, `development/`,
-  `installer/src/`, `installer/tests/`, and `installer/scripts/`.
+- `pre-commit`: checks opted-in OpenPGP, SSH, or X.509/S/MIME signing, formats
+  all staged Python files outside ignored/generated directories with
+  `uv run ruff format`, re-stages those files, and checks SPDX license headers
+  for supported source files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`,
+  `.cjs`, and `.go`) under `src/`, `ui/src/`, `ui/tests/`, `components/`,
+  `db/migrations/`, `scripts/`, `development/`, `installer/src/`,
+  `installer/tests/`, and `installer/scripts/`.
 - `commit-msg`: rejects commits that do not include a valid DCO
   `Signed-off-by: Name <email>` trailer. Use `git commit -s` or
   `git commit --amend -s` to add the trailer automatically.
 
-Local hooks can be skipped with `git commit --no-verify`, so the organization DCO
-app remains the merge-time enforcement gate in CI.
+The hook installer reports signing readiness only when repository-local signing
+settings are present. Trustees need GitHub-verified commits for automatic sync
+and should follow the internal signing setup guidance. Other contributors and
+draft pull requests instead need an authorized maintainer to approve the exact
+commit with `/ok to test <sha>`; they are not prompted to configure a signing key.
+
+See [Cryptographically Signing Commits](CONTRIBUTING.md#cryptographically-signing-commits)
+for the trustee and non-trustee workflows.
+
+The local signing check is advisory. GitHub and copy-pr-bot make the authoritative
+decision about signature verification and protected CI branch creation.
+
+Local hooks can be skipped with `git commit --no-verify`; maintainers must still
+ensure every commit satisfies the DCO before accepting a contribution.
 
 For UI work:
 

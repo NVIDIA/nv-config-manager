@@ -9,3 +9,5 @@ include:
   - local: .gitlab/ci/deploy.yml
   - local: .gitlab/ci/release.yml
   - local: .gitlab/ci/airgapped.yml
+  - local: .gitlab/ci/pr-build.yml
+  - local: .gitlab/ci/promote-test-envs.yml

@@ -29,6 +29,7 @@ from nv_config_manager_installer.tui.air_sim.screens.launch import (
     _MAX_DEPLOY_LOG_LINES,
     LaunchScreen,
     _clean_dhcp_line,
+    _create_deploy_log_path,
     _DeployStarted,
     _is_interesting_dhcp_line,
     _PodStatusWidget,
@@ -293,6 +294,14 @@ def test_tui_callback_streams_unfiltered_deploy_log_lines() -> None:
     callback.on_log("ordinary docker build output with no activity keyword")
 
     assert recorder.entries == [("ordinary docker build output with no activity keyword", "deploy")]
+
+
+def test_create_deploy_log_path_is_owner_only() -> None:
+    log_path = _create_deploy_log_path()
+    try:
+        assert log_path.stat().st_mode & 0o777 == 0o600
+    finally:
+        log_path.unlink()
 
 
 def test_dhcp_activity_helpers_include_refresh_and_config_events() -> None:

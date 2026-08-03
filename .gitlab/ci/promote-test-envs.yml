@@ -1,0 +1,532 @@
+---
+# =============================================================================
+# Protected promote pipeline for the SHARED TEST ENVIRONMENTS ONLY
+# =============================================================================
+# Promotes a PR build to test / test01 by publishing immutable artifacts and
+# committing a deployment-state file to the env's branch in the downstream
+# ArgoCD values repository. This pipeline can NOT target production: every
+# rule requires NVCM_PROMOTE_ENV to be exactly "test" or "test01" (prod stays
+# on the tag-driven release flow in release.yml).
+#
+# How to deploy a PR (single action):
+#   Run pipeline on the default branch with:
+#     NVCM_PROMOTE_PR  = <GitHub PR number>
+#     NVCM_PROMOTE_ENV = test | test01
+#   Optional: NVCM_PROMOTE_REUSE_BUILD=false to force a fresh build.
+#
+# How to rollback / free a test env (manual jobs):
+#   Run pipeline on the default branch with only NVCM_PROMOTE_ENV set, then
+#   start test-rollback-env (optionally NVCM_ROLLBACK_TO=<env-branch sha>) or
+#   test-release-env from the pipeline view.
+#
+# Build/promote split (security model): the actual image build runs in a
+# SEPARATE pipeline on the unprotected pull-request/<n> ref with no secrets
+# (see pr-build.yml). This pipeline runs on protected main, holds the
+# protected variables, and only operates on the already-built artifacts -
+# untrusted PR code never executes here.
+#
+# Required protected CI/CD variables (see .gitlab/ci/README.md):
+#   NVCM_MIRROR_API_TOKEN, NVCM_TEST_ENV_TARGETS, NVCM_CHART_REPO,
+#   NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN, NVCM_VALUES_REPO_PATH,
+#   plus the existing image/chart target variables.
+# =============================================================================
+
+.test-promote-rules: &test-promote-rules
+  - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_PR && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    when: always
+  - when: never
+
+.test-env-ops-rules: &test-env-ops-rules
+  - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/ && $NVCM_PROMOTE_PR == null
+    when: manual
+    allow_failure: true
+  - when: never
+
+# -----------------------------------------------------------------------------
+# 1) Resolve PR HEAD; reuse or trigger the no-secrets build pipeline; wait.
+# -----------------------------------------------------------------------------
+test-promote-build:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  needs: []
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules: *test-promote-rules
+  timeout: 2h
+  before_script:
+    - apk add --no-cache bash curl git jq coreutils
+  script:
+    - bash .gitlab/ci/scripts/promote_build_pipeline.sh
+  artifacts:
+    reports:
+      dotenv: promote.env
+    # Also a plain file: downstream jobs read the provenance-critical values
+    # (resolved PR ref/SHA, build job ids) from disk, since pipeline variables
+    # outrank dotenv and could otherwise redirect artifact downloads or defeat
+    # the stale-HEAD guard.
+    paths:
+      - promote.env
+    expire_in: 1 week
+
+# -----------------------------------------------------------------------------
+# 2) Download image tars by job id, load, retag, push, capture digests.
+# -----------------------------------------------------------------------------
+test-promote-push-images:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image: $NVCM_CI_IMAGE_DOCKER
+  services:
+    - name: $NVCM_CI_IMAGE_DOCKER_DIND
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375/
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+  rules: *test-promote-rules
+  needs:
+    - job: test-promote-build
+      artifacts: true
+  before_script:
+    - apk add -q bash curl unzip coreutils
+    - docker info
+    - |
+      image_target_exports="$(bash .gitlab/ci/scripts/image_target_env.sh "${NVCM_VALUES_IMAGE_TARGET:-}")" || exit $?
+      eval "$image_target_exports"
+    - image_token="$(printenv "$NVCM_IMAGE_TOKEN_VAR" || true)"
+    - test -n "$image_token" || (echo "Image target ${NVCM_IMAGE_TARGET_NAME} references ${NVCM_IMAGE_TOKEN_VAR}, but it is empty or unset" && exit 1)
+    - printf '%s' "$image_token" | docker login -u "$NVCM_IMAGE_USERNAME" --password-stdin "$NVCM_IMAGE_REGISTRY"
+  script:
+    - bash .gitlab/ci/scripts/promote_push_images.sh
+  artifacts:
+    reports:
+      dotenv: digests.env
+    paths:
+      - digests.env
+    expire_in: 1 week
+
+# -----------------------------------------------------------------------------
+# 3) Download the chart .tgz packaged in the secret-free build stage, validate
+#    its render against the target env's actual values layering, and publish it.
+#    Does NOT check out or package PR source (that happens in pr-build-chart).
+# -----------------------------------------------------------------------------
+test-promote-chart:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image:
+    name: $NVCM_CI_IMAGE_UBUNTU
+    entrypoint: ['']
+  rules: *test-promote-rules
+  needs:
+    - job: test-promote-build
+      artifacts: true
+    - job: test-promote-push-images
+      artifacts: true
+  before_script:
+    - |
+      set -e
+      apt update
+      apt install -y curl gpg apt-transport-https
+      curl --retry 3 --retry-delay 5 --retry-connrefused -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | gpg --dearmor | tee /usr/share/keyrings/helm.gpg > /dev/null
+      echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | tee /etc/apt/sources.list.d/helm-stable-debian.list
+      apt update
+      apt install -y helm git wget unzip
+      # Pinned yq + SHA-256 verification (this is a secret-bearing job; do not
+      # run an unverified binary from a floating 'latest' URL).
+      YQ_VERSION=v4.44.6
+      YQ_SHA256=0c2b24e645b57d8e7c0566d18643a6d4f5580feeea3878127354a46f2a1e4598
+      wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+      echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum -c -
+      chmod +x /usr/local/bin/yq
+    # Pinned + checksum-verified, as with yq above: this job holds registry and
+    # values-push credentials, so nothing unverified gets executed here.
+    - |
+      set -e
+      NGC_CLI_VERSION=4.8.2
+      NGC_CLI_SHA256=8f12ed29aaa49be96e059439f993a990b953a709b152550f062d5190e21afafa
+      wget --content-disposition "https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/${NGC_CLI_VERSION}/files/ngccli_linux.zip" -O ngccli_linux.zip
+      echo "${NGC_CLI_SHA256}  ngccli_linux.zip" | sha256sum -c -
+      unzip ngccli_linux.zip
+      chmod u+x ngc-cli/ngc
+  script:
+    - |
+      set -e
+
+      # Download the chart .tgz packaged in the SECRET-FREE build stage on the
+      # PR ref (job id resolved from GitLab-trusted metadata by
+      # promote_build_pipeline.sh). This job never checks out or packages PR
+      # source, so no untrusted chart code (e.g. `helm dependency build`) runs
+      # in this credentialed context.
+      # Read from the file artifact, not dotenv: an overriding pipeline variable
+      # could otherwise point this download at a different job's artifacts.
+      CHART_BUILD_JOB_ID="$(grep -m1 '^CHART_BUILD_JOB_ID=' "${CI_PROJECT_DIR}/promote.env" | cut -d= -f2-)"
+      [ -n "$CHART_BUILD_JOB_ID" ] || { echo "❌ CHART_BUILD_JOB_ID missing from promote.env"; exit 1; }
+      # SECURITY: this archive is produced by the untrusted build stage - the PR
+      # controls pr-build.yml, and therefore the artifact's paths and contents.
+      # Extract into a throwaway directory, NEVER into CI_PROJECT_DIR: unzipping
+      # in place would let a crafted artifact overwrite the trusted scripts this
+      # job then executes (test_env_config.sh, publish_chart_targets.sh), giving
+      # arbitrary code execution with the registry and values-push credentials.
+      chart_dl="$(mktemp -d)"
+      curl -fsS --retry 3 --retry-delay 5 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        -o "${chart_dl}/chart-artifacts.zip" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/jobs/${CHART_BUILD_JOB_ID}/artifacts"
+      unzip -q "${chart_dl}/chart-artifacts.zip" -d "${chart_dl}/x"
+
+      # Provenance: require exactly the chart version this promote run computed
+      # from trusted PR metadata. A chart stamped with any other version does
+      # not match and is rejected (fails closed). Read the version from the
+      # build job's FILE artifact for the same reason as the job id above -
+      # push-images already tagged the images from that same source, so taking
+      # it from (overridable) dotenv here could desynchronise the two.
+      PROMOTE_VERSION="$(grep -m1 '^PROMOTE_VERSION=' "${CI_PROJECT_DIR}/promote.env" | cut -d= -f2-)"
+      [ -n "$PROMOTE_VERSION" ] || { echo "❌ PROMOTE_VERSION missing from promote.env"; exit 1; }
+      CHART_NAME=nv-config-manager
+      chart_file="${chart_dl}/x/chart/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      if [ ! -f "$chart_file" ]; then
+        echo "❌ Expected chart/${CHART_NAME}-${PROMOTE_VERSION}.tgz not found in build artifacts"
+        ls -laR "${chart_dl}/x" || true
+        exit 1
+      fi
+      # Reject a symlink masquerading as the chart (it could point anywhere on
+      # the filesystem); only a regular file is acceptable.
+      if [ -L "$chart_file" ]; then
+        echo "❌ ${chart_file} is a symlink, not a regular file"
+        exit 1
+      fi
+
+      # Render gate against the env's real values layering (pinned baseline +
+      # env-branch overrides + digest pins) BEFORE publishing or touching the
+      # env branch. helm template is sandboxed (no env access), so rendering the
+      # untrusted chart with this job's credentials present cannot leak them;
+      # the packaged .tgz already vendors its subcharts, so nothing is fetched.
+      env_config="$(bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/test_env_config.sh" "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
+      # Read-only access: this job only reads the baseline values and the env
+      # branch's overrides, so it uses CI_JOB_TOKEN (short-lived, job-scoped,
+      # auto-revoked) rather than the values PUSH token. Requires the values
+      # repo's inbound job-token allowlist to include this project. Only the
+      # deploy-state / rollback / release jobs, which actually commit, use
+      # NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN.
+      if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+      else
+        values_repo_url="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
+      fi
+      git clone "$values_repo_url" /tmp/values-repo
+      # Capture the exact main SHA whose baseline values this render validates.
+      # write_deploy_state reads it from this file instead of re-resolving
+      # origin/main, so the DEPLOYED baseline is the one that was validated even
+      # if main moves before the deploy-state job runs.
+      baseline_revision="$(git -C /tmp/values-repo rev-parse HEAD)"
+      echo "BASELINE_REVISION=${baseline_revision}" > "${CI_PROJECT_DIR}/chart.env"
+      git -C /tmp/values-repo fetch origin "${NVCM_ENV_BRANCH}"
+      git -C /tmp/values-repo worktree add /tmp/values-env "origin/${NVCM_ENV_BRANCH}"
+      # Capture the env-branch SHA whose overrides this render validates.
+      # resource_group serializes promote/rollback/release, but NOT human pushes
+      # to the env branch, so the overrides can move between this gate and the
+      # deploy-state commit. write_deploy_state refuses to write if they have.
+      env_branch_revision="$(git -C /tmp/values-repo rev-parse "origin/${NVCM_ENV_BRANCH}")"
+      echo "ENV_BRANCH_REVISION=${env_branch_revision}" >> "${CI_PROJECT_DIR}/chart.env"
+      # Attest the chart version too, now that it has been cross-checked against
+      # the built artifact's filename above. chart.env is published as a FILE
+      # artifact (not only dotenv) because pipeline variables outrank dotenv in
+      # GitLab - an operator-supplied variable of the same name would otherwise
+      # override the values these provenance guards compare against.
+      echo "PROMOTE_VERSION=${PROMOTE_VERSION}" >> "${CI_PROJECT_DIR}/chart.env"
+      overrides_file="/tmp/values-env/${NVCM_ENV_STATE_DIR}/values-aws-${NVCM_ENV}.overrides.yaml"
+      test -f "$overrides_file" || (echo "❌ Missing overrides file ${overrides_file} on ${NVCM_ENV_BRANCH}" && exit 1)
+
+      # Digest pins come from the push job's FILE artifact, not its dotenv
+      # export. write_deploy_state.sh pins the file's values, so reading the
+      # same source here keeps "what we validated" and "what we deploy"
+      # identical even if a same-named pipeline variable is set.
+      digest_attest="${CI_PROJECT_DIR}/digests.env"
+      [ -f "$digest_attest" ] || { echo "❌ Missing ${digest_attest} (artifact from test-promote-push-images)"; exit 1; }
+      attest_digest() {
+        local key="$1" val
+        val="$(grep -m1 "^${key}=" "$digest_attest" | cut -d= -f2- || true)"
+        [ -n "$val" ] || { echo "❌ ${key} missing from digests.env"; exit 1; }
+        printf '%s' "$val"
+      }
+      DIGEST_NV_CONFIG_MANAGER="$(attest_digest DIGEST_NV_CONFIG_MANAGER)"
+      DIGEST_NV_CONFIG_MANAGER_UI="$(attest_digest DIGEST_NV_CONFIG_MANAGER_UI)"
+      DIGEST_NV_CONFIG_MANAGER_KEA="$(attest_digest DIGEST_NV_CONFIG_MANAGER_KEA)"
+      DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN="$(attest_digest DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN)"
+      DIGEST_NV_CONFIG_MANAGER_NAUTOBOT="$(attest_digest DIGEST_NV_CONFIG_MANAGER_NAUTOBOT)"
+      DIGEST_NV_CONFIG_MANAGER_NATS_READY="$(attest_digest DIGEST_NV_CONFIG_MANAGER_NATS_READY)"
+      DIGEST_NV_CONFIG_MANAGER_TEMPORAL="$(attest_digest DIGEST_NV_CONFIG_MANAGER_TEMPORAL)"
+      DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP="$(attest_digest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP)"
+      DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI="$(attest_digest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI)"
+
+      # Render with identical inputs for any package, so the locally validated
+      # one and the published one can be compared.
+      render_chart() {
+        helm template "${NVCM_ENV_RELEASE_NAME}" "$1" \
+          -f "/tmp/values-repo/${NVCM_ENV_BASELINE_VALUES}" \
+          -f "$overrides_file" \
+          --set "global.images.nvConfigManager.digest=${DIGEST_NV_CONFIG_MANAGER}" \
+          --set "global.images.nvConfigManagerUi.digest=${DIGEST_NV_CONFIG_MANAGER_UI}" \
+          --set "global.images.kea.digest=${DIGEST_NV_CONFIG_MANAGER_KEA}" \
+          --set "global.images.keaAdmin.digest=${DIGEST_NV_CONFIG_MANAGER_KEA_ADMIN}" \
+          --set "global.images.nautobot.digest=${DIGEST_NV_CONFIG_MANAGER_NAUTOBOT}" \
+          --set "global.images.natsReady.digest=${DIGEST_NV_CONFIG_MANAGER_NATS_READY}" \
+          --set "global.images.temporalServer.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL}" \
+          --set "global.images.temporalBootstrap.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP}" \
+          --set "global.images.temporalUi.digest=${DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI}" \
+          > "$2"
+      }
+
+      echo "🔍 Validating render for ${NVCM_ENV}..."
+      render_chart "$chart_file" /tmp/render-validated.yaml
+      echo "✅ Render OK"
+
+      echo "📤 Publishing chart to configured targets..."
+      # publish_chart_targets.sh resolves ngc-cli/ngc relative to the project
+      # root, so publish from there.
+      cp "$chart_file" "${CI_PROJECT_DIR}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      cd "${CI_PROJECT_DIR}"
+      bash .gitlab/ci/scripts/publish_chart_targets.sh "${CHART_NAME}-${PROMOTE_VERSION}.tgz" "$PROMOTE_VERSION" "$CHART_NAME"
+
+      # The publisher treats "already exists" as success, and PROMOTE_VERSION is
+      # a pure function of PR+SHA - so a concurrent or earlier run could already
+      # have published a DIFFERENT package at this version and ours was silently
+      # skipped. Verify the registry now serves what we validated; otherwise
+      # deploy-state would pin a package this run never rendered.
+      echo "🔎 Verifying the published chart matches the validated package..."
+      ngc_key="$(awk -F' = ' '/^apikey/{print $2}' ~/.ngc/config 2>/dev/null || true)"
+      if [ -z "$ngc_key" ]; then
+        echo "❌ No NGC credentials available to verify the published chart."
+        echo "   (Expected ~/.ngc/config from an 'ngc' entry in NVCM_CHART_TARGETS.)"
+        exit 1
+      fi
+      verify_dir="$(mktemp -d)"
+      helm repo add nvcm-verify "$NVCM_CHART_REPO" --username '$oauthtoken' --password "$ngc_key" >/dev/null
+      published_chart="${verify_dir}/${CHART_NAME}-${PROMOTE_VERSION}.tgz"
+      # The NGC repo index is eventually consistent, so a chart published
+      # seconds ago is often not listed yet. Retry the refresh+pull for a
+      # bounded window before treating that as a publish failure.
+      pull_attempts="${NVCM_CHART_PULL_ATTEMPTS:-6}"
+      pull_delay="${NVCM_CHART_PULL_DELAY:-10}"
+      attempt=1
+      while :; do
+        if helm repo update nvcm-verify >/dev/null \
+          && helm pull "nvcm-verify/${CHART_NAME}" --version "$PROMOTE_VERSION" --devel -d "$verify_dir" \
+          && [ -f "$published_chart" ]; then
+          break
+        fi
+        [ "$attempt" -lt "$pull_attempts" ] || break
+        echo "   not in the index yet; retrying in ${pull_delay}s (attempt ${attempt}/${pull_attempts})"
+        attempt=$((attempt + 1))
+        sleep "$pull_delay"
+      done
+      if [ ! -f "$published_chart" ]; then
+        echo "❌ Could not pull ${CHART_NAME}:${PROMOTE_VERSION} back from ${NVCM_CHART_REPO}"
+        exit 1
+      fi
+      render_chart "$published_chart" /tmp/render-published.yaml
+      if ! diff -q /tmp/render-validated.yaml /tmp/render-published.yaml >/dev/null; then
+        echo "❌ The chart published at ${PROMOTE_VERSION} does NOT match the package"
+        echo "   this run validated - a different package already existed at this"
+        echo "   version. Refusing to promote an unvalidated chart."
+        diff /tmp/render-validated.yaml /tmp/render-published.yaml | head -40
+        exit 1
+      fi
+      echo "✅ Published chart renders identically to the validated package"
+  artifacts:
+    reports:
+      dotenv: chart.env
+    # Also published as a plain file so downstream jobs can read the attested
+    # values from disk instead of trusting (overridable) dotenv variables.
+    paths:
+      - chart.env
+    expire_in: 1 week
+
+# -----------------------------------------------------------------------------
+# 4) Commit the deployment-state to the env branch. ArgoCD does the rest.
+# -----------------------------------------------------------------------------
+test-promote-deploy-state:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules: *test-promote-rules
+  needs:
+    - job: test-promote-build
+      artifacts: true
+    - job: test-promote-push-images
+      artifacts: true
+    - job: test-promote-chart
+      artifacts: true
+  environment:
+    name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
+  before_script:
+    - apk add --no-cache bash git yq curl coreutils
+    - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
+    - git config --global user.name "NVIDIA Config Manager CI"
+  script:
+    # Final stale-HEAD check before mutating the env branch.
+    # Guard inputs come from the file artifact, not dotenv - an overriding
+    # pipeline variable could otherwise make this check compare against
+    # operator-chosen values and pass trivially.
+    - |
+      pr_ref="$(grep -m1 '^PR_REF=' "${CI_PROJECT_DIR}/promote.env" | cut -d= -f2-)"
+      pr_sha="$(grep -m1 '^PR_SHA=' "${CI_PROJECT_DIR}/promote.env" | cut -d= -f2-)"
+      [ -n "$pr_ref" ] && [ -n "$pr_sha" ] || { echo "❌ PR_REF/PR_SHA missing from promote.env"; exit 1; }
+      bash .gitlab/ci/scripts/pr_ref_guard.sh "$pr_ref" "$pr_sha"
+    - |
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
+    - bash .gitlab/ci/scripts/write_deploy_state.sh
+
+# -----------------------------------------------------------------------------
+# Rollback: restore a prior known-good deploy-state from env-branch history.
+# -----------------------------------------------------------------------------
+test-rollback-env:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules: *test-env-ops-rules
+  needs: []
+  environment:
+    name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
+  before_script:
+    - apk add --no-cache bash git yq coreutils
+    - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
+    - git config --global user.name "NVIDIA Config Manager CI"
+  script:
+    - |
+      set -e
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
+      if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+      else
+        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
+      fi
+      git clone "$values_repo_url" values-repo
+      cd values-repo
+      git fetch origin "${NVCM_ENV_BRANCH}"
+      git checkout "${NVCM_ENV_BRANCH}"
+      state_file="${NVCM_ENV_STATE_DIR}/deploy-state.yaml"
+
+      if [ -z "${NVCM_ROLLBACK_TO:-}" ]; then
+        echo "Recent deploy-states on ${NVCM_ENV_BRANCH} (newest first):"
+        echo ""
+        git log -n 15 --pretty='%h  %ad  %s' --date=iso -- "$state_file"
+        echo ""
+        echo "Re-run this pipeline with NVCM_ROLLBACK_TO=<commit sha> to roll back."
+        exit 1
+      fi
+
+      # The rollback target must be a commit on THIS env branch. Without this,
+      # a typo or a SHA from another branch/env would install an unrelated
+      # deploy-state (e.g. another environment's chart + digests).
+      if ! git rev-parse --verify --quiet "${NVCM_ROLLBACK_TO}^{commit}" >/dev/null; then
+        echo "ERROR: NVCM_ROLLBACK_TO='${NVCM_ROLLBACK_TO}' is not a commit in ${NVCM_VALUES_REPO_PATH}."
+        exit 1
+      fi
+      if ! git merge-base --is-ancestor "${NVCM_ROLLBACK_TO}" "origin/${NVCM_ENV_BRANCH}"; then
+        echo "ERROR: ${NVCM_ROLLBACK_TO} is not an ancestor of ${NVCM_ENV_BRANCH}."
+        echo "       Roll back only to a deploy-state committed on this env branch"
+        echo "       (re-run without NVCM_ROLLBACK_TO to list valid candidates)."
+        exit 1
+      fi
+      # And it must actually carry this env's deploy-state.
+      if ! git cat-file -e "${NVCM_ROLLBACK_TO}:${state_file}" 2>/dev/null; then
+        echo "ERROR: ${NVCM_ROLLBACK_TO} does not contain ${state_file}."
+        exit 1
+      fi
+
+      echo "Rolling ${NVCM_PROMOTE_ENV} back to deploy-state @ ${NVCM_ROLLBACK_TO}"
+      git show "${NVCM_ROLLBACK_TO}:${state_file}" > "$state_file"
+      # Refresh audit fields only; the deployment pins are restored verbatim.
+      occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
+      updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      export occupant updated_at
+      yq -i '.occupant = strenv(occupant) | .updatedAt = strenv(updated_at)' "$state_file"
+
+      git diff "$state_file"
+      git add "$state_file"
+      git commit -m "[nvcm CI] Rollback ${NVCM_PROMOTE_ENV} to deploy-state @ ${NVCM_ROLLBACK_TO}
+
+      Triggered by: ${occupant}
+      Pipeline: ${CI_PIPELINE_URL}"
+      git push origin "HEAD:refs/heads/${NVCM_ENV_BRANCH}"
+      echo "✅ Rolled back. ArgoCD will revert ${NVCM_PROMOTE_ENV} to that exact chart+image+baseline snapshot."
+
+# -----------------------------------------------------------------------------
+# Release: reset the env's deploy-state AND overrides to the canonicals on
+# main, freeing the slot immediately.
+# -----------------------------------------------------------------------------
+test-release-env:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image: $NVCM_CI_IMAGE_ALPINE
+  rules: *test-env-ops-rules
+  needs: []
+  environment:
+    name: $NVCM_PROMOTE_ENV
+  # Serialize env-branch mutations (promote / rollback / release) per env so
+  # concurrent runs can't race on the same nvcm-<env> branch.
+  resource_group: nvcm-env-$NVCM_PROMOTE_ENV
+  before_script:
+    - apk add --no-cache bash git coreutils
+    - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
+    - git config --global user.name "NVIDIA Config Manager CI"
+  script:
+    - |
+      set -e
+      env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
+      eval "$env_config"
+      if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
+        values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
+      else
+        values_repo_url="https://oauth2:${NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN}@${CI_SERVER_HOST}/${NVCM_VALUES_REPO_PATH}.git"
+      fi
+      git clone "$values_repo_url" values-repo
+      cd values-repo
+      git fetch origin "${NVCM_ENV_BRANCH}" main
+      git checkout "${NVCM_ENV_BRANCH}"
+
+      echo "Resetting ${NVCM_ENV_STATE_DIR}/ to the canonicals on main..."
+      # Clear the directory first: `git checkout <ref> -- <dir>` only overwrites
+      # paths that exist on main, so files added only on the env branch (scratch
+      # values, stray notes) would survive a release and leave the slot dirty.
+      git rm -r --quiet --ignore-unmatch "${NVCM_ENV_STATE_DIR}/"
+      git checkout origin/main -- "${NVCM_ENV_STATE_DIR}/"
+
+      if git diff --cached --quiet && git diff --quiet; then
+        echo "✓ ${NVCM_PROMOTE_ENV} already matches the canonicals; nothing to release."
+        exit 0
+      fi
+
+      git add "${NVCM_ENV_STATE_DIR}/"
+      git commit -m "[nvcm CI] Release ${NVCM_PROMOTE_ENV}: reset deploy-state and overrides to canonicals
+
+      Triggered by: ${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}
+      Pipeline: ${CI_PIPELINE_URL}"
+      git push origin "HEAD:refs/heads/${NVCM_ENV_BRANCH}"
+      echo "✅ ${NVCM_PROMOTE_ENV} released. ArgoCD will re-deploy the canonical baseline state."

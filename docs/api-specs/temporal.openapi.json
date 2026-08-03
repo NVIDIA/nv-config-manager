@@ -79,12 +79,20 @@
         "description": "Input for batch deploy child workflow.",
         "properties": {
           "batch_devices": {
-            "description": "Devices whose configurations will be deployed in this batch.",
-            "items": {
-              "$ref": "#/components/schemas/DeviceDiffData"
-            },
-            "title": "Batch Devices",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DeviceDiffData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "deprecated": true,
+            "description": "Deprecated compatibility field. When omitted, devices are read from diff_group.devices.",
+            "title": "Batch Devices"
           },
           "batch_number": {
             "anyOf": [
@@ -116,7 +124,6 @@
         },
         "required": [
           "diff_group",
-          "batch_devices",
           "parent_workflow_id"
         ],
         "title": "BatchDeployInput",

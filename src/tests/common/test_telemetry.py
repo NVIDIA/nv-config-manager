@@ -15,15 +15,140 @@
 """Tests for the shared, backend-agnostic OpenTelemetry tracing bootstrap."""
 
 import concurrent.futures
+import re
 from unittest import mock
 
 import pytest
+from opentelemetry.instrumentation.utils import is_instrumentation_enabled
 
 from nv_config_manager.common import telemetry
 
 OTLP_ENV = "OTEL_EXPORTER_OTLP_ENDPOINT"
 SERVICE_ENV = "OTEL_SERVICE_NAME"
 ENVIRONMENT_ENV = "ENVIRONMENT"
+GROUP_FASTAPI_STATUS_CODES_ENV = "NV_CONFIG_MANAGER_GROUP_FASTAPI_STATUS_CODES"
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, True),
+        ("true", True),
+        ("TRUE", True),
+        ("1", True),
+        ("yes", True),
+        ("on", True),
+        ("  true  ", True),
+        ("false", False),
+        ("FALSE", False),
+    ],
+)
+def test_fastapi_status_code_grouping_setting(monkeypatch, configured, expected):
+    """FastAPI metrics grouping follows its environment setting and defaults on."""
+    if configured is None:
+        monkeypatch.delenv(GROUP_FASTAPI_STATUS_CODES_ENV, raising=False)
+    else:
+        monkeypatch.setenv(GROUP_FASTAPI_STATUS_CODES_ENV, configured)
+
+    assert telemetry.group_fastapi_status_codes() is expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://service/healthcheck",
+        "http://service/healthcheck/",
+        "http://service/metrics",
+        "http://service/metrics/",
+    ],
+)
+def test_operational_endpoint_urls_are_excluded(url):
+    """The shared exclusion regex matches only operational endpoint URLs."""
+    assert re.search(telemetry.HTTP_TRACE_EXCLUDED_URLS, url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://service/v1/healthcheck/status",
+        "http://service/v1/metrics/query",
+        "http://service/v1/config",
+    ],
+)
+def test_application_endpoint_urls_are_not_excluded(url):
+    """Application routes remain eligible for tracing."""
+    assert not re.search(telemetry.HTTP_TRACE_EXCLUDED_URLS, url)
+
+
+def test_fastapi_instrumentation_excludes_healthchecks_and_metrics():
+    """FastAPI instrumentation filters high-frequency operational endpoints."""
+    app = mock.Mock()
+
+    with mock.patch.object(telemetry.FastAPIInstrumentor, "instrument_app") as instrument_app:
+        telemetry.instrument_fastapi_app(app)
+
+    instrument_app.assert_called_once_with(
+        app,
+        excluded_urls=telemetry.HTTP_TRACE_EXCLUDED_URLS,
+    )
+    app.add_middleware.assert_called_once_with(telemetry._SuppressOperationalTracingMiddleware)
+
+
+def test_asgi_instrumentation_excludes_healthchecks_and_metrics():
+    """Generic ASGI instrumentation applies the same operational endpoint filter."""
+    app = mock.sentinel.asgi_app
+
+    with (
+        mock.patch.object(telemetry, "OpenTelemetryMiddleware") as middleware,
+        mock.patch.object(
+            telemetry, "_SuppressOperationalTracingMiddleware"
+        ) as suppression_middleware,
+    ):
+        result = telemetry.instrument_asgi_app(app)
+
+    middleware.assert_called_once_with(
+        app,
+        excluded_urls=telemetry.HTTP_TRACE_EXCLUDED_URLS,
+    )
+    suppression_middleware.assert_called_once_with(middleware.return_value)
+    assert result is suppression_middleware.return_value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", sorted(telemetry.HTTP_TRACE_EXCLUDED_PATHS))
+async def test_operational_request_suppresses_descendant_instrumentation(path):
+    """Excluded requests cannot create auto-instrumented child spans."""
+    instrumentation_states = []
+
+    async def app(scope, receive, send):
+        instrumentation_states.append(is_instrumentation_enabled())
+
+    middleware = telemetry._SuppressOperationalTracingMiddleware(app)
+    await middleware(
+        {"type": "http", "path": path},
+        mock.AsyncMock(),
+        mock.AsyncMock(),
+    )
+
+    assert instrumentation_states == [False]
+
+
+@pytest.mark.asyncio
+async def test_application_request_keeps_descendant_instrumentation_enabled():
+    """Normal application requests retain auto-instrumentation."""
+    instrumentation_states = []
+
+    async def app(scope, receive, send):
+        instrumentation_states.append(is_instrumentation_enabled())
+
+    middleware = telemetry._SuppressOperationalTracingMiddleware(app)
+    await middleware(
+        {"type": "http", "path": "/v1/config"},
+        mock.AsyncMock(),
+        mock.AsyncMock(),
+    )
+
+    assert instrumentation_states == [True]
 
 
 @pytest.fixture(autouse=True)

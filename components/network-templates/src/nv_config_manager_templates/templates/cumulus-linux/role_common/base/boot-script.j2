@@ -46,10 +46,22 @@ trap error ERR
 
 # Check current image and upgrade firmware first if needed
 if ! grep -q "VERSION_ID={{ device_data|desired_firmware }}" /etc/os-release; then
+  FIRMWARE_REBOOT_MARKER="/tmp/ztp-firmware-reboot-pending"
+  if [ -f "$FIRMWARE_REBOOT_MARKER" ]; then
+    echo "Firmware installation already completed; waiting for reboot."
+    exit 0
+  fi
+
   # Load firmware with onie and reboot, DHCP will run after reboot
   FIRMWARE_URL="http://{{ (device_data|ztp_servers)[0] }}/v1/device/{{ device_data|uuid }}/firmware"
   if /usr/cumulus/bin/onie-install -fa -i "$FIRMWARE_URL"; then
-    reboot
+    touch "$FIRMWARE_REBOOT_MARKER"
+    if ! reboot; then
+      rm -f "$FIRMWARE_REBOOT_MARKER"
+      echo "Failed to initiate reboot."
+      exit 1
+    fi
+    exit 0
   else
     echo "Firmware installation failed with exit code $?"
     exit 1

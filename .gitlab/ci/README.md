@@ -189,6 +189,68 @@ NVCM_TEST01_VALUES_BRANCH=kiwi-platform-test01
 NVCM_TEST01_CHART_BRANCH=kiwi-test01-deployment
 ```
 
+## Test-Environment Promote Pipeline (test / test01)
+
+The GitOps promote flow (`pr-build.yml` + `promote-test-envs.yml`) replaces the
+legacy `deploy-to-test*` jobs. It builds a PR once into immutable artifacts (a
+versioned OCI Helm chart plus images referenced by digest) and promotes them by
+committing a machine-written `deploy-state.yaml` to the environment's branch in
+the downstream ArgoCD values repository. It targets ONLY the shared test
+environments; production stays on the tag-driven release flow.
+
+Security model: the image build runs in a separate pipeline on the unprotected
+`pull-request/<n>` mirror ref with no secrets (no registry login; images are
+handed over as job artifacts). The promote pipeline runs on protected `main`,
+holds the protected variables, and only operates on the finished artifacts.
+Because of that split, **every secret CI/CD variable in this project and its
+groups must be flagged Protected** - unprotected variables are visible to the
+untrusted `pull-request/*` builds. Never protect `pull-request/*` refs.
+
+| Variable | Purpose |
+| -------- | ------- |
+| `NVCM_MIRROR_API_TOKEN` | Project access token (Reporter, `read_api`) used to poll build pipelines and list jobs; protected + masked |
+| `NVCM_TEST_ENV_TARGETS` | One record per env: `env\|env_branch\|namespace\|release_name\|baseline_values\|state_dir` (see `scripts/test_env_config.sh`) |
+| `NVCM_CHART_REPO` | Helm repo URL ArgoCD reads the promoted chart from, e.g. `https://helm.ngc.nvidia.com/nvidian/cfa` (must match the `ngc` target in `NVCM_CHART_TARGETS`); written into deploy-state as `chartRepo` |
+| `NVCM_UPSTREAM_GITHUB_REPO` | Optional override for the upstream GitHub repo checked by the stale-HEAD guard (default `NVIDIA/nv-config-manager`) |
+| `NVCM_BUILD_POLL_INTERVAL` / `NVCM_BUILD_POLL_TIMEOUT` | Optional build-pipeline poll tuning (seconds; defaults 30 / 5400) |
+
+Runbooks (run pipeline on the default branch):
+
+- **Deploy a PR**: set `NVCM_PROMOTE_PR=<PR number>` and
+  `NVCM_PROMOTE_ENV=test|test01`. The pipeline resolves the **vetted copy-pr-bot
+  snapshot** (`pull-request/<n>`) from the mirror, reuses or triggers the
+  no-secrets build, pushes images (capturing digests), publishes the chart as
+  `0.0.0-pr<n>.<sha>`, validates the render against the env's baseline +
+  overrides, and commits the deploy-state. Set `NVCM_PROMOTE_REUSE_BUILD=false`
+  to force a rebuild.
+  - What deploys is the *vetted snapshot*, which can lag the PR's live HEAD
+    (untrusted authors re-copy only on `/ok to test`). If they differ, the run
+    warns and proceeds; to deploy newer commits, re-vet them first. Set
+    `NVCM_PROMOTE_REQUIRE_PR_HEAD=true` to hard-fail instead when the snapshot
+    lags PR HEAD.
+  - The run refuses a closed PR, and **fails closed if GitHub can't be reached**
+    to confirm the PR is open. Set `NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE=true`
+    to override during a GitHub outage.
+- **Rollback**: set only `NVCM_PROMOTE_ENV`, start `test-rollback-env`. Without
+  `NVCM_ROLLBACK_TO` it lists recent deploy-states and fails; re-run with
+  `NVCM_ROLLBACK_TO=<env-branch commit sha>` to restore that exact snapshot
+  (chart version + digests + pinned baseline revision).
+- **Free a slot**: set only `NVCM_PROMOTE_ENV`, start `test-release-env`. It
+  resets the env's deploy-state and overrides to the canonicals on the values
+  repo's `main`.
+
+Project settings required (GitLab UI):
+
+- Maximum artifacts size ≥ 1.5 GB (the build hands images over as artifacts).
+- Pull mirroring must replicate `pull-request/*` branches.
+- Only `main` and release-tag patterns protected; `pull-request/*` unprotected.
+- The **values repo** (`NVCM_VALUES_REPO_PATH`) must allow this project in its
+  inbound **job token allowlist**. `test-promote-chart` reads the baseline and
+  overrides with `CI_JOB_TOKEN` rather than the push token, since it only reads;
+  without the allowlist entry that clone fails with an auth error. Only the
+  deploy-state / rollback / release jobs use
+  `NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN`, and only they write.
+
 ## Air-Gapped Bundles
 
 | Variable | Purpose |

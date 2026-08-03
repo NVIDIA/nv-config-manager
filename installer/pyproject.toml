@@ -5,7 +5,7 @@ description = "NVIDIA Config Manager Install Wizard - TUI-based deployment confi
 authors = [{ name = "NVIDIA Corporation" }]
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "nv-air-sdk==1.4.0",
     "click>=8.1.7",
@@ -33,7 +33,7 @@ package = true
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ANN"]

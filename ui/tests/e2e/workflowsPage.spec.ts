@@ -27,6 +27,8 @@ applicationUrl.hostname = `nautobot.${gatewayUrl.hostname}`;
 const applicationHome = new URL("/", applicationUrl).toString();
 const providerEndSessionUrl = "https://idp.example.com/oidc/logout";
 const providerReturnUrl = "https://nautobot.config-manager.example.com/";
+const LONG_USERNAME =
+  "thisusernameisintentionallylongenoughtoexceedtheusercolumnwidth";
 
 const providerLogoutUrl = (clientId?: string): URL => {
   const redirect = providerLogoutRedirect(
@@ -148,6 +150,65 @@ test.describe("Workflows Page", () => {
       .getByRole("checkbox", { name: "Toggle Device ID column" })
       .click();
     await expect(tableHeader.getByText("Device ID")).toBeVisible();
+  });
+
+  test("truncates long values and exposes the full string in a hover title", async ({
+    page,
+  }) => {
+    await page.unroute(/.*\/v1\/workflow\/?(\?.*)?$/);
+    await page.route(/.*\/v1\/workflow\/?(\?.*)?$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: {
+          workflows: [
+            {
+              id: "long-content-workflow",
+              workflow_type: "DeployWorkflow",
+              workflow_input: {},
+              started_by: LONG_USERNAME,
+              start_time: "2025-03-04T02:32:38.087457Z",
+              close_time: null,
+              status: "RUNNING",
+              pending_approval: false,
+              search_attributes: {
+                Site: ["PDX01"],
+                DeviceName: ["LEAF2-GP1-CIN2-PDX01"],
+                User: [LONG_USERNAME],
+              },
+              href: "https://temporal.example.com/long-content-workflow",
+            },
+          ],
+          next_page_token: null,
+          total_count: 1,
+          page_count: 1,
+        },
+      });
+    });
+
+    await page.goto("/workflows");
+
+    const workflowRow = page.locator("tbody tr").first();
+    const userCell = workflowRow.locator("td").filter({
+      hasText: LONG_USERNAME,
+    });
+    const userValue = userCell.getByTitle(LONG_USERNAME, { exact: true });
+
+    await expect(userValue).toHaveCSS("overflow", "hidden");
+    await expect(userValue).toHaveCSS("text-overflow", "ellipsis");
+    await expect(userValue).toHaveCSS("white-space", "nowrap");
+    await userValue.hover();
+
+    const cellsContainOverflow = await workflowRow.locator("td").evaluateAll(
+      (cells) =>
+        cells.every((cell) => getComputedStyle(cell).overflow === "hidden"),
+    );
+    expect(cellsContainOverflow).toBe(true);
+
+    const cellBox = await userCell.boundingBox();
+    const valueBox = await userValue.boundingBox();
+    expect((valueBox?.x ?? 0) + (valueBox?.width ?? 0)).toBeLessThanOrEqual(
+      (cellBox?.x ?? 0) + (cellBox?.width ?? 0),
+    );
   });
 
   test("shows user roles and disables workflows the user cannot execute", async ({
@@ -536,6 +597,43 @@ test.describe("Workflows Page", () => {
 
     const restoredBox = await workflowIdHeader.boundingBox();
     expect(restoredBox?.width ?? 0).toBeCloseTo(initialWidth, 0);
+  });
+
+  test("uses available viewport width for optional workflow columns", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto("/workflows");
+    await expect(page.getByText("LEAF1-GP1-CIN2-PDX01").first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Columns" }).click();
+    for (const columnName of [
+      "Device ID",
+      "Device Role",
+      "Device Platform",
+    ]) {
+      await page
+        .getByRole("checkbox", { name: `Toggle ${columnName} column` })
+        .click();
+    }
+
+    const tableViewport = page.locator("table").first().locator("xpath=..");
+    await expect
+      .poll(async () =>
+        tableViewport.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth + 1,
+        ),
+      )
+      .toBe(true);
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect
+      .poll(async () =>
+        tableViewport.evaluate(
+          (element) => element.scrollWidth > element.clientWidth,
+        ),
+      )
+      .toBe(true);
   });
 
   test("persists the selected row count", async ({ page }) => {

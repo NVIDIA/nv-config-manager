@@ -20,14 +20,13 @@ import argparse
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from nv_config_manager.common.log import configure_logging
-from nv_config_manager.common.telemetry import setup_tracing
+from nv_config_manager.common.telemetry import instrument_asgi_app, setup_tracing
 from nv_config_manager.mcp.auth import (
     DEFAULT_MCP_UNAUTHENTICATED_PATHS,
     RequestAuthMiddleware,
@@ -109,7 +108,7 @@ def create_app(
             | resolved_oauth_settings.well_known_paths
             | resolved_oauth_settings.oauth_proxy_paths
         )
-    return OpenTelemetryMiddleware(
+    return instrument_asgi_app(
         ServiceAuthMiddleware(
             RequestAuthMiddleware(
                 create_mcp_server(settings, resolved_oauth_settings).streamable_http_app()
@@ -193,4 +192,5 @@ def main() -> None:
         port=args.port,
         proxy_headers=True,
         log_config=None,
+        loop="asyncio",
     )

@@ -20,13 +20,16 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_fastapi_instrumentator import metrics as instrumentator_metrics
 
 from nv_config_manager.common.auth import install_identity_probe
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
-from nv_config_manager.common.telemetry import setup_tracing
+from nv_config_manager.common.telemetry import (
+    group_fastapi_status_codes,
+    instrument_fastapi_app,
+    setup_tracing,
+)
 from nv_config_manager.config_store.api.admin_v1 import router as admin_router
 from nv_config_manager.config_store.api.config_v1 import router as config_router
 from nv_config_manager.config_store.config import settings
@@ -80,7 +83,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-FastAPIInstrumentor.instrument_app(app)
+instrument_fastapi_app(app)
 
 # Add CORS middleware
 app.add_middleware(
@@ -97,7 +100,10 @@ app.include_router(admin_router, prefix="/v1/admin", tags=["admin"])
 
 # Setup Prometheus metrics
 if settings.enable_metrics:
-    instrumentator = Instrumentator(excluded_handlers=["/healthcheck", "/metrics"])
+    instrumentator = Instrumentator(
+        should_group_status_codes=group_fastapi_status_codes(),
+        excluded_handlers=["/healthcheck", "/metrics"],
+    )
     instrumentator.add(
         instrumentator_metrics.default(
             metric_namespace="nv-config-manager",
@@ -125,4 +131,5 @@ def main() -> None:
         host="0.0.0.0",
         port=9000,
         log_config=None,
+        loop="asyncio",
     )
