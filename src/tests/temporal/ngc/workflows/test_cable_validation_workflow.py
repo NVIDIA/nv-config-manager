@@ -101,6 +101,7 @@ async def mock_get_network_devices_by_site_id(
         devices=[
             NetworkDeviceData.from_nautobot_graphql(device)
             for device in DEVICE_CONNECTION_DATA_VALID.values()
+            if device["location"]["name"] == "SITEA"
         ]
     )
 
