@@ -27,6 +27,13 @@ const VPC_DATA = {
   rd_max: 65000,
 };
 
+const SEARCH_TENANTS = [
+  { id: "engineering-cloud", name: "Engineering Cloud" },
+  { id: "ngc-platform", name: "NGC Platform" },
+  { id: "pre-ngc", name: "Pre-NGC Tenant" },
+  { id: "ngc", name: "NGC" },
+];
+
 test.describe("New SpX Overlay Creation Workflow", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/workflows/spxoverlaycreationworkflow/form");
@@ -90,6 +97,31 @@ test.describe("New SpX Overlay Creation Workflow", () => {
       { timeout: TEST_TIMEOUT }
     );
   });
+});
+
+test("filters tenants by contiguous text and ranks an exact match first", async ({
+  page,
+}) => {
+  await page.unroute(/.*\/v1\/parameter\/tenant/);
+  await page.route(/.*\/v1\/parameter\/tenant/, async (route) => {
+    await route.fulfill({ status: 200, json: SEARCH_TENANTS });
+  });
+  await page.goto("/workflows/spxoverlaycreationworkflow/form");
+
+  await page.getByRole("button", { name: "Tenant" }).click();
+  const tenantDialog = page.getByRole("dialog");
+  const tenantSearch = tenantDialog.getByPlaceholder("Search Tenant");
+  await tenantSearch.fill("NGC");
+
+  await expect(
+    tenantDialog.getByText("Engineering Cloud", { exact: true }),
+  ).toBeHidden();
+  await expect(tenantDialog.locator("[cmdk-item]:visible")).toHaveCount(3);
+
+  await tenantSearch.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "NGC. Open options", exact: true }),
+  ).toBeVisible();
 });
 
 // Tests that handle their own navigation with URL parameters
