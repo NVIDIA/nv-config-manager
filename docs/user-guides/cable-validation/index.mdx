@@ -21,12 +21,68 @@ Cable validation can detect:
 - Incorrect MAC addresses supplied by a partner
 - Incorrect cable purchases
 
+## How each connection is evaluated
+
+Cable validation runs from the perspective of each in-scope network device. For each enabled interface with a connected interface modeled in Nautobot, it compares the intended far end with observations from the local device in this order:
+
+1. **Is the local link operationally up?** If not, the workflow reports `Link is down`. This check applies to both full validation and link-state-only validation.
+1. **Is the interface tagged for link-state-only validation?** If the link is up and the local interface has `cable-validation-link-state-only`, the connection passes without an identity check.
+1. **Does LLDP identify the intended neighbor?** The reported neighbor device and interface are compared with the far-end device and interface in Nautobot. The comparison is case-insensitive. The workflow also handles devices that advertise an interface MAC instead of a port or system name, including the supported DPU MAC-offset behavior.
+1. **Does the expected far-end MAC appear on the correct local interface?** The workflow takes the MAC from the connected far-end interface in Nautobot and looks for it in the local device's FDB or ARP table.
+1. **Classify the result.** A connection passes when either LLDP or the MAC check matches. If neither matches, the report distinguishes a wrong observed neighbor from a link that is up but has no usable neighbor data.
+
+The workflow also reports an LLDP neighbor on an interface that has no intended connection in Nautobot as `Unexpected connection found`. It does not treat every unmodeled FDB entry as an unexpected cable because a port can legitimately learn multiple MAC addresses.
+
+| Validation mode | Link state | LLDP identity | FDB/ARP MAC | Unexpected LLDP neighbor |
+| :-------------- | :--------: | :-----------: | :---------: | :----------------------: |
+| Full validation | Checked | Either LLDP or MAC must match | Either MAC or LLDP must match | Reported |
+| `cable-validation-link-state-only` | Checked | Skipped | Skipped | Not applicable to a modeled connection |
+| `cable-validation-ignore` | Skipped | Skipped | Skipped | Suppressed on the tagged interface |
+
+<Warning>
+An operationally up link does not prove that it reaches the intended host or port. Link-state-only validation is an intentionally temporary, lower-confidence result for cases where the data needed for full validation is not available yet.
+</Warning>
+
+## Validation tags
+
+Apply validation tags to the interface on the in-scope network device—the interface from which the workflow collects link, LLDP, FDB, and ARP state. For a high-speed leaf-to-host connection, this is normally the leaf switch interface. The cable and connected far-end interface must still be modeled in Nautobot.
+
+### `cable-validation-link-state-only`
+
+Use `cable-validation-link-state-only` when the intended connection is known but there is not yet enough neighbor identity data for a meaningful full check. The common initial bringup case is a high-speed host port whose MAC addresses are not delivered with the original inventory data. Those MACs become available only after the compute management system discovers the host and updates Nautobot. Hosts may also provide no reliable LLDP identity during this stage.
+
+With this tag, the workflow evaluates only whether the local switch interface is operationally up:
+
+- Link down: report `Link is down` with any available transceiver troubleshooting details.
+- Link up: consider the interface valid for this run without comparing LLDP, FDB, or ARP data to the intended far end.
+
+Use the tag during the first validation pass as follows:
+
+1. Confirm the cable and both endpoints are modeled correctly in Nautobot.
+1. Add `cable-validation-link-state-only` to each affected in-scope switch interface before the first cable-validation run.
+1. Run site cable validation and resolve all link-down results. Treat a clean link-state-only result as confirmation of physical signal only, not confirmation that the host is connected to the correct port.
+1. Allow the compute management system to discover the hosts and populate their high-speed interface MAC addresses in Nautobot.
+1. Verify that the MAC is assigned to the correct far-end host interface, then remove `cable-validation-link-state-only` from the switch interface.
+1. Re-run device or site cable validation. The connection now receives full LLDP-or-MAC validation and can detect swapped host links.
+
+Do not leave the tag in place after the required MAC or reliable LLDP data becomes available. Doing so permanently hides wrong-neighbor and cable-swap errors on an otherwise healthy link.
+
+The report lists findings, not every passing interface. An up link-state-only interface therefore does not appear with a special “partial validation” result. Before final site acceptance, filter Nautobot interfaces by the `cable-validation-link-state-only` tag, resolve every remaining temporary use, and run full validation again.
+
+To add or remove the tag in Nautobot, open the local switch interface, edit its **Tags** field, and save the interface. For many host-facing ports, use Nautobot's interface list and bulk-edit the selected interfaces. The workflow reads the current tags at the start of each run, so re-run validation after changing them.
+
+### `cable-validation-ignore`
+
+Use `cable-validation-ignore` only when an interface is deliberately outside the workflow's scope. It skips the intended-connection checks and suppresses unexpected-neighbor findings on that interface. It is not the right substitute for missing host MAC data when the physical link still needs an initial link-state check.
+
+Do not apply both validation tags to the same interface. If both are present, `cable-validation-ignore` takes precedence and even the link-state check is skipped.
+
 ## Prerequisites
 
 Before running cable validation, confirm the following are in place:
 
 - **Devices have completed ZTP** and reached the `Provisioned` (or `Active`) status in Nautobot. Running validation against devices that are still provisioning or unreachable produces noisy failures. See [New Site Bringup](../new-site-deployment/index.mdx) for the bringup sequence.
-- **Intended cabling is captured in Nautobot.** The workflow compares LLDP and FDB output against the cable list in Nautobot, so the Nautobot data must reflect the design. Connections that exist in Nautobot but should not be validated must carry the `cable-validation-ignore` interface tag.
+- **Intended cabling is captured in Nautobot.** The workflow compares observed state against enabled interfaces and connected endpoints in Nautobot, so the Nautobot data must reflect the design. Use `cable-validation-link-state-only` temporarily when an intended connection should be checked for link state but its far-end identity data is not available. Use `cable-validation-ignore` only for interfaces that are deliberately outside validation scope.
 - **Devices are running a supported platform** — Cumulus Linux, NVOS, or Arista EOS. Devices on other platforms are filtered out automatically.
 - **Network reachability from Config Manager** to every in-scope device's management address, so the workflow can query LLDP neighbors and the MAC/ARP tables.
 
@@ -74,7 +130,7 @@ Use this to re-validate a single device after fixing an issue without re-running
 | **Tenant** | Optional Nautobot tenant filter to narrow the device list. | No |
 | **Status** | Optional device-status filter to narrow the device list. | No |
 | **Device** | The target device. The list is filtered by the selections above. | Yes |
-| **Ignore No Neighbor** | Optional. If enabled, suppresses `Link is up, but no neighbor found` findings for this device run. Useful during partial bringup where some far-side neighbors are intentionally absent. | No |
+| **Ignore No Neighbor** | Optional. If enabled, suppresses `Link is up but no neighbor found` findings for this device run. Useful during partial bringup where some far-side neighbors are intentionally absent. | No |
 
 A typical device run completes in well under a minute, dominated by the round-trip time to query LLDP and the FDB.
 
@@ -110,7 +166,7 @@ The device workflow runs six stages. The three data-collection stages (`get_devi
 
 1. **`get_device_intended_neighbors` — Read intended cabling from Nautobot.**
 
-   Pulls the list of intended LLDP/MAC neighbors for every interface on the device from Nautobot, including any `cable-validation-ignore` tagging that should exclude an interface from the comparison.
+   Pulls every enabled interface with a connected interface from Nautobot. For each connection, it records the far-end device, interface, role, rack position, and interface MAC when present. It also records `cable-validation-ignore` and `cable-validation-link-state-only` tags on the local interface.
 
 1. **`get_device_actual_neighbors` — Read observed cabling from the device.**
 
@@ -122,7 +178,7 @@ The device workflow runs six stages. The three data-collection stages (`get_devi
 
 1. **`validate_connections` — Compare intended vs actual and produce the report.**
 
-   Joins the three data sources, classifies every interface mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates the findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
+   Joins the three data sources and applies the decision order in [How each connection is evaluated](#how-each-connection-is-evaluated). Link state is always checked first. An up interface marked link-state-only passes immediately; otherwise either LLDP or the expected far-end MAC must match. The stage then classifies every mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
 
 The workflow's final output is a `DeviceCableValidationResult` whose `interfaces` field maps each invalid interface name to its findings.
 
@@ -170,7 +226,7 @@ The cabling modeled in Nautobot does not match what was found on the network. Th
 - **LLDP data** — the physical cabling does not match what is modeled in Nautobot.
 - **MAC address** — the MAC seen on the switch FDB does not match the expected MAC in Nautobot. Either the MAC in Nautobot is wrong, or the physical cabling is wrong. This is used when LLDP is not available, usually for IPMI/BMC connections.
 
-**`Link is up, but no neighbor found`**
+**`Link is up but no neighbor found`**
 
 A link is present but no LLDP neighbor or MAC address was found, so the link could not be validated. Retrying the validation may resolve the issue. If it does not, check the status of the devices on either end to see why they are not operating properly. This error may also occur when a cable mismatch leads to a low-light condition.
 
@@ -178,7 +234,7 @@ A link is present but no LLDP neighbor or MAC address was found, so the link cou
 
 A neighbor was found that is not modeled in Nautobot. This could mean Nautobot is out of date, or that there are connections not in scope for Config Manager validation (commonly custom cabling for the site or connections to non-Nautobot-managed devices).
 
-If there are connections in Nautobot that should be present but do not need to be validated, add the `cable-validation-ignore` tag to those interfaces and re-run the cable validation workflow to get a clean report.
+If there are connections in Nautobot that are deliberately outside validation scope, add the `cable-validation-ignore` tag to the in-scope switch interfaces and re-run the cable validation workflow. If the connection should be validated later but currently lacks host MAC or reliable LLDP data, use `cable-validation-link-state-only` instead.
 
 ## Common issues and troubleshooting
 
@@ -204,15 +260,19 @@ Unstable FDBs usually indicate a misbehaving device on one end of the link — i
 
 **Server links are flapping between runs.**
 
-Servers can churn LLDP/MAC state if they are stuck in a PXE boot loop on a partially provisioned site. Tag the leaf-side interfaces with `cable-validation-ignore` until the server side is provisioned, then remove the tag. On InfiniBand sites, server links are out of scope here — they are validated by a separate workflow.
+Servers can churn LLDP/MAC state if they are stuck in a PXE boot loop on a partially provisioned site. If the links are modeled and should be checked for physical signal during bringup, tag the leaf-side interfaces with `cable-validation-link-state-only`. Remove the tag and run full validation after the server-side identity data stabilizes. Reserve `cable-validation-ignore` for connections that are intentionally outside scope. On InfiniBand sites, server links are out of scope here — they are validated by a separate workflow.
 
-**`Link is up, but no neighbor found` on multiple links.**
+**`Link is up but no neighbor found` on multiple links.**
 
 LLDP and the FDB were both empty for those interfaces. Retry the workflow first — LLDP can briefly miss neighbors right after a port flap. If the issue persists, check the neighbor on the far side of each link; an unpowered or misconfigured neighbor is the most common cause. Setting `Ignore No Neighbor` to true on the device workflow will hide these from the report, which is appropriate during a partial bringup but should not be the default.
 
 **Validation found unexpected connections that are legitimately out of scope.**
 
 For connections that exist in Nautobot but should not be validated (custom site cabling, non-Nautobot-managed neighbors), add the `cable-validation-ignore` tag to those interfaces and re-run for a clean report.
+
+**High-speed host links fail because the intended MAC is empty or has not been discovered yet.**
+
+During initial bringup, add `cable-validation-link-state-only` to the leaf-side interfaces and validate physical link state first. After the compute management system populates the host interface MACs in Nautobot, verify their interface assignments, remove the tag, and re-run full validation. Do not use the temporary clean report as evidence that host links are in the correct order; only the later identity-aware pass can detect swaps.
 
 ## Related guides
 
