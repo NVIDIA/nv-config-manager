@@ -344,9 +344,9 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     assert exc_info.value.status_code == 422
     mock_connect.return_value.start_workflow.assert_not_called()
 
-    # Device identifiers must be UUIDv4 values before Nautobot is queried.
+    # Device identifiers must be valid UUID values before Nautobot is queried.
     mock_connect.reset_mock()
-    with pytest.raises(HTTPException, match="Device identifier must be a UUID v4") as exc_info:
+    with pytest.raises(HTTPException, match="Device identifier must be a valid UUID") as exc_info:
         await start_workflow(request, DeployWorkflow, DeployInput(device_id="LEAF01"))
     assert exc_info.value.status_code == 422
     mock_connect.return_value.start_workflow.assert_not_called()
