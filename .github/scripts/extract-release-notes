@@ -22,7 +22,7 @@ if ! awk -v heading="## ${version}" '
 
   found {
     print
-    if ($0 ~ /[^[:space:]]/) {
+    if ($0 !~ /^[[:space:]]*#+[[:space:]]/ && $0 ~ /[^[:space:]]/) {
       content = 1
     }
   }
