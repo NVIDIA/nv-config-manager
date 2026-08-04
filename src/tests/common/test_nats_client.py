@@ -15,9 +15,10 @@
 """Tests for JetStream API prefix handling in the base NATS clients."""
 
 from configparser import ConfigParser
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
+from nats.js.api import AckPolicy, DeliverPolicy
 
 from nv_config_manager.common.client import DEFAULT_NATS_API_PREFIX, NatsClient, NatsConsumer
 
@@ -53,6 +54,40 @@ def test_from_config_without_prefix_falls_back_to_default():
 
 
 @pytest.mark.asyncio
+async def test_external_connect_does_not_require_stream_info():
+    """Externally managed streams can be used without stream administration permission."""
+    client = NatsClient(server=TEST_SERVER, local=False)
+    conn = MagicMock(connected_url=TEST_SERVER)
+
+    with (
+        patch(
+            "nv_config_manager.common.client.nats.nats.connect", new=AsyncMock(return_value=conn)
+        ),
+        patch.object(client, "_ensure_stream", new_callable=AsyncMock) as ensure_stream,
+    ):
+        await client.connect()
+
+    ensure_stream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_connect_keeps_stream_setup():
+    """Bundled/local clients retain automatic stream setup."""
+    client = NatsClient(server=TEST_SERVER, local=True)
+    conn = MagicMock(connected_url=TEST_SERVER)
+
+    with (
+        patch(
+            "nv_config_manager.common.client.nats.nats.connect", new=AsyncMock(return_value=conn)
+        ),
+        patch.object(client, "_ensure_stream", new_callable=AsyncMock) as ensure_stream,
+    ):
+        await client.connect()
+
+    ensure_stream.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_ensure_stream_uses_configured_api_prefix():
     """Stream lookups go through the account's rewritten API prefix."""
     client = NatsClient(server=TEST_SERVER, api_prefix="$JS.CUSTOM.API")
@@ -74,6 +109,8 @@ async def test_consumer_subscribes_with_configured_api_prefix():
         handler=AsyncMock(),
         server=TEST_SERVER,
         api_prefix="$JS.CUSTOM.API",
+        durable_name="nv-config-manager-archive",
+        deliver_subject="nv-config-manager.archive.delivery",
     )
     conn = MagicMock()
     conn.is_closed = True
@@ -83,3 +120,39 @@ async def test_consumer_subscribes_with_configured_api_prefix():
         await consumer.main()
 
     conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
+    kwargs = conn.jetstream.return_value.subscribe.await_args.kwargs
+    assert kwargs["subject"] == kwargs["stream"] == "nautobot"
+    assert kwargs["queue"] == "nv-config-manager-archive"
+    assert kwargs["cb"] is consumer.handler
+    config = kwargs["config"]
+    assert config.durable_name == config.deliver_group == "nv-config-manager-archive"
+    assert config.deliver_subject == "nv-config-manager.archive.delivery"
+    assert config.deliver_policy == DeliverPolicy.NEW
+    assert config.ack_policy == AckPolicy.EXPLICIT
+    assert config.ack_wait == 360
+    assert config.max_deliver == -1
+
+
+@pytest.mark.asyncio
+async def test_consumer_stays_alive_after_subscribing():
+    """The consumer loop remains active until the NATS connection closes."""
+    consumer = NatsConsumer(
+        stream="nautobot",
+        subject="nautobot",
+        queue_suffix="archive",
+        handler=AsyncMock(),
+        server=TEST_SERVER,
+    )
+    conn = MagicMock()
+    type(conn).is_closed = PropertyMock(side_effect=[False, True])
+    conn.jetstream.return_value.subscribe = AsyncMock()
+
+    with (
+        patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn),
+        patch(
+            "nv_config_manager.common.client.nats.asyncio.sleep", new_callable=AsyncMock
+        ) as sleep,
+    ):
+        await consumer.main()
+
+    sleep.assert_awaited_once_with(1)

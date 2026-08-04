@@ -191,7 +191,7 @@ async def test_device(mock_enqueue: Mock):
                     "url": "https://nautobot.example.com/api/tenancy/tenants/66784853-f6ce-4477-8211-62a34948061e/",
                     "natural_slug": "ngc_6678",
                     "name": "TenantB",
-                    "description": "Tenant for Resources Belonging to a Cerebro Site",
+                    "description": "Tenant for resources belonging to an external site",
                     "comments": "",
                     "tenant_group": None,
                     "created": "2025-01-31T18:23:29.580823Z",

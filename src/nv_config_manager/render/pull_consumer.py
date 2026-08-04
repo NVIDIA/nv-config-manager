@@ -22,16 +22,15 @@ import os
 import signal
 import ssl
 from asyncio import AbstractEventLoop
-from datetime import UTC, datetime
 
 import nats
 import nats.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.js import JetStreamContext
-from nats.js.api import ConsumerConfig, ConsumerInfo, DeliverPolicy
-from nats.js.errors import FetchTimeoutError, NotFoundError, ServiceUnavailableError
-from prometheus_client import start_http_server
+from nats.js.api import AckPolicy, ConsumerConfig, ConsumerInfo, DeliverPolicy
+from nats.js.errors import FetchTimeoutError, NotFoundError
+from prometheus_client import Gauge, start_http_server
 
 from nv_config_manager.common.config import (
     DEFAULT_NATS_API_PREFIX,
@@ -47,6 +46,12 @@ from nv_config_manager.common.config import (
     nats_nautobot_change_config,
     nats_render_change_config,
 )
+from nv_config_manager.common.nats_admin import (
+    consumer_api_subjects,
+    is_nats_permissions_error,
+    provision_consumer_request,
+    update_consumer_request,
+)
 from nv_config_manager.render.dispatch import EventDispatcher
 from nv_config_manager.render.events.util import DeviceNotEnabledError, clear_queued
 from nv_config_manager.render.exceptions import RenderException
@@ -54,14 +59,26 @@ from nv_config_manager.render.lock import create_lock
 
 configure_logging(service="render")
 
-# $JS.API.CONSUMER.RESET only accepts these, so a consumer outside the set can never be
-# fast-forwarded by the admin API. See ADR-60.
-RESETTABLE_DELIVER_POLICIES = frozenset(
-    {
-        DeliverPolicy.ALL,
-        DeliverPolicy.BY_START_SEQUENCE,
-        DeliverPolicy.BY_START_TIME,
-    }
+CONSUMER_METRIC_LABELS = ["consumer_name", "stream_name", "namespace"]
+CONSUMER_PENDING = Gauge(
+    "nv_config_manager_nats_consumer_num_pending",
+    "Messages waiting to be delivered to the render consumer",
+    CONSUMER_METRIC_LABELS,
+)
+CONSUMER_ACK_PENDING = Gauge(
+    "nv_config_manager_nats_consumer_num_ack_pending",
+    "Messages delivered to the render consumer and awaiting acknowledgement",
+    CONSUMER_METRIC_LABELS,
+)
+CONSUMER_REDELIVERED = Gauge(
+    "nv_config_manager_nats_consumer_num_redelivered",
+    "Messages redelivered to the render consumer",
+    CONSUMER_METRIC_LABELS,
+)
+CONSUMER_WAITING = Gauge(
+    "nv_config_manager_nats_consumer_num_waiting",
+    "Outstanding pull requests waiting for render consumer messages",
+    CONSUMER_METRIC_LABELS,
 )
 
 
@@ -76,19 +93,30 @@ class PullConsumer:
         subject: str,
         queue_suffix: str,
         api_prefix: str = DEFAULT_NATS_API_PREFIX,
+        consumer_name_key: str | None = None,
     ) -> None:
         """Initialize the consumer."""
         config = load_config()
         self.loop: AbstractEventLoop | None = None
         self.nats_conn: Client | None = None
         self.jetstream: JetStreamContext | None = None
-        queue_prefix = config["nats"]["queue"]
-        self.queue = f"{queue_prefix}-{queue_suffix}"
+        nats_config = config["nats"]
+        default_queue = f"nv-config-manager-{queue_suffix}"
+        self.queue = (
+            nats_config.get(consumer_name_key, default_queue)
+            if consumer_name_key
+            else default_queue
+        )
         self.stream = stream
         self.subject = subject
         self.api_prefix = api_prefix
         self.dispatcher = EventDispatcher()
         self.running = False
+        self.namespace = os.getenv("NV_CONFIG_MANAGER_K8S_NAMESPACE", "unknown")
+        self.metrics_refresh_interval = 15.0
+        self._metrics_permission_warning_logged = False
+        self._last_permission_error: Exception | None = None
+        self._permission_guidance_logged: set[str] = set()
 
         # Flow control settings
         self.idle_wait = 1.0  # Wait time when no messages available
@@ -173,6 +201,17 @@ class PullConsumer:
             self.logger.info("NATS connection is closed.")
 
         async def error_cb(exc: Exception) -> None:
+            if is_nats_permissions_error(exc):
+                self._last_permission_error = exc
+                self._log_permission_error_once(
+                    "consumer-api",
+                    "NATS denied an operation for consumer %s on stream %s. "
+                    "Verify publish access to these exact imported API subjects: %s",
+                    self.queue,
+                    self.stream,
+                    consumer_api_subjects(self.api_prefix, self.stream, self.queue),
+                )
+                return
             self.logger.error("Unhandled NATS error", exc_info=exc)
 
         async def disconnected_cb() -> None:
@@ -198,6 +237,13 @@ class PullConsumer:
         # Run the pull consumer loop
         await self._run_pull_consumer()
 
+    def _log_permission_error_once(self, operation: str, message: str, *args: object) -> None:
+        """Log actionable permission guidance once per operation and process."""
+        if operation in self._permission_guidance_logged:
+            return
+        self._permission_guidance_logged.add(operation)
+        self.logger.error(message, *args)
+
     async def _run_pull_consumer(self) -> None:
         """Run the pull consumer with automatic recreation if needed."""
         if self.nats_conn is None or self.jetstream is None:
@@ -206,31 +252,82 @@ class PullConsumer:
 
         self.running = True
 
-        while self.running and not self.nats_conn.is_closed:
-            try:
-                await self._run_consumer_cycle()
-            except asyncio.CancelledError:
-                self.logger.info("Pull consumer cancelled, shutting down")
-                break
-            except Exception as e:
-                # Any exception bubbling up from fetch indicates we need to recreate
-                self.logger.warning("Consumer %s cycle failed, recreating: %s", self.queue, str(e))
-                await asyncio.sleep(self.error_backoff)
+        metrics_task = asyncio.create_task(self._record_consumer_metrics_loop())
+        try:
+            while self.running and not self.nats_conn.is_closed:
+                try:
+                    await self._run_consumer_cycle()
+                except asyncio.CancelledError:
+                    self.logger.info("Pull consumer cancelled, shutting down")
+                    break
+                except Exception as e:
+                    self.logger.warning(
+                        "Consumer %s cycle failed, recreating: %s", self.queue, str(e)
+                    )
+                    await asyncio.sleep(self.error_backoff)
+        finally:
+            self.running = False
+            metrics_task.cancel()
+            await asyncio.gather(metrics_task, return_exceptions=True)
 
-        self.running = False
+    def _record_consumer_metrics(self, consumer_info: ConsumerInfo) -> None:
+        """Record the current state of this process's fixed durable consumer."""
+        labels = (self.queue, self.stream, self.namespace)
+        CONSUMER_PENDING.labels(*labels).set(consumer_info.num_pending or 0)
+        CONSUMER_ACK_PENDING.labels(*labels).set(consumer_info.num_ack_pending or 0)
+        CONSUMER_REDELIVERED.labels(*labels).set(consumer_info.num_redelivered or 0)
+        CONSUMER_WAITING.labels(*labels).set(consumer_info.num_waiting or 0)
+
+    def _remove_consumer_metrics(self) -> None:
+        """Remove values that are no longer known to represent the consumer."""
+        labels = (self.queue, self.stream, self.namespace)
+        for metric in (
+            CONSUMER_PENDING,
+            CONSUMER_ACK_PENDING,
+            CONSUMER_REDELIVERED,
+            CONSUMER_WAITING,
+        ):
+            metric.remove(*labels)
+
+    async def _record_consumer_metrics_loop(self) -> None:
+        """Periodically export consumer state through the render metrics endpoint."""
+        if self.jetstream is None:
+            return
+
+        while self.running and self.nats_conn and not self.nats_conn.is_closed:
+            try:
+                consumer_info = await self.jetstream.consumer_info(self.stream, self.queue)
+                self._record_consumer_metrics(consumer_info)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                # Metrics collection must never interrupt message processing.
+                self._remove_consumer_metrics()
+                if is_nats_permissions_error(e):
+                    if not self._metrics_permission_warning_logged:
+                        self.logger.error(
+                            "NATS denied consumer metrics lookup. Ask the NATS administrator "
+                            "to grant publish access to %s",
+                            f"{self.api_prefix}.CONSUMER.INFO.{self.stream}.{self.queue}",
+                        )
+                        self._metrics_permission_warning_logged = True
+                else:
+                    self.logger.warning(
+                        "Could not refresh metrics for consumer %s: %s", self.queue, str(e)
+                    )
+            await asyncio.sleep(self.metrics_refresh_interval)
 
     async def _run_consumer_cycle(self) -> None:
-        """Run a single consumer lifecycle: create, subscribe, and process messages."""
-        # Ensure consumer exists and create subscription
+        """Ensure the fixed durable exists, bind to it, and process messages."""
         await self._ensure_consumer_exists()
 
         if self.jetstream is None:
             raise RuntimeError("JetStream context is None")
 
-        # Pass the stream explicitly; omitting it makes nats-py resolve the name via
-        # $JS.API.STREAM.NAMES, which is not exported across NATS account boundaries.
-        pull_subscription = await self.jetstream.pull_subscribe(
-            subject=self.subject, durable=self.queue, stream=self.stream
+        # Binding with an explicit stream avoids the unexported
+        # $JS.API.STREAM.NAMES lookup on cross-account imports.
+        pull_subscription = await self.jetstream.pull_subscribe_bind(
+            consumer=self.queue, stream=self.stream
         )
 
         self.logger.info("Pull subscription created for consumer %s", self.queue)
@@ -263,7 +360,7 @@ class PullConsumer:
                         self.queue,
                         str(e),
                     )
-                    raise  # Bubble up to trigger recreation
+                    raise
         finally:
             try:
                 await pull_subscription.unsubscribe()
@@ -271,100 +368,78 @@ class PullConsumer:
                 self.logger.warning("Error unsubscribing: %s", str(e))
 
     async def _ensure_consumer_exists(self) -> None:
-        """Ensure the JetStream consumer exists with proper configuration."""
+        """Create the fixed durable when it does not exist."""
         if self.jetstream is None:
             raise RuntimeError("JetStream context is None")
 
         try:
-            # by_start_time rather than new: $JS.API.CONSUMER.RESET refuses to move a
-            # consumer whose deliver_policy is new (ADR-60), and reset is how the admin
-            # API fast-forwards past a backlog. Starting at creation time reproduces
-            # what new gives us, so a freshly created consumer still ignores history.
+            self._last_permission_error = None
+            existing = await self.jetstream.consumer_info(self.stream, self.queue)
+            self.logger.info("Consumer %s already exists", self.queue)
+        except NotFoundError:
             config = ConsumerConfig(
-                deliver_policy=DeliverPolicy.BY_START_TIME,
-                opt_start_time=datetime.now(UTC),
+                deliver_policy=DeliverPolicy.NEW,
+                ack_policy=AckPolicy.EXPLICIT,
                 ack_wait=360,
                 durable_name=self.queue,
                 filter_subject=self.subject,
+                max_deliver=-1,
             )
-
-            self.logger.info("Creating/ensuring consumer exists: %s", self.queue)
-
-            # Only a genuinely absent consumer should trigger creation. Treating any
-            # failure as absence turns transient errors into spurious create attempts.
             try:
-                existing = await self.jetstream.consumer_info(self.stream, self.queue)
-                self.logger.info("Consumer %s already exists", self.queue)
-                await self._migrate_deliver_policy(existing)
-            except NotFoundError:
-                try:
-                    await self.jetstream.add_consumer(
-                        stream=self.stream,
-                        config=config,
+                self._last_permission_error = None
+                await self.jetstream.add_consumer(
+                    stream=self.stream,
+                    config=config,
+                )
+            except Exception as e:
+                if is_nats_permissions_error(e) or self._last_permission_error is not None:
+                    self._log_permission_error_once(
+                        "create",
+                        "NATS denied creation of missing consumer %s. %s",
+                        self.queue,
+                        provision_consumer_request(
+                            self.api_prefix, self.stream, self.queue, self.subject
+                        ),
                     )
-                except ServiceUnavailableError as e:
-                    raise RuntimeError(
-                        f"Consumer {self.queue} is absent from stream {self.stream} and cannot be "
-                        f"created through API prefix {self.api_prefix}. A stream imported from "
-                        f"another NATS account does not export consumer creation, so the owning "
-                        f"account must provision this consumer."
-                    ) from e
-                self.logger.info("Consumer %s created successfully", self.queue)
-
+                raise
+            self.logger.info("Consumer %s created successfully", self.queue)
         except Exception as e:
-            self.logger.error("Failed to ensure consumer exists: %s", str(e))
+            if is_nats_permissions_error(e) or self._last_permission_error is not None:
+                self._log_permission_error_once(
+                    "info",
+                    "NATS denied lookup of consumer %s. Ask the NATS administrator to grant "
+                    "publish access to %s",
+                    self.queue,
+                    f"{self.api_prefix}.CONSUMER.INFO.{self.stream}.{self.queue}",
+                )
             raise
+        else:
+            mismatches = self._consumer_configuration_mismatches(existing)
+            if mismatches:
+                self.logger.warning(
+                    "Consumer %s configuration differs from the render runtime: %s. %s",
+                    self.queue,
+                    "; ".join(mismatches),
+                    update_consumer_request(self.stream, self.queue, self.subject),
+                )
 
-    async def _migrate_deliver_policy(self, existing: ConsumerInfo) -> None:
-        """Recreate a pre-existing consumer whose deliver_policy forbids reset.
-
-        deliver_policy is immutable, so a consumer created before this policy change
-        keeps a value $JS.API.CONSUMER.RESET rejects (ADR-60) and can never be
-        fast-forwarded. Recreating at the current ack floor rather than at the current
-        time makes it reset-eligible without abandoning an in-flight backlog.
-        """
-        if self.jetstream is None:
-            raise RuntimeError("JetStream context is None")
-
-        policy = existing.config.deliver_policy
-        if policy in RESETTABLE_DELIVER_POLICIES:
-            return
-
-        # Recreating means deleting first, which an imported stream does not export.
-        if self.api_prefix != DEFAULT_NATS_API_PREFIX:
-            self.logger.warning(
-                "Consumer %s on imported stream %s has deliver_policy=%s, which blocks "
-                "consumer reset. The account owning %s must recreate it with one of %s.",
-                self.queue,
-                self.stream,
-                policy,
-                self.api_prefix,
-                sorted(p.value for p in RESETTABLE_DELIVER_POLICIES),
+    def _consumer_configuration_mismatches(self, existing: ConsumerInfo) -> list[str]:
+        """Return behavior-affecting differences from the runtime's consumer settings."""
+        config = existing.config
+        mismatches = []
+        if config.durable_name != self.queue:
+            mismatches.append(f"durable_name={config.durable_name!r} expected {self.queue!r}")
+        if config.filter_subject != self.subject:
+            mismatches.append(f"filter_subject={config.filter_subject!r} expected {self.subject!r}")
+        if config.ack_policy != AckPolicy.EXPLICIT:
+            mismatches.append(
+                f"ack_policy={config.ack_policy.value!r} expected {AckPolicy.EXPLICIT.value!r}"
             )
-            return
-
-        # Resume from the first message this consumer has not acked, so nothing pending
-        # is skipped and nothing already acked is replayed.
-        resume_from = (existing.ack_floor.stream_seq if existing.ack_floor else 0) + 1
-        self.logger.info(
-            "Migrating consumer %s from deliver_policy=%s to by_start_sequence at %d",
-            self.queue,
-            policy,
-            resume_from,
-        )
-
-        await self.jetstream.delete_consumer(stream=self.stream, consumer=self.queue)
-        await self.jetstream.add_consumer(
-            stream=self.stream,
-            config=ConsumerConfig(
-                deliver_policy=DeliverPolicy.BY_START_SEQUENCE,
-                opt_start_seq=resume_from,
-                ack_wait=360,
-                durable_name=self.queue,
-                filter_subject=self.subject,
-            ),
-        )
-        self.logger.info("Consumer %s migrated successfully", self.queue)
+        if config.ack_wait != 360:
+            mismatches.append(f"ack_wait={config.ack_wait!r} expected 360")
+        if config.max_deliver != -1:
+            mismatches.append(f"max_deliver={config.max_deliver!r} expected -1")
+        return mismatches
 
     async def _resilient_message_handler(self, msg: Msg) -> None:
         """Wrapper around message_handler with additional error handling."""
@@ -436,6 +511,7 @@ class PullNautobotConsumer(PullConsumer):
             subject=subject,
             queue_suffix="nautobot",
             api_prefix=api_prefix,
+            consumer_name_key="nautobot_consumer_name",
         )
 
     async def message_handler(self, msg: Msg) -> None:
@@ -465,6 +541,7 @@ class PullDeviceChangeConsumer(PullConsumer):
             subject=subject,
             queue_suffix="device",
             api_prefix=api_prefix,
+            consumer_name_key="config_manager_consumer_name",
         )
 
     async def message_handler(self, msg: Msg) -> None:

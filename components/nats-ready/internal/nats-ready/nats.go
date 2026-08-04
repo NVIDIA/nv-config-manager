@@ -20,9 +20,11 @@ import (
 	"context"
 	_ "embed" // Required to enable the //go:embed directives below.
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -59,6 +61,12 @@ type natsReady struct {
 	nc                          *nats.Conn
 	nvConfigManagerStreamConfig *StreamConfig
 	nautobotStreamConfig        *StreamConfig
+	consumerConfigs             []consumerConfig
+}
+
+type consumerConfig struct {
+	stream string
+	config jetstream.ConsumerConfig
 }
 
 func applyStreamOverrides(streamConfig *StreamConfig, nameEnv string, subjectsEnv string) {
@@ -76,6 +84,34 @@ func applyStreamOverrides(streamConfig *StreamConfig, nameEnv string, subjectsEn
 			streamConfig.Config.Subjects = subjects
 		}
 	}
+}
+
+func valueOrDefault(envName, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(envName)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func newConsumerConfig(stream, name, filter string) consumerConfig {
+	return consumerConfig{
+		stream: stream,
+		config: jetstream.ConsumerConfig{
+			Durable:       name,
+			DeliverPolicy: jetstream.DeliverNewPolicy,
+			AckPolicy:     jetstream.AckExplicitPolicy,
+			AckWait:       360 * time.Second,
+			MaxDeliver:    -1,
+			FilterSubject: filter,
+		},
+	}
+}
+
+func newArchiveConsumerConfig(stream, name, filter, deliverSubject string) consumerConfig {
+	target := newConsumerConfig(stream, name, filter)
+	target.config.DeliverSubject = deliverSubject
+	target.config.DeliverGroup = name
+	return target
 }
 
 func NewRunner(config *NatsReadyConfig) (Runner, error) {
@@ -118,6 +154,23 @@ func NewRunner(config *NatsReadyConfig) (Runner, error) {
 		"NV_CONFIG_MANAGER_NATS_STREAM_SUBJECTS",
 	)
 
+	configManagerConsumer := newConsumerConfig(
+		nvConfigManagerStreamConfig.Config.Name,
+		valueOrDefault("NV_CONFIG_MANAGER_NATS_CONSUMER_NAME", "nv-config-manager-device"),
+		valueOrDefault("NV_CONFIG_MANAGER_NATS_CONSUMER_FILTER_SUBJECT", "nv-config-manager.nautobotchange"),
+	)
+	archiveConsumer := newArchiveConsumerConfig(
+		nvConfigManagerStreamConfig.Config.Name,
+		valueOrDefault("NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_NAME", "nv-config-manager-archive"),
+		valueOrDefault("NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_FILTER_SUBJECT", "nv-config-manager.workflow.result"),
+		valueOrDefault("NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_DELIVER_SUBJECT", "nv-config-manager.archive.delivery"),
+	)
+	nautobotConsumer := newConsumerConfig(
+		nautobotStreamConfig.Config.Name,
+		valueOrDefault("NAUTOBOT_NATS_CONSUMER_NAME", "nv-config-manager-nautobot"),
+		valueOrDefault("NAUTOBOT_NATS_CONSUMER_FILTER_SUBJECT", "nautobot"),
+	)
+
 	n := &natsReady{
 		config:                      config,
 		js:                          js,
@@ -125,6 +178,10 @@ func NewRunner(config *NatsReadyConfig) (Runner, error) {
 		log:                         logger,
 		nvConfigManagerStreamConfig: &nvConfigManagerStreamConfig,
 		nautobotStreamConfig:        &nautobotStreamConfig,
+		consumerConfigs:             []consumerConfig{configManagerConsumer, nautobotConsumer},
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_ENABLED")), "true") {
+		n.consumerConfigs = append(n.consumerConfigs, archiveConsumer)
 	}
 	return n, nil
 }
@@ -151,7 +208,38 @@ func (n *natsReady) Run() error {
 		return fmt.Errorf("nv-config-manager stream operation failed: %w", err)
 	}
 
+	for i := range n.consumerConfigs {
+		if err := n.getOrCreateConsumer(ctx, &n.consumerConfigs[i]); err != nil {
+			return err
+		}
+	}
+
 	n.log.Info().Msg("NATS readiness check completed successfully")
+	return nil
+}
+
+// getOrCreateConsumer creates a missing fixed durable without changing an existing
+// consumer's delivery position or configuration.
+func (n *natsReady) getOrCreateConsumer(ctx context.Context, expected *consumerConfig) error {
+	stream, err := n.js.Stream(ctx, expected.stream)
+	if err != nil {
+		return fmt.Errorf("get stream %s for consumer %s: %w", expected.stream, expected.config.Durable, err)
+	}
+
+	_, err = stream.Consumer(ctx, expected.config.Durable)
+	if errors.Is(err, jetstream.ErrConsumerNotFound) {
+		_, err = stream.CreateConsumer(ctx, expected.config)
+		if err != nil {
+			return fmt.Errorf("create consumer %s on stream %s: %w", expected.config.Durable, expected.stream, err)
+		}
+		n.log.Info().Str("stream", expected.stream).Str("consumer", expected.config.Durable).Msg("Consumer created successfully")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get consumer %s on stream %s: %w", expected.config.Durable, expected.stream, err)
+	}
+
+	n.log.Info().Str("stream", expected.stream).Str("consumer", expected.config.Durable).Msg("Consumer already exists")
 	return nil
 }
 
@@ -163,6 +251,9 @@ func (n *natsReady) getOrCreateStream(ctx context.Context, streamConfig *StreamC
 	// Try to get the existing stream
 	stream, err := n.js.Stream(ctx, streamName)
 	if err != nil {
+		if !errors.Is(err, jetstream.ErrStreamNotFound) {
+			return fmt.Errorf("check stream %s: %w", streamName, err)
+		}
 		// Stream doesn't exist, create it
 		n.log.Info().Str("stream", streamName).Msg("Stream not found, creating new stream")
 		return n.createStream(ctx, streamConfig)

@@ -16,6 +16,7 @@
 
 from unittest.mock import AsyncMock, patch
 
+from nv_config_manager.temporal.archive.main import main
 from nv_config_manager.temporal.client.nats import NatsConsumer
 
 BASE_NATS_CONFIG = """
@@ -29,6 +30,7 @@ archive_subject = nv-config-manager.workflow.result
 """
 
 PREFIXED_NATS_CONFIG = BASE_NATS_CONFIG + "config_manager_api_prefix = $JS.CUSTOM.API\n"
+NAMED_NATS_CONFIG = BASE_NATS_CONFIG + "archive_consumer_name = externally-managed-archive\n"
 
 
 def _consumer() -> NatsConsumer:
@@ -52,6 +54,19 @@ def test_consumer_follows_config_manager_prefix(custom_ini):
     assert _consumer().api_prefix == "$JS.CUSTOM.API"
 
 
+def test_consumer_uses_fixed_default_name(custom_ini):
+    """Archive identity does not inherit the site-specific queue prefix."""
+    custom_ini(BASE_NATS_CONFIG.replace("queue = nv-config-manager", "queue = site-42"))
+    assert _consumer().full_queue_name == "nv-config-manager-archive"
+    assert _consumer().deliver_subject == "nv-config-manager.archive.delivery"
+
+
+def test_consumer_name_is_configurable(custom_ini):
+    """Externally provisioned archive durable names are configurable."""
+    custom_ini(NAMED_NATS_CONFIG)
+    assert _consumer().full_queue_name == "externally-managed-archive"
+
+
 def test_archive_main_does_not_override_the_stream_prefix(custom_ini):
     """The entrypoint inherits the stream's prefix instead of supplying its own."""
     custom_ini(PREFIXED_NATS_CONFIG)
@@ -62,8 +77,6 @@ def test_archive_main_does_not_override_the_stream_prefix(custom_ini):
         patch("nv_config_manager.temporal.archive.main.setup_telemetry"),
         patch("sys.argv", ["archive"]),
     ):
-        from nv_config_manager.temporal.archive.main import main
-
         main()
 
     kwargs = mock_consumer.call_args.kwargs

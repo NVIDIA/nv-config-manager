@@ -249,7 +249,7 @@ func (r ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest) Execute() ([]
 /*
 ResetAllConsumersV1AdminConsumersResetAllDelete Reset All Consumers
 
-Fast-forward every consumer past its backlog with the JetStream consumer reset API.
+Delete every consumer so the running services recreate them at the stream head.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest
@@ -350,10 +350,7 @@ func (r ApiResetConsumerV1AdminConsumersConsumerTypeResetDeleteRequest) Execute(
 /*
 ResetConsumerV1AdminConsumersConsumerTypeResetDelete Reset Consumer
 
-Fast-forward a consumer past its backlog with the JetStream consumer reset API.
-
-The consumer is moved in place rather than deleted, so this works identically on
-locally owned streams and on streams imported from another NATS account.
+Delete a consumer so the running service recreates it at the stream head.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@param consumerType

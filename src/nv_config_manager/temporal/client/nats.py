@@ -118,6 +118,12 @@ class NatsConsumer(BaseNatsConsumer):
             subject=subject,
             queue_suffix=queue_suffix,
             handler=handler,
+            durable_name=nats_config.get(
+                "archive_consumer_name", f"nv-config-manager-{queue_suffix}"
+            ),
+            deliver_subject=nats_config.get(
+                "archive_deliver_subject", "nv-config-manager.archive.delivery"
+            ),
             api_prefix=config_manager_api_prefix(nats_config),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),

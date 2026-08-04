@@ -21,13 +21,10 @@ var _ MappedNullable = &ConsumerResetResponse{}
 
 // ConsumerResetResponse Consumer reset response model.
 type ConsumerResetResponse struct {
-	ConsumerName     string `json:"consumer_name"`
-	Message          string `json:"message"`
-	RemainingPending *int32 `json:"remaining_pending,omitempty"`
-	ResetSeq         *int32 `json:"reset_seq,omitempty"`
-	Skipped          *int32 `json:"skipped,omitempty"`
-	Status           string `json:"status"`
-	Stream           string `json:"stream"`
+	ConsumerName string `json:"consumer_name"`
+	Message      string `json:"message"`
+	Status       string `json:"status"`
+	Stream       string `json:"stream"`
 }
 
 type _ConsumerResetResponse ConsumerResetResponse
@@ -40,12 +37,6 @@ func NewConsumerResetResponse(consumerName string, message string, status string
 	this := ConsumerResetResponse{}
 	this.ConsumerName = consumerName
 	this.Message = message
-	var remainingPending int32 = 0
-	this.RemainingPending = &remainingPending
-	var resetSeq int32 = 0
-	this.ResetSeq = &resetSeq
-	var skipped int32 = 0
-	this.Skipped = &skipped
 	this.Status = status
 	this.Stream = stream
 	return &this
@@ -56,12 +47,6 @@ func NewConsumerResetResponse(consumerName string, message string, status string
 // but it doesn't guarantee that properties required by API are set
 func NewConsumerResetResponseWithDefaults() *ConsumerResetResponse {
 	this := ConsumerResetResponse{}
-	var remainingPending int32 = 0
-	this.RemainingPending = &remainingPending
-	var resetSeq int32 = 0
-	this.ResetSeq = &resetSeq
-	var skipped int32 = 0
-	this.Skipped = &skipped
 	return &this
 }
 
@@ -111,105 +96,6 @@ func (o *ConsumerResetResponse) GetMessageOk() (*string, bool) {
 // SetMessage sets field value
 func (o *ConsumerResetResponse) SetMessage(v string) {
 	o.Message = v
-}
-
-// GetRemainingPending returns the RemainingPending field value if set, zero value otherwise.
-func (o *ConsumerResetResponse) GetRemainingPending() int32 {
-	if o == nil || IsNil(o.RemainingPending) {
-		var ret int32
-		return ret
-	}
-	return *o.RemainingPending
-}
-
-// GetRemainingPendingOk returns a tuple with the RemainingPending field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-
-func (o *ConsumerResetResponse) GetRemainingPendingOk() (*int32, bool) {
-	if o == nil || IsNil(o.RemainingPending) {
-		return nil, false
-	}
-	return o.RemainingPending, true
-}
-
-// HasRemainingPending returns a boolean if a field has been set.
-func (o *ConsumerResetResponse) HasRemainingPending() bool {
-	if o != nil && !IsNil(o.RemainingPending) {
-		return true
-	}
-
-	return false
-}
-
-// SetRemainingPending gets a reference to the given int32 and assigns it to the RemainingPending field.
-func (o *ConsumerResetResponse) SetRemainingPending(v int32) {
-	o.RemainingPending = &v
-}
-
-// GetResetSeq returns the ResetSeq field value if set, zero value otherwise.
-func (o *ConsumerResetResponse) GetResetSeq() int32 {
-	if o == nil || IsNil(o.ResetSeq) {
-		var ret int32
-		return ret
-	}
-	return *o.ResetSeq
-}
-
-// GetResetSeqOk returns a tuple with the ResetSeq field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-
-func (o *ConsumerResetResponse) GetResetSeqOk() (*int32, bool) {
-	if o == nil || IsNil(o.ResetSeq) {
-		return nil, false
-	}
-	return o.ResetSeq, true
-}
-
-// HasResetSeq returns a boolean if a field has been set.
-func (o *ConsumerResetResponse) HasResetSeq() bool {
-	if o != nil && !IsNil(o.ResetSeq) {
-		return true
-	}
-
-	return false
-}
-
-// SetResetSeq gets a reference to the given int32 and assigns it to the ResetSeq field.
-func (o *ConsumerResetResponse) SetResetSeq(v int32) {
-	o.ResetSeq = &v
-}
-
-// GetSkipped returns the Skipped field value if set, zero value otherwise.
-func (o *ConsumerResetResponse) GetSkipped() int32 {
-	if o == nil || IsNil(o.Skipped) {
-		var ret int32
-		return ret
-	}
-	return *o.Skipped
-}
-
-// GetSkippedOk returns a tuple with the Skipped field value if set, nil otherwise
-// and a boolean to check if the value has been set.
-
-func (o *ConsumerResetResponse) GetSkippedOk() (*int32, bool) {
-	if o == nil || IsNil(o.Skipped) {
-		return nil, false
-	}
-	return o.Skipped, true
-}
-
-// HasSkipped returns a boolean if a field has been set.
-func (o *ConsumerResetResponse) HasSkipped() bool {
-	if o != nil && !IsNil(o.Skipped) {
-		return true
-	}
-
-	return false
-}
-
-// SetSkipped gets a reference to the given int32 and assigns it to the Skipped field.
-func (o *ConsumerResetResponse) SetSkipped(v int32) {
-	o.Skipped = &v
 }
 
 // GetStatus returns the Status field value
@@ -272,15 +158,6 @@ func (o ConsumerResetResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	toSerialize["consumer_name"] = o.ConsumerName
 	toSerialize["message"] = o.Message
-	if !IsNil(o.RemainingPending) {
-		toSerialize["remaining_pending"] = o.RemainingPending
-	}
-	if !IsNil(o.ResetSeq) {
-		toSerialize["reset_seq"] = o.ResetSeq
-	}
-	if !IsNil(o.Skipped) {
-		toSerialize["skipped"] = o.Skipped
-	}
 	toSerialize["status"] = o.Status
 	toSerialize["stream"] = o.Stream
 	return toSerialize, nil

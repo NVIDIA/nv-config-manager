@@ -153,21 +153,6 @@
             "title": "Message",
             "type": "string"
           },
-          "remaining_pending": {
-            "default": 0,
-            "title": "Remaining Pending",
-            "type": "integer"
-          },
-          "reset_seq": {
-            "default": 0,
-            "title": "Reset Seq",
-            "type": "integer"
-          },
-          "skipped": {
-            "default": 0,
-            "title": "Skipped",
-            "type": "integer"
-          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -394,6 +379,9 @@
             },
             "description": "Operation successful"
           },
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
+          },
           "404": {
             "description": "Consumer not found"
           },
@@ -414,7 +402,7 @@
     },
     "/v1/admin/consumers/reset-all": {
       "delete": {
-        "description": "Fast-forward every consumer past its backlog with the JetStream consumer reset API.",
+        "description": "Delete every consumer so the running services recreate them at the stream head.",
         "operationId": "reset_all_consumers_v1_admin_consumers_reset_all_delete",
         "responses": {
           "200": {
@@ -430,6 +418,9 @@
               }
             },
             "description": "Operation successful"
+          },
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
           },
           "404": {
             "description": "Consumer not found"
@@ -474,6 +465,9 @@
             },
             "description": "Operation successful"
           },
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
+          },
           "404": {
             "description": "Consumer not found"
           },
@@ -504,7 +498,7 @@
     },
     "/v1/admin/consumers/{consumer_type}/reset": {
       "delete": {
-        "description": "Fast-forward a consumer past its backlog with the JetStream consumer reset API.\n\nThe consumer is moved in place rather than deleted, so this works identically on\nlocally owned streams and on streams imported from another NATS account.",
+        "description": "Delete a consumer so the running service recreates it at the stream head.",
         "operationId": "reset_consumer_v1_admin_consumers__consumer_type__reset_delete",
         "parameters": [
           {
@@ -526,6 +520,9 @@
               }
             },
             "description": "Operation successful"
+          },
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
           },
           "404": {
             "description": "Consumer not found"

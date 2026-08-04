@@ -5,11 +5,14 @@
 {{- $natsUser := include "nv-config-manager.natsUser" . }}
 {{- $natsSecretName := include "nv-config-manager.natsSecretName" . }}
 {{- $redisName := include "nv-config-manager.componentName" (dict "root" . "component" "redis") }}
+{{- $configManagerConsumerConfig := dict "durable_name" (include "nv-config-manager.configManagerConsumerName" .) "deliver_policy" "new" "ack_policy" "explicit" "ack_wait" 360000000000 "max_deliver" -1 "filter_subject" .Values.externalServices.nats.streams.configManager.renderChangeSubject "replay_policy" "instant" }}
+{{- $archiveConsumerConfig := dict "durable_name" (include "nv-config-manager.archiveConsumerName" .) "deliver_policy" "new" "ack_policy" "explicit" "ack_wait" 360000000000 "max_deliver" -1 "filter_subject" .Values.externalServices.nats.streams.configManager.archiveSubject "deliver_subject" (include "nv-config-manager.archiveConsumerDeliverySubject" .) "deliver_group" (include "nv-config-manager.archiveConsumerName" .) "replay_policy" "instant" }}
+{{- $nautobotConsumerConfig := dict "durable_name" (include "nv-config-manager.nautobotConsumerName" .) "deliver_policy" "new" "ack_policy" "explicit" "ack_wait" 360000000000 "max_deliver" -1 "filter_subject" .Values.externalServices.nats.streams.nautobot.subject "replay_policy" "instant" }}
 # =============================================================================
 # Local Nautobot Stack Deployment
 # =============================================================================
 # This template deploys a local Nautobot instance within the nv-config-manager namespace
-# for environments without full Cerebro deployment.
+# for environments that bundle Nautobot with NVIDIA Config Manager.
 # Includes: Nautobot Server, Celery Workers, Redis, NATS, PostgreSQL (via CNPG)
 #
 # NOTE: Secrets (nautobot-admin, nautobot-django-secret, nats-*) are created
@@ -163,7 +166,7 @@ spec:
     app.kubernetes.io/instance: {{ .Release.Name }}
 
 # =============================================================================
-# NATS Box with nats-ready init container (JetStream stream setup)
+# NATS Box with nats-ready init container (JetStream topology setup)
 # =============================================================================
 {{- if .Values.nautobotNats.natsReady.enabled }}
 ---
@@ -228,8 +231,13 @@ spec:
           NAUTOBOT_SERVER="nats://${NAUTOBOT_USER}:${NAUTOBOT_PASSWORD}@{{ $natsName }}:4222"
           CONFIG_MANAGER_STREAM="{{ .Values.externalServices.nats.streams.configManager.name }}"
           CONFIG_MANAGER_SUBJECTS="{{ join "," .Values.externalServices.nats.streams.configManager.subjects }}"
+          CONFIG_MANAGER_CONSUMER="{{ include "nv-config-manager.configManagerConsumerName" . }}"
+          {{- if .Values.temporal.archive.enabled }}
+          ARCHIVE_CONSUMER="{{ include "nv-config-manager.archiveConsumerName" . }}"
+          {{- end }}
           NAUTOBOT_STREAM="{{ .Values.externalServices.nats.streams.nautobot.name }}"
           NAUTOBOT_SUBJECTS="{{ join "," .Values.externalServices.nats.streams.nautobot.subjects }}"
+          NAUTOBOT_CONSUMER="{{ include "nv-config-manager.nautobotConsumerName" . }}"
           MAX_BYTES="{{ .Values.nautobotNats.natsReady.streamMaxBytes | default 104857600 | int64 }}"
           
           echo "Waiting for NATS server..."
@@ -280,20 +288,41 @@ spec:
               --max-bytes="$MAX_BYTES" \
               --force
           fi
+
+          ensure_consumer() {
+            stream="$1"
+            consumer="$2"
+            if nats consumer info "$stream" "$consumer" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null 2>&1; then
+              echo "Consumer ${stream}/${consumer} already exists"
+              return
+            fi
+            echo "Creating consumer ${stream}/${consumer}..."
+            nats consumer add "$stream" --config="$3" --server="$NV_CONFIG_MANAGER_SERVER"
+          }
+
+          printf '%s\n' {{ $configManagerConsumerConfig | toJson | quote }} > /tmp/config-manager-consumer.json
+          printf '%s\n' {{ $nautobotConsumerConfig | toJson | quote }} > /tmp/nautobot-consumer.json
+          ensure_consumer "$CONFIG_MANAGER_STREAM" "$CONFIG_MANAGER_CONSUMER" /tmp/config-manager-consumer.json
+          {{- if .Values.temporal.archive.enabled }}
+          printf '%s\n' {{ $archiveConsumerConfig | toJson | quote }} > /tmp/archive-consumer.json
+          ensure_consumer "$CONFIG_MANAGER_STREAM" "$ARCHIVE_CONSUMER" /tmp/archive-consumer.json
+          {{- end }}
+          ensure_consumer "$NAUTOBOT_STREAM" "$NAUTOBOT_CONSUMER" /tmp/nautobot-consumer.json
           
-          # Verify streams were created
-          echo "Verifying streams..."
+          # Verify streams and consumers were created
+          echo "Verifying NATS topology..."
           nats stream ls -s "$NV_CONFIG_MANAGER_SERVER"
-          STREAM_COUNT=$(nats stream ls -s "$NV_CONFIG_MANAGER_SERVER" --json 2>/dev/null | grep -c '"name"' || echo "0")
-          if [ "$STREAM_COUNT" -lt 2 ]; then
-            echo "ERROR: Expected 2 streams but found $STREAM_COUNT"
-            exit 1
-          fi
-          echo "NATS streams ready"
+          nats stream info "$CONFIG_MANAGER_STREAM" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          nats stream info "$NAUTOBOT_STREAM" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          nats consumer info "$CONFIG_MANAGER_STREAM" "$CONFIG_MANAGER_CONSUMER" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          {{- if .Values.temporal.archive.enabled }}
+          nats consumer info "$CONFIG_MANAGER_STREAM" "$ARCHIVE_CONSUMER" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          {{- end }}
+          nats consumer info "$NAUTOBOT_STREAM" "$NAUTOBOT_CONSUMER" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          echo "NATS streams and consumers ready"
         {{- else }}
-        # Use nats-ready binary for production (streams have 20GB max_bytes)
-        # Note: Production nats-ready creates both streams using nv-config-manager account
-        # For local dev, we use nats CLI which creates streams in each account
+        # Use nats-ready binary for production (streams have 20GB max_bytes).
+        # It creates/reconciles both streams and their durable render consumers.
         image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.natsReady) }}
         imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.natsReady.pullPolicy }}
         command: ["/nats-ready"]
@@ -311,10 +340,26 @@ spec:
           value: {{ .Values.externalServices.nats.streams.configManager.name | quote }}
         - name: NV_CONFIG_MANAGER_NATS_STREAM_SUBJECTS
           value: {{ join "," .Values.externalServices.nats.streams.configManager.subjects | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_CONSUMER_NAME
+          value: {{ include "nv-config-manager.configManagerConsumerName" . | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_CONSUMER_FILTER_SUBJECT
+          value: {{ .Values.externalServices.nats.streams.configManager.renderChangeSubject | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_NAME
+          value: {{ include "nv-config-manager.archiveConsumerName" . | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_FILTER_SUBJECT
+          value: {{ .Values.externalServices.nats.streams.configManager.archiveSubject | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_DELIVER_SUBJECT
+          value: {{ include "nv-config-manager.archiveConsumerDeliverySubject" . | quote }}
+        - name: NV_CONFIG_MANAGER_NATS_ARCHIVE_CONSUMER_ENABLED
+          value: {{ .Values.temporal.archive.enabled | quote }}
         - name: NAUTOBOT_NATS_STREAM_NAME
           value: {{ .Values.externalServices.nats.streams.nautobot.name | quote }}
         - name: NAUTOBOT_NATS_STREAM_SUBJECTS
           value: {{ join "," .Values.externalServices.nats.streams.nautobot.subjects | quote }}
+        - name: NAUTOBOT_NATS_CONSUMER_NAME
+          value: {{ include "nv-config-manager.nautobotConsumerName" . | quote }}
+        - name: NAUTOBOT_NATS_CONSUMER_FILTER_SUBJECT
+          value: {{ .Values.externalServices.nats.streams.nautobot.subject | quote }}
         - name: NAUTOBOT_USER
           value: "nautobot"
         - name: NAUTOBOT_PASSWORD

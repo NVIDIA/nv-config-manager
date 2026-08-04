@@ -32,9 +32,10 @@ import nats
 import nats.js.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
-from nats.js.api import DeliverPolicy, StreamInfo
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamInfo
 
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.common.nats_admin import is_nats_permissions_error
 
 logger = get_logger(__name__, category=LogCategory.NATS)
 
@@ -172,7 +173,11 @@ class NatsClient:
 
         try:
             self.conn = await nats.connect(self.server, **options)
-            await self._ensure_stream()
+            # Stream lifecycle belongs to the bundled deployment or an external
+            # administrator. Avoid requiring STREAM.INFO merely to publish to or
+            # consume from an explicitly configured externally managed stream.
+            if self.local:
+                await self._ensure_stream()
         except Exception as err:
             logger.error(
                 "NATS connection failed: server=%s error=%s",
@@ -242,6 +247,8 @@ class NatsConsumer(NatsClient):
         subject: str,
         queue_suffix: str,
         handler: Callable[[Msg], Awaitable[None]],
+        durable_name: str | None = None,
+        deliver_subject: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the consumer.
@@ -251,19 +258,23 @@ class NatsConsumer(NatsClient):
             subject: Subject to subscribe to
             queue_suffix: Suffix for the queue group name
             handler: Async callback for handling messages
+            durable_name: Exact durable name. Defaults to the legacy queue-based name.
+            deliver_subject: Fixed push delivery subject for administrator provisioning.
             **kwargs: Additional arguments passed to NatsClient
         """
         super().__init__(**kwargs)
         self.stream = stream
         self.subject = subject
         self.queue_suffix = queue_suffix
+        self.durable_name = durable_name
+        self.deliver_subject = deliver_subject
         self.handler = handler
         self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def full_queue_name(self) -> str:
         """Get the full queue name."""
-        return f"{self.queue}-{self.queue_suffix}"
+        return self.durable_name or f"{self.queue}-{self.queue_suffix}"
 
     def run(self) -> None:
         """Run the consumer (blocking)."""
@@ -283,12 +294,22 @@ class NatsConsumer(NatsClient):
         """Main consumer loop."""
         self.conn = await self.connect()
         jetstream = self.conn.jetstream(prefix=self.api_prefix)
+        durable = self.full_queue_name
 
         await jetstream.subscribe(
             subject=self.subject,
             stream=self.stream,
-            deliver_policy=DeliverPolicy.NEW,
-            queue=self.full_queue_name,
+            queue=durable,
+            config=ConsumerConfig(
+                durable_name=durable,
+                deliver_policy=DeliverPolicy.NEW,
+                ack_policy=AckPolicy.EXPLICIT,
+                ack_wait=360,
+                max_deliver=-1,
+                filter_subject=self.subject,
+                deliver_subject=self.deliver_subject,
+                deliver_group=durable,
+            ),
             cb=self.handler,
         )
         logger.info(
@@ -300,6 +321,26 @@ class NatsConsumer(NatsClient):
 
         while not self.conn.is_closed:
             await asyncio.sleep(1)
+
+    async def _error_cb(self, error: Exception) -> None:
+        """Log exact administrator guidance for restricted consumer operations."""
+        if is_nats_permissions_error(error):
+            durable = self.full_queue_name
+            logger.error(
+                "NATS denied an operation for consumer %s on stream %s. Ask the NATS "
+                "administrator to grant publish access to %s and %s, or provision that "
+                "durable with filter_subject=%r, deliver_policy='new', ack_policy='explicit', "
+                "ack_wait=360s, max_deliver=-1, deliver_subject=%r, and deliver_group=%r.",
+                durable,
+                self.stream,
+                f"{self.api_prefix}.CONSUMER.INFO.{self.stream}.{durable}",
+                f"{self.api_prefix}.CONSUMER.DURABLE.CREATE.{self.stream}.{durable}",
+                self.subject,
+                self.deliver_subject,
+                durable,
+            )
+            return
+        await super()._error_cb(error)
 
     def _clean_exit(self) -> None:
         """Cancel all running tasks and close the connection."""

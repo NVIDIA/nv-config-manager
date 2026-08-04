@@ -298,6 +298,7 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           local = {{ $root.Values.externalServices.nats.local }}
           config_manager_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
           config_manager_api_prefix = {{ $root.Values.externalServices.nats.streams.configManager.apiPrefix | default "$JS.API" }}
+          config_manager_consumer_name = {{ include "nv-config-manager.configManagerConsumerName" $root }}
           config_manager_subjects = {{ join "," $root.Values.externalServices.nats.streams.configManager.subjects }}
           render_change_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
           render_change_subject = {{ $root.Values.externalServices.nats.streams.configManager.renderChangeSubject }}
@@ -305,8 +306,11 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           device_change_subject = {{ $root.Values.externalServices.nats.streams.configManager.deviceChangeSubject }}
           archive_stream = {{ $root.Values.externalServices.nats.streams.configManager.name }}
           archive_subject = {{ $root.Values.externalServices.nats.streams.configManager.archiveSubject }}
+          archive_consumer_name = {{ include "nv-config-manager.archiveConsumerName" $root }}
+          archive_deliver_subject = {{ include "nv-config-manager.archiveConsumerDeliverySubject" $root }}
           nautobot_stream = {{ $root.Values.externalServices.nats.streams.nautobot.name }}
           nautobot_api_prefix = {{ $root.Values.externalServices.nats.streams.nautobot.apiPrefix | default "$JS.API" }}
+          nautobot_consumer_name = {{ include "nv-config-manager.nautobotConsumerName" $root }}
           nautobot_subjects = {{ join "," $root.Values.externalServices.nats.streams.nautobot.subjects }}
           nautobot_subject = {{ $root.Values.externalServices.nats.streams.nautobot.subject }}
 
