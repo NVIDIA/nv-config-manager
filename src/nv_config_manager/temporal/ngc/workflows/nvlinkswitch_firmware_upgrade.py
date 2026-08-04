@@ -31,6 +31,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -106,7 +107,7 @@ def _format_firmware_differences(differences: dict[str, dict[str, str]]) -> str:
 class NVLinkSwitchFirmwareUpgradeInput(BaseModel):
     """NVLinkSwitch Firmware Upgrade Workflow Input Definition."""
 
-    device_id: str = Field(description="Identifier of the NVLink switch to upgrade.")
+    device_id: DeviceReference = Field(description="Identifier of the NVLink switch to upgrade.")
     bundle_version: str = Field(description="Target NVLink firmware bundle version.")
 
 

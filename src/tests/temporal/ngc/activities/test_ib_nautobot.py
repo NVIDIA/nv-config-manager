@@ -31,6 +31,7 @@ from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
     _normalize_pkey,
     _select_pkey_match,
     canonicalize_ufm_host,
+    canonicalize_ufm_host_for_site,
     resolve_ib_context,
     resolve_ib_context_for_add,
     resolve_ib_site_for_host,
@@ -103,6 +104,7 @@ def _device_payload(
     return {
         "id": device_id,
         "name": DEVICE_NAME,
+        "role": {"name": "UFM"},
         "primary_ip4": {"host": DEVICE_IP},
         "location": {
             "id": LOCATION_ID,
@@ -775,3 +777,34 @@ class TestCanonicalizeUFMHost:
             m.post(NB_GRAPHQL, payload={"data": {"devices": []}})
             with pytest.raises(ApplicationError, match="not found in Nautobot"):
                 await canonicalize_ufm_host(DEVICE_NAME)
+
+
+@pytest.mark.asyncio
+class TestCanonicalizeUFMHostForSite:
+    """API UFM targets must exist and belong to the supplied credential Site."""
+
+    @pytest.mark.parametrize("site_reference", [LOCATION_ID, LOCATION_NAME, None])
+    async def test_accepts_matching_site_or_no_override(
+        self,
+        mock_nb_config: Any,
+        site_reference: str | None,
+    ) -> None:
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": [_device_payload()]}})
+            result = await canonicalize_ufm_host_for_site(DEVICE_NAME, site_reference)
+
+        assert result == DEVICE_IP
+
+    async def test_rejects_site_from_another_ufm(self, mock_nb_config: Any) -> None:
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": [_device_payload()]}})
+            with pytest.raises(ApplicationError, match="belongs to Site.*not 'other-site'"):
+                await canonicalize_ufm_host_for_site(DEVICE_NAME, "other-site")
+
+    async def test_rejects_non_ufm_device(self, mock_nb_config: Any) -> None:
+        device = _device_payload()
+        device["role"] = {"name": "Leaf"}
+        with aioresponses() as m:
+            m.post(NB_GRAPHQL, payload={"data": {"devices": [device]}})
+            with pytest.raises(ApplicationError, match="not assigned the UFM role"):
+                await canonicalize_ufm_host_for_site(DEVICE_NAME, LOCATION_NAME)

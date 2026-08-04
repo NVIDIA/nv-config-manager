@@ -38,7 +38,9 @@ from nv_config_manager.temporal.common.search_attributes import (
     READ_ROLES_SEARCH_ATTRIBUTE,
     SITE_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
+    upsert_missing_search_attributes,
 )
+from nv_config_manager.temporal.common.workflow_references import OptionalLocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -133,7 +135,7 @@ class MultiDeployInput(BaseModel):
     max_batch_size: int = Field(
         default=10, description="Maximum number of devices included in each deployment batch."
     )
-    location: str | None = Field(
+    location: OptionalLocationReference = Field(
         default=None, description="Location used to filter the selected network devices."
     )
     status: list[str] | None = Field(
@@ -215,7 +217,6 @@ class BatchDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
     workflow_name = "Batch Configuration Deploy"
     workflow_description = "Deploy configurations to a batch of devices with shared diff content"
     workflow_input_class = BatchDeployInput
-    workflow_api_endpoint = "/ngc/batch_deploy"
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:
@@ -1054,7 +1055,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         """Execute multi-deploy workflow."""
         self.set_input(workflow_input)
         if workflow_input.location:
-            workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.location]})
+            upsert_missing_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.location]})
 
         # Discover devices
         discover_output = await self.discover_devices(

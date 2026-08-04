@@ -32,6 +32,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageWorkflowInput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -73,7 +74,7 @@ class TriggerEnum(StrEnum):
 class BackupInput(StageWorkflowInput):
     """Backup Workflow Input Definiton."""
 
-    device_id: str = Field(description="Identifier of the network device to back up.")
+    device_id: DeviceReference = Field(description="Identifier of the network device to back up.")
     trigger: TriggerEnum = Field(description="Reason the backup workflow was started.")
     user: str | None = Field(default=None, description="User that requested the backup.")
     user_domain: str | None = Field(

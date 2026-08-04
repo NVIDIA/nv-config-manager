@@ -30,6 +30,10 @@ class _HasHost(Protocol):
     host: str
 
 
+class _HasHostAndSite(_HasHost, Protocol):
+    site: str | None
+
+
 class UFMHostLockMixin:
     """Canonicalize ``host`` before the run so the per-resource lock keys on one
     identifier whether the caller passed a UFM device name or its IP."""
@@ -41,4 +45,19 @@ class UFMHostLockMixin:
 
         typed = cast("_HasHost", body)
         typed.host = await canonicalize_ufm_host(typed.host)
+        return body
+
+
+class UFMHostSiteValidationMixin:
+    """Validate that an API-supplied UFM host and Site belong together."""
+
+    @classmethod
+    async def canonicalize_input(cls, body: BaseModel) -> BaseModel:
+        """Use Nautobot's endpoint and reject a mismatched credential Site."""
+        from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+            canonicalize_ufm_host_for_site,
+        )
+
+        typed = cast("_HasHostAndSite", body)
+        typed.host = await canonicalize_ufm_host_for_site(typed.host, typed.site)
         return body

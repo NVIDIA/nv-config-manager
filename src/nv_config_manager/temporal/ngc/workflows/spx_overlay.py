@@ -16,6 +16,7 @@
 
 import asyncio
 from datetime import timedelta
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 from temporalio import workflow
@@ -30,6 +31,11 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     StateEnum,
     stage_executor,
+)
+from nv_config_manager.temporal.common.workflow_references import (
+    DEVICE_REFERENCE,
+    DeviceReference,
+    LocationReference,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -95,7 +101,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class SpXOverlayCreationInput(BaseModel):
     """SpX Overlay Creation Workflow Input Definition."""
 
-    site: str = Field(description="Site where the SpX overlay will be created.")
+    site: LocationReference = Field(description="Site where the SpX overlay will be created.")
     overlay_id: str = Field(
         title="Overlay ID",
         description="Unique identifier for the SpX overlay. Used as an idempotency key — re-running with the same ID returns existing VRFs without creating new ones.",
@@ -256,7 +262,7 @@ class SpXOverlayCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
 class SpXOverlayDeletionInput(BaseModel):
     """SpX Overlay Deletion Workflow Input Definition."""
 
-    site: str = Field(description="Site containing the SpX overlay to delete.")
+    site: LocationReference = Field(description="Site containing the SpX overlay to delete.")
     overlay_id: str = Field(
         title="Overlay ID",
         description="Identifier of the SpX overlay to delete.",
@@ -425,13 +431,13 @@ class SpXOverlayAssignmentInput(BaseModel):
         title="Overlay ID",
         description="Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
     )
-    device: str | NetworkDeviceData = Field(
+    device: Annotated[str | NetworkDeviceData, DEVICE_REFERENCE] = Field(
         description="Identifier or preloaded data for the target network device."
     )
     port_names: list[str] = Field(
         description="Names of the device interfaces to assign to the overlay."
     )
-    site: str = Field(description="Site containing the target network device.")
+    site: LocationReference = Field(description="Site containing the target network device.")
     namespace_tag: str = Field(
         default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
     )
@@ -709,13 +715,13 @@ class SpXOverlayTenantChangeInput(BaseModel):
         title="Overlay ID",
         description="Identifier of the SpX overlay to assign and deploy tenant configuration for.",
     )
-    device_id: str = Field(
+    device_id: DeviceReference = Field(
         title="Device ID", description="Identifier of the target network device."
     )
     port_names: list[str] = Field(
         description="Names of the device interfaces to assign to the overlay."
     )
-    site: str = Field(description="Site containing the target network device.")
+    site: LocationReference = Field(description="Site containing the target network device.")
     namespace_tag: str = Field(
         default=NAMESPACE_TAG, description="Tag identifying the namespace used for allocation."
     )

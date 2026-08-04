@@ -75,60 +75,6 @@
         "title": "BackupInput",
         "type": "object"
       },
-      "BatchDeployInput": {
-        "description": "Input for batch deploy child workflow.",
-        "properties": {
-          "batch_devices": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/DeviceDiffData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "deprecated": true,
-            "description": "Deprecated compatibility field. When omitted, devices are read from diff_group.devices.",
-            "title": "Batch Devices"
-          },
-          "batch_number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Sequence number of this batch within the parent workflow.",
-            "title": "Batch Number"
-          },
-          "commit_confirm": {
-            "default": true,
-            "description": "Whether to use commit-confirmed mode when the platform supports it.",
-            "title": "Commit Confirm",
-            "type": "boolean"
-          },
-          "diff_group": {
-            "$ref": "#/components/schemas/DiffGroup",
-            "description": "Shared configuration diff for the device batch."
-          },
-          "parent_workflow_id": {
-            "description": "Identifier of the parent multi-deploy workflow.",
-            "title": "Parent Workflow Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "diff_group",
-          "parent_workflow_id"
-        ],
-        "title": "BatchDeployInput",
-        "type": "object"
-      },
       "CommandEntry": {
         "description": "A single command in the diagnostics catalog.",
         "properties": {
@@ -273,63 +219,6 @@
         "title": "DeviceCableValidationInput",
         "type": "object"
       },
-      "DeviceDiffData": {
-        "description": "Data structure for device diff information.",
-        "properties": {
-          "commit_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Commit Id"
-          },
-          "device": {
-            "$ref": "#/components/schemas/NetworkDeviceData"
-          },
-          "diff": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diff"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "intended_config": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Intended Config"
-          }
-        },
-        "required": [
-          "device"
-        ],
-        "title": "DeviceDiffData",
-        "type": "object"
-      },
       "DevicePasswordRotationInput": {
         "description": "Device Password Rotation Workflow Input Definition.",
         "properties": {
@@ -399,33 +288,6 @@
           "commands"
         ],
         "title": "DiagnosticsWorkflowInput",
-        "type": "object"
-      },
-      "DiffGroup": {
-        "description": "A group of devices with identical diffs.\n\nNote: Each device has its own intended config file and commit SHA.\nGrouping is only based on identical diff content, not commit IDs.",
-        "properties": {
-          "devices": {
-            "items": {
-              "$ref": "#/components/schemas/DeviceDiffData"
-            },
-            "title": "Devices",
-            "type": "array"
-          },
-          "diff_content": {
-            "title": "Diff Content",
-            "type": "string"
-          },
-          "diff_hash": {
-            "title": "Diff Hash",
-            "type": "string"
-          }
-        },
-        "required": [
-          "diff_hash",
-          "diff_content",
-          "devices"
-        ],
-        "title": "DiffGroup",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -3880,53 +3742,6 @@
           }
         ],
         "summary": "Execute BackupWorkflow",
-        "tags": [
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/batch_deploy": {
-      "post": {
-        "description": "Deploy configurations to a batch of devices with shared diff content",
-        "operationId": "batchdeployworkflow_endpoint_v1_workflow_ngc_batch_deploy_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BatchDeployInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Execute BatchDeployWorkflow",
         "tags": [
           "workflow"
         ]

@@ -38,7 +38,9 @@ from nv_config_manager.temporal.common.search_attributes import (
     READ_ROLES_SEARCH_ATTRIBUTE,
     SITE_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
+    upsert_missing_search_attributes,
 )
+from nv_config_manager.temporal.common.workflow_references import LocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -76,7 +78,7 @@ BACKUP_CHILD_RUN_TIMEOUT = timedelta(minutes=15)
 class SiteBackupInput(BaseModel):
     """Site Configuration Backup Workflow Input Definition."""
 
-    site: str = Field(
+    site: LocationReference = Field(
         min_length=1,
         description="Site containing the network devices to back up.",
     )
@@ -380,7 +382,7 @@ class SiteBackupWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
             raise ApplicationError("Missing user for backup attribution.")
 
         self.set_input(workflow_input)
-        workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
+        upsert_missing_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
 
         devices_output = await self.get_devices(
             SiteBackupWorkflow.GetDevicesStageInput(

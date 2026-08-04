@@ -40,6 +40,12 @@ from nv_config_manager.temporal.common.search_attributes import (
     READ_ROLES_SEARCH_ATTRIBUTE,
     SITE_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
+    upsert_missing_search_attributes,
+)
+from nv_config_manager.temporal.common.workflow_references import (
+    DEVICE_REFERENCE,
+    DeviceReference,
+    LocationReference,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -103,7 +109,7 @@ DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION = (
 class SiteCableValidationInput(BaseModel):
     """Input for Site Cable Validation Workflow."""
 
-    site: str = Field(description="Site containing the network devices to validate.")
+    site: LocationReference = Field(description="Site containing the network devices to validate.")
     roles: list[str] = Field(
         default=[],
         description="Device roles used to filter the selected network devices.",
@@ -127,14 +133,15 @@ class SiteCableValidationInput(BaseModel):
 class DeviceCableValidationInput(BaseModel):
     """Input for Device Cable Validation Workflow."""
 
-    device_id: str = Field(description="Identifier of the network device to validate.")
-    device: (
+    device_id: DeviceReference = Field(description="Identifier of the network device to validate.")
+    device: Annotated[
         Annotated[
             NetworkDeviceData,
             Field(description=DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION),
         ]
-        | None
-    ) = Field(
+        | None,
+        DEVICE_REFERENCE,
+    ] = Field(
         default=None,
         description=DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION,
     )
@@ -421,7 +428,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     ) -> SiteCableValidationResult:
         """Run the workflow."""
         self.set_input(workflow_input)
-        workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
+        upsert_missing_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
 
         devices_output = await self.get_devices_to_validate(
             SiteCableValidationWorkflow.GetDevicesStageInput(

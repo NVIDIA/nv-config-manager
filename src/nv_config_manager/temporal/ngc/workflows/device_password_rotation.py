@@ -29,6 +29,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.device import DiffValidationError
@@ -70,7 +71,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class DevicePasswordRotationInput(BaseModel):
     """Device Password Rotation Workflow Input Definition."""
 
-    device_id: str = Field(description="Identifier of the network device to update.")
+    device_id: DeviceReference = Field(description="Identifier of the network device to update.")
     selected_secret: str = Field(
         description="Name of the managed secret containing the replacement password."
     )

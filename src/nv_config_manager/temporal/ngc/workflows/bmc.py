@@ -35,6 +35,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import LocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.redfish import RedfishHost, RedfishVendor
@@ -81,7 +82,7 @@ NIC_MANUFACTURER_MELLANOX = ["Mellanox Technologies", "MLNX"]
 class RedfishProvisioningInput(BaseModel):
     """Input for Redfish provisioning workflow."""
 
-    site: str = Field(description="Site containing the BMC network to provision.")
+    site: LocationReference = Field(description="Site containing the BMC network to provision.")
     bmc_switch_roles: list[str] = Field(
         description="Switch roles used to discover BMC-connected network interfaces."
     )

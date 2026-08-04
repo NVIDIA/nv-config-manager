@@ -14,10 +14,13 @@
 # limitations under the License.
 """Tests for dynamic workflow endpoint generation."""
 
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 from pydantic import BaseModel
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.api import dynamic_endpoints
 from nv_config_manager.temporal.api.dynamic_endpoints import create_workflow_endpoint
@@ -36,7 +39,7 @@ class _CanonWorkflow(WorkflowMetadataMixin):
 
     @classmethod
     async def canonicalize_input(cls, body: BaseModel) -> BaseModel:
-        body.host = "canonical"  # type: ignore[attr-defined]
+        cast(_Input, body).host = "canonical"
         return body
 
 
@@ -62,7 +65,28 @@ async def test_endpoint_canonicalizes_input_before_start(mocker):
     request = MagicMock()
     request.state.user = "user@nvidia.com"
 
-    response = await endpoint(_Input(host="ufm01"), request)
+    body = _Input(host="ufm01")
+    response = await endpoint(body, request)
 
     assert response.id == "wid-1"
-    assert captured["body"].host == "canonical"
+    assert cast(_Input, captured["body"]).host == "canonical"
+
+
+@pytest.mark.asyncio
+async def test_endpoint_returns_422_for_canonicalization_failure(mocker):
+    """Invalid external references fail before workflow submission with a client error."""
+
+    async def _reject_input(cls, body):
+        raise ApplicationError("UFM device not found", non_retryable=True)
+
+    mocker.patch.object(_CanonWorkflow, "canonicalize_input", new=classmethod(_reject_input))
+    start = mocker.patch.object(dynamic_endpoints, "start_workflow", new=mocker.AsyncMock())
+    endpoint = create_workflow_endpoint(_CanonWorkflow, _Input, "/x")
+    request = MagicMock()
+    request.state.user = "user@nvidia.com"
+
+    with pytest.raises(HTTPException, match="UFM device not found") as exc_info:
+        await endpoint(_Input(host="attacker.example.com"), request)
+
+    assert exc_info.value.status_code == 422
+    start.assert_not_awaited()

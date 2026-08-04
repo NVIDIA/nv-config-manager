@@ -34,6 +34,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.device import (
@@ -99,7 +100,7 @@ def interface_sort_key(interface_name: str) -> tuple[str, list[int]]:
 class ConnectedHostWorkflowInput(BaseModel):
     """Connected Host Workflow Input."""
 
-    device_id: str = Field(description="Identifier of the network device to analyze.")
+    device_id: DeviceReference = Field(description="Identifier of the network device to analyze.")
 
 
 @workflow.defn
