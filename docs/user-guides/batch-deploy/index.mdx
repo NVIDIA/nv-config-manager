@@ -4,17 +4,13 @@ sidebar-title: Batch Deploy
 position: 20
 ---
 
-The Batch Deploy workflow applies one shared configuration diff to a small group of network devices behind a single human approval gate. It is normally invoked as a child workflow by [Multi-Device Deploy](../multi-deploy/index.mdx) — Multi-Deploy collects diffs across a role, groups devices with identical diffs, and spawns one Batch Deploy per group — but it can also be started directly when an operator needs to push the same change to a known list of devices without going through role-based discovery.
+The Batch Deploy workflow applies one shared configuration diff to a small group of network devices behind a single human approval gate. It is an internal child workflow invoked by [Multi-Device Deploy](../multi-deploy/index.mdx): Multi-Deploy discovers deploy-enabled devices, collects their diffs, groups devices with identical diffs, and starts one Batch Deploy per group. Batch Deploy is not exposed through the Workflow API or as a standalone UI workflow.
 
 ## Prerequisites
 
-Before running Batch Deploy directly (or before approving a child invocation from Multi-Deploy), confirm the following:
+Before approving a Batch Deploy child invocation, confirm the following:
 
-- **Every device in the batch is in Nautobot** with a current intended configuration in the [Config Store](../../config-store/index.mdx). When Batch Deploy is a child of Multi-Deploy, the parent has already loaded each intended config — for direct invocations, the caller is responsible for supplying the `DeviceDiffData` payload, including the loaded intended config and commit SHA.
-- **Every device in the batch is deploy-enabled in Nautobot.** Switches marked deploy-disabled — typically the Kubernetes-attached management switches on a shared-network deployment — must never appear in a Batch Deploy input. See [Hosting Options](../../hosting-options/index.mdx) for the safeguard and the self-isolation risk it protects against.
-
-  Multi-Deploy enforces this safeguard automatically because its `discover_devices` stage filters on `deploy_enabled=True`. A direct Batch Deploy invocation bypasses that filter — the caller is responsible for ensuring no deploy-disabled device is in the batch.
-
+- **Every device in the batch is in Nautobot and deploy-enabled** with a current intended configuration in the [Config Store](../../config-store/index.mdx). Multi-Deploy enforces the deploy-enabled safeguard during discovery and loads each intended configuration before starting Batch Deploy. See [Hosting Options](../../hosting-options/index.mdx) for why deploy-disabled management switches must not be changed.
 - **All devices in the batch are expected to apply the same diff.** The approval display shows a single diff; if devices in the batch actually have different running configurations, only those matching the approved diff will apply cleanly and the rest will fail at apply time.
 - **Approval to change traffic-bearing devices.** The first stage is a hard approval gate and will wait indefinitely for a human reviewer.
 
@@ -84,10 +80,6 @@ Something is rewriting devices' running configurations out of band (a parallel m
 **Backup workflow failed but apply succeeded.**
 
 The device is configured and in service; only the post-deploy backup is missing. Inspect the device's entry in `backups.results` for the error and child workflow ID, then re-run the [Configuration Backup](../configuration-backup/index.mdx) workflow against the device once the underlying issue is resolved.
-
-**Deploy-disabled switch ended up in a direct Batch Deploy invocation.**
-
-Multi-Deploy filters these out, but a direct invocation does not. If the apply step touches a Kubernetes-attached management switch and breaks its configuration, operators can lose access to Config Manager itself — see [Hosting Options](../../hosting-options/index.mdx). Reject the approval, remove the deploy-disabled device from the batch input, and re-submit.
 
 ## Related guides
 

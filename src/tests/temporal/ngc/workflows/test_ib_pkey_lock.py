@@ -17,12 +17,20 @@
 import pytest
 from pydantic import BaseModel
 
-from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import (
+    UFMHostLockMixin,
+    UFMHostSiteValidationMixin,
+)
 
 
 class _HostInput(BaseModel):
     host: str
     pkey: str = "0x0100"
+
+
+class _HostAndSiteInput(BaseModel):
+    host: str
+    site: str | None = None
 
 
 @pytest.mark.asyncio
@@ -36,5 +44,23 @@ async def test_canonicalizes_host_before_run(mocker):
 
     result = await UFMHostLockMixin.canonicalize_input(body)
 
-    assert result.host == "10.0.0.5"
-    assert result.pkey == "0x0100"
+    assert result is body
+    assert body.host == "10.0.0.5"
+    assert body.pkey == "0x0100"
+
+
+@pytest.mark.asyncio
+async def test_canonicalizes_host_and_validates_site_before_run(mocker):
+    """The API-only mixin validates the host/Site pair in one Nautobot lookup."""
+    canonicalize = mocker.patch(
+        "nv_config_manager.temporal.ngc.activities.ib_nautobot.canonicalize_ufm_host_for_site",
+        new=mocker.AsyncMock(return_value="10.0.0.5"),
+    )
+    body = _HostAndSiteInput(host="ufm01", site="site-a")
+
+    result = await UFMHostSiteValidationMixin.canonicalize_input(body)
+
+    assert result is body
+    assert body.host == "10.0.0.5"
+    assert body.site == "site-a"
+    canonicalize.assert_awaited_once_with("ufm01", "site-a")

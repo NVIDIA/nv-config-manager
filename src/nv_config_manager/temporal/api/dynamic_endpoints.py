@@ -17,8 +17,9 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, computed_field
+from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.auth import get_sso_user
 from nv_config_manager.common.log import LogCategory, get_logger
@@ -82,7 +83,10 @@ def create_workflow_endpoint(
             # TODO: add a default user domain to INI file for external customers
             body.user_domain = user.split("@")[1] if "@" in user else "nvidia.com"  # type: ignore[attr-defined]
 
-        body = await cast(type[WorkflowMetadataMixin], workflow_class).canonicalize_input(body)
+        try:
+            body = await cast(type[WorkflowMetadataMixin], workflow_class).canonicalize_input(body)
+        except ApplicationError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
         workflow_id = await start_workflow(request, workflow_class, body)
         return WorkflowResponse(id=workflow_id)
