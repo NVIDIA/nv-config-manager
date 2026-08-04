@@ -39,20 +39,18 @@ class WorkflowReference:
 
 
 def validate_device_uuid(value: Any) -> str:
-    """Validate a device UUIDv4 while preserving the workflow's string input."""
+    """Validate a device UUID while preserving the workflow's string input."""
     if not isinstance(value, str):
-        raise ValueError("Device identifier must be a UUID v4")
+        raise ValueError("Device identifier must be a valid UUID")
     try:
-        parsed_value = UUID(value)
+        UUID(value)
     except ValueError as error:
-        raise ValueError("Device identifier must be a UUID v4") from error
-    if parsed_value.version != 4:
-        raise ValueError("Device identifier must be a UUID v4")
+        raise ValueError("Device identifier must be a valid UUID") from error
     return value
 
 
 def validate_device_value(value: Any) -> Any:
-    """Reject preloaded API objects and validate a string device UUIDv4."""
+    """Reject preloaded API objects and validate a string device UUID."""
     if not isinstance(value, str):
         raise ValueError("Preloaded device objects are not accepted by the Workflow API")
     validate_device_uuid(value)

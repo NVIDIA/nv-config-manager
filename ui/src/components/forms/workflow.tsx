@@ -19,7 +19,7 @@
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSearchParams } from "next/navigation";
-import { SubmitHandler, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ export type DeviceWorkflowFormSchema = z.infer<typeof deviceWorkflowFormSchema>;
 
 type WorkflowFormProps = {
   title: string;
-  onSubmit: SubmitHandler<DeviceWorkflowFormSchema>;
+  onSubmit: (data: DeviceWorkflowFormSchema) => Promise<void>;
   deviceFilterParams?: string[][];
   destructiveWarning?: string;
   /** When true, show the commit-confirm checkbox (for deploy workflow) */

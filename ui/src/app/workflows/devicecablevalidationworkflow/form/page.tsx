@@ -32,12 +32,13 @@ const CableValidationWorkflowForm = () => {
     const params: DeviceCableValidationWorkflowInput = {
       device_id: data.device,
     };
-    startWorkflow(endpoint, params).catch((error) => {
+    return startWorkflow(endpoint, params).catch((error) => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
         description: `Failed to create workflow: ${error}`,
       });
+      throw error;
     });
   };
 
