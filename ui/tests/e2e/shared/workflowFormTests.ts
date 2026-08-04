@@ -313,6 +313,7 @@ export const runWorkflowFormTests = (config: WorkflowTestConfig) => {
 
       await expect(errorTitle).toBeVisible({ timeout: TEST_TIMEOUT });
       await expect(errorMessage).toBeVisible({ timeout: TEST_TIMEOUT });
+      await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
     });
   });
 };

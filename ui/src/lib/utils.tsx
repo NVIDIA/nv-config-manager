@@ -168,8 +168,9 @@ export const startWorkflow = async (endpoint: string, params: object) => {
   }).then(async (response) => {
     if (!response.ok) {
       const result = await response.json();
-      if (result.error) {
-        throw new Error(String(result.error));
+      const message = result.error ?? result.detail;
+      if (message) {
+        throw new Error(String(message));
       } else {
         throw new Error("Failed to submit workflow.");
       }

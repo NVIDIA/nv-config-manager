@@ -44,6 +44,7 @@ from nv_config_manager.temporal.ngc.workflows.multi_deploy import MultiDeployInp
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import SpXOverlayAssignmentInput
 
 DEVICE_ID = "910b85f8-e83c-48ad-9bbd-12b15e97a2d4"
+DEVICE_ID_V5 = "7a8ca199-040a-5994-916f-c6de90cc9959"
 OTHER_DEVICE_ID = "83db83ba-f626-4566-9f93-8bd0ccbe7182"
 LOCATION_ID = "b6f4972a-c6ab-4be1-96ac-72f4efc4f328"
 
@@ -128,6 +129,32 @@ async def test_device_references_are_batched_and_enriched_from_same_query() -> N
         DEVICE_ID_SEARCH_ATTRIBUTE: [DEVICE_ID],
         DEVICE_NAME_SEARCH_ATTRIBUTE: ["LEAF01"],
     }
+
+
+@pytest.mark.asyncio
+async def test_uuid_v5_device_reference_is_accepted() -> None:
+    """Nautobot device IDs may be deterministic UUIDv5 values."""
+    client = _client()
+    client.get_devices.return_value = [
+        {
+            "id": DEVICE_ID_V5,
+            "name": "UFM01",
+            "role": None,
+            "platform": {"name": "UFM"},
+            "location": None,
+        }
+    ]
+    body = DeviceCollectionInput(primary_device=DEVICE_ID_V5, related_devices=[])
+
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        return_value=client,
+    ):
+        attributes = await resolve_workflow_references(body)
+
+    client.get_devices.assert_awaited_once_with(ANY, device_ids=[DEVICE_ID_V5])
+    assert attributes[DEVICE_ID_SEARCH_ATTRIBUTE] == [DEVICE_ID_V5]
+    assert attributes[DEVICE_NAME_SEARCH_ATTRIBUTE] == ["UFM01"]
 
 
 @pytest.mark.asyncio
@@ -221,7 +248,7 @@ async def test_optional_device_reference_is_resolved() -> None:
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        (DeviceCollectionInput(primary_device="LEAF01", related_devices=[]), "UUID v4"),
+        (DeviceCollectionInput(primary_device="LEAF01", related_devices=[]), "valid UUID"),
         (LocationAndDeviceInput(location_scope=" ", target_device=DEVICE_ID), "must not be empty"),
     ],
 )
