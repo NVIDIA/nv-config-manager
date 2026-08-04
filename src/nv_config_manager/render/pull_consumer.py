@@ -47,6 +47,8 @@ from nv_config_manager.common.config import (
     nats_render_change_config,
 )
 from nv_config_manager.common.nats_admin import (
+    CONSUMER_ACK_WAIT_SECONDS,
+    CONSUMER_MAX_DELIVER,
     consumer_api_subjects,
     is_nats_permissions_error,
     provision_consumer_request,
@@ -287,7 +289,11 @@ class PullConsumer:
             CONSUMER_REDELIVERED,
             CONSUMER_WAITING,
         ):
-            metric.remove(*labels)
+            try:
+                metric.remove(*labels)
+            except KeyError:
+                # The lookup can fail before this process has recorded its first sample.
+                pass
 
     async def _record_consumer_metrics_loop(self) -> None:
         """Periodically export consumer state through the render metrics endpoint."""
@@ -380,10 +386,10 @@ class PullConsumer:
             config = ConsumerConfig(
                 deliver_policy=DeliverPolicy.NEW,
                 ack_policy=AckPolicy.EXPLICIT,
-                ack_wait=360,
+                ack_wait=CONSUMER_ACK_WAIT_SECONDS,
                 durable_name=self.queue,
                 filter_subject=self.subject,
-                max_deliver=-1,
+                max_deliver=CONSUMER_MAX_DELIVER,
             )
             try:
                 self._last_permission_error = None
@@ -433,12 +439,13 @@ class PullConsumer:
             mismatches.append(f"filter_subject={config.filter_subject!r} expected {self.subject!r}")
         if config.ack_policy != AckPolicy.EXPLICIT:
             mismatches.append(
-                f"ack_policy={config.ack_policy.value!r} expected {AckPolicy.EXPLICIT.value!r}"
+                f"ack_policy={getattr(config.ack_policy, 'value', None)!r} "
+                f"expected {AckPolicy.EXPLICIT.value!r}"
             )
-        if config.ack_wait != 360:
-            mismatches.append(f"ack_wait={config.ack_wait!r} expected 360")
-        if config.max_deliver != -1:
-            mismatches.append(f"max_deliver={config.max_deliver!r} expected -1")
+        if config.ack_wait != CONSUMER_ACK_WAIT_SECONDS:
+            mismatches.append(f"ack_wait={config.ack_wait!r} expected {CONSUMER_ACK_WAIT_SECONDS}")
+        if config.max_deliver != CONSUMER_MAX_DELIVER:
+            mismatches.append(f"max_deliver={config.max_deliver!r} expected {CONSUMER_MAX_DELIVER}")
         return mismatches
 
     async def _resilient_message_handler(self, msg: Msg) -> None:

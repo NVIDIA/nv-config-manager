@@ -169,6 +169,18 @@ def test_render_consumer_metrics_are_labeled_by_fixed_consumer(custom_ini, monke
         assert labels not in metric._metrics
 
 
+def test_consumer_metrics_can_be_removed_before_first_sample(custom_ini):
+    """A failed initial lookup must not terminate the metrics task."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="never-recorded-stream",
+        subject="never-recorded-subject",
+        queue_suffix="never-recorded-consumer",
+    )
+
+    consumer._remove_consumer_metrics()
+
+
 @pytest.mark.asyncio
 async def test_pull_consumer_message_handler_not_implemented(custom_ini):
     """Test that message_handler raises NotImplementedError in base class."""

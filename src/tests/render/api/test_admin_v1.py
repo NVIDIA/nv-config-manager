@@ -25,6 +25,8 @@ from nats.js.errors import NotFoundError
 from nv_config_manager.render.api.admin_v1 import (
     ConsumerType,
     get_consumer_configs,
+    get_consumer_info,
+    reset_all_consumers,
     reset_consumer,
 )
 from nv_config_manager.render.api.main import app
@@ -235,3 +237,125 @@ def test_reset_all_deletes_both_fixed_durables(mock_nats_connection, mock_load_c
     connection.jetstream.assert_any_call(prefix="$JS.EXTERNAL.API")
     connection.jetstream.assert_any_call(prefix="$JS.API")
     connection.close.assert_awaited_once()
+
+
+@patch("nv_config_manager.render.api.admin_v1.load_config")
+@patch("nv_config_manager.render.api.admin_v1.nats_connection")
+@pytest.mark.asyncio
+async def test_get_consumer_info_permission_error_returns_admin_instructions(
+    mock_nats_connection, mock_load_config
+):
+    """A denied consumer lookup identifies the exact INFO permission needed."""
+    mock_config, get_connection, connection, jetstream = create_test_mocks()
+    mock_load_config.return_value = mock_config
+    permission_callback = None
+
+    async def get_denied_connection(**kwargs):
+        nonlocal permission_callback
+        permission_callback = kwargs["error_cb"]
+        return await get_connection(**kwargs)
+
+    async def denied_info(*_args, **_kwargs):
+        assert permission_callback is not None
+        await permission_callback(nats.errors.Error("nats: permissions violation for publish"))
+        raise nats.errors.TimeoutError
+
+    mock_nats_connection.side_effect = get_denied_connection
+    jetstream.consumer_info = AsyncMock(side_effect=denied_info)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_consumer_info(ConsumerType.device, MagicMock())
+
+    assert exc_info.value.status_code == 403
+    assert (
+        "$JS.API.CONSUMER.INFO.nv-config-manager.nv-config-manager-device" in exc_info.value.detail
+    )
+    connection.close.assert_awaited_once()
+
+
+@patch("nv_config_manager.render.api.admin_v1.load_config")
+@patch("nv_config_manager.render.api.admin_v1.nats_connection")
+def test_reset_unknown_backlog_does_not_report_negative_count(
+    mock_nats_connection, mock_load_config
+):
+    """Permission-limited inspection is reported as unavailable, not minus one."""
+    mock_config, get_connection, _, jetstream = create_test_mocks()
+    mock_load_config.return_value = mock_config
+    permission_callback = None
+
+    async def get_denied_connection(**kwargs):
+        nonlocal permission_callback
+        permission_callback = kwargs["error_cb"]
+        return await get_connection(**kwargs)
+
+    async def denied_info(*_args, **_kwargs):
+        assert permission_callback is not None
+        await permission_callback(nats.errors.Error("nats: permissions violation for publish"))
+        raise nats.errors.TimeoutError
+
+    mock_nats_connection.side_effect = get_denied_connection
+    jetstream.consumer_info = AsyncMock(side_effect=denied_info)
+    jetstream.delete_consumer = AsyncMock()
+
+    response = TestClient(app).delete("/v1/admin/consumers/device/reset")
+
+    assert response.status_code == 200
+    assert "pending-message count was unavailable" in response.json()["message"]
+    assert "-1" not in response.json()["message"]
+
+
+@patch("nv_config_manager.render.api.admin_v1.jetstream_for_consumer")
+@patch("nv_config_manager.render.api.admin_v1.load_config")
+@patch("nv_config_manager.render.api.admin_v1.nats_connection")
+def test_reset_all_isolates_jetstream_context_failure(
+    mock_nats_connection, mock_load_config, mock_jetstream_for_consumer
+):
+    """A context failure for one account does not prevent the other reset."""
+    mock_config, get_connection, _, jetstream = create_test_mocks()
+    mock_load_config.return_value = mock_config
+    mock_nats_connection.side_effect = get_connection
+    mock_jetstream_for_consumer.side_effect = [RuntimeError("bad import"), jetstream]
+    jetstream.consumer_info = AsyncMock(return_value=MockConsumerInfo(num_pending=2))
+    jetstream.delete_consumer = AsyncMock()
+
+    response = TestClient(app).delete("/v1/admin/consumers/reset-all")
+
+    assert response.status_code == 200
+    assert [result["status"] for result in response.json()] == ["error", "success"]
+    jetstream.delete_consumer.assert_awaited_once_with(
+        stream="nv-config-manager", consumer="nv-config-manager-device"
+    )
+
+
+@patch("nv_config_manager.render.api.admin_v1.load_config")
+@patch("nv_config_manager.render.api.admin_v1.nats_connection")
+@pytest.mark.asyncio
+async def test_reset_all_permission_error_is_per_consumer(mock_nats_connection, mock_load_config):
+    """A denied deletion returns guidance while subsequent consumers still reset."""
+    mock_config, get_connection, _, jetstream = create_test_mocks()
+    mock_load_config.return_value = mock_config
+    permission_callback = None
+
+    async def get_denied_connection(**kwargs):
+        nonlocal permission_callback
+        permission_callback = kwargs["error_cb"]
+        return await get_connection(**kwargs)
+
+    delete_calls = 0
+
+    async def delete_with_first_denied(*_args, **_kwargs):
+        nonlocal delete_calls
+        delete_calls += 1
+        if delete_calls == 1:
+            assert permission_callback is not None
+            await permission_callback(nats.errors.Error("nats: permissions violation for publish"))
+            raise nats.errors.TimeoutError
+
+    mock_nats_connection.side_effect = get_denied_connection
+    jetstream.consumer_info = AsyncMock(return_value=MockConsumerInfo(num_pending=3))
+    jetstream.delete_consumer = AsyncMock(side_effect=delete_with_first_denied)
+
+    results = await reset_all_consumers(MagicMock())
+
+    assert [result.status for result in results] == ["error", "success"]
+    assert "$JS.EXTERNAL.API.CONSUMER.DELETE.nautobot" in results[0].message

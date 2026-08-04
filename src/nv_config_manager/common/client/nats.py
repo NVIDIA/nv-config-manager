@@ -25,17 +25,23 @@ import signal
 import ssl
 from collections.abc import Awaitable, Callable
 from configparser import ConfigParser, SectionProxy
-from typing import Any
+from typing import Any, cast
 
 import certifi
 import nats
 import nats.js.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
-from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy, StreamInfo
+from nats.js import JetStreamContext
+from nats.js.api import AckPolicy, ConsumerConfig, ConsumerInfo, DeliverPolicy, StreamInfo
+from nats.js.errors import NotFoundError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.common.nats_admin import is_nats_permissions_error
+from nv_config_manager.common.nats_admin import (
+    CONSUMER_ACK_WAIT_SECONDS,
+    CONSUMER_MAX_DELIVER,
+    is_nats_permissions_error,
+)
 
 logger = get_logger(__name__, category=LogCategory.NATS)
 
@@ -295,21 +301,12 @@ class NatsConsumer(NatsClient):
         self.conn = await self.connect()
         jetstream = self.conn.jetstream(prefix=self.api_prefix)
         durable = self.full_queue_name
+        consumer_info = await self._ensure_consumer(jetstream)
 
-        await jetstream.subscribe(
-            subject=self.subject,
+        await jetstream.subscribe_bind(
             stream=self.stream,
-            queue=durable,
-            config=ConsumerConfig(
-                durable_name=durable,
-                deliver_policy=DeliverPolicy.NEW,
-                ack_policy=AckPolicy.EXPLICIT,
-                ack_wait=360,
-                max_deliver=-1,
-                filter_subject=self.subject,
-                deliver_subject=self.deliver_subject,
-                deliver_group=durable,
-            ),
+            consumer=durable,
+            config=consumer_info.config,
             cb=self.handler,
         )
         logger.info(
@@ -322,6 +319,75 @@ class NatsConsumer(NatsClient):
         while not self.conn.is_closed:
             await asyncio.sleep(1)
 
+    def _expected_consumer_config(self) -> ConsumerConfig:
+        """Build the exact push-consumer configuration owned by this runtime."""
+        if not self.deliver_subject:
+            raise ValueError("A fixed deliver_subject is required for a durable push consumer")
+        durable = self.full_queue_name
+        return ConsumerConfig(
+            durable_name=durable,
+            deliver_policy=DeliverPolicy.NEW,
+            ack_policy=AckPolicy.EXPLICIT,
+            ack_wait=CONSUMER_ACK_WAIT_SECONDS,
+            max_deliver=CONSUMER_MAX_DELIVER,
+            filter_subject=self.subject,
+            deliver_subject=self.deliver_subject,
+            deliver_group=durable,
+        )
+
+    async def _ensure_consumer(self, jetstream: JetStreamContext) -> ConsumerInfo:
+        """Return the fixed durable, creating it only when it is absent."""
+        durable = self.full_queue_name
+        try:
+            consumer_info = await jetstream.consumer_info(self.stream, durable)
+        except NotFoundError:
+            expected = self._expected_consumer_config()
+            try:
+                consumer_info = await jetstream.add_consumer(
+                    stream=self.stream,
+                    config=expected,
+                )
+                logger.info("Created NATS consumer %s on stream %s", durable, self.stream)
+            except Exception as create_error:
+                # Another replica may have created the durable after our lookup. Bind to
+                # it only when a fresh lookup confirms that race; otherwise preserve the
+                # original creation failure and its permission guidance.
+                try:
+                    consumer_info = await jetstream.consumer_info(self.stream, durable)
+                except Exception as lookup_error:
+                    raise create_error from lookup_error
+
+        mismatches = self._consumer_configuration_mismatches(consumer_info)
+        if mismatches:
+            logger.warning(
+                "Consumer %s on stream %s differs from the archive runtime: %s. Ask the "
+                "NATS administrator to update the durable before relying on archival.",
+                durable,
+                self.stream,
+                "; ".join(mismatches),
+            )
+        return cast(ConsumerInfo, consumer_info)
+
+    def _consumer_configuration_mismatches(self, consumer_info: ConsumerInfo) -> list[str]:
+        """Return operational differences without enforcing the migration policy."""
+        config = consumer_info.config
+        expected = self._expected_consumer_config()
+        mismatches = []
+        for field in (
+            "durable_name",
+            "filter_subject",
+            "ack_policy",
+            "ack_wait",
+            "max_deliver",
+            "deliver_subject",
+            "deliver_group",
+        ):
+            actual_value = getattr(config, field)
+            expected_value = getattr(expected, field)
+            if actual_value != expected_value:
+                mismatches.append(f"{field}={actual_value!r} expected {expected_value!r}")
+        return mismatches
+
     async def _error_cb(self, error: Exception) -> None:
         """Log exact administrator guidance for restricted consumer operations."""
         if is_nats_permissions_error(error):
@@ -330,12 +396,14 @@ class NatsConsumer(NatsClient):
                 "NATS denied an operation for consumer %s on stream %s. Ask the NATS "
                 "administrator to grant publish access to %s and %s, or provision that "
                 "durable with filter_subject=%r, deliver_policy='new', ack_policy='explicit', "
-                "ack_wait=360s, max_deliver=-1, deliver_subject=%r, and deliver_group=%r.",
+                "ack_wait=%ss, max_deliver=%s, deliver_subject=%r, and deliver_group=%r.",
                 durable,
                 self.stream,
                 f"{self.api_prefix}.CONSUMER.INFO.{self.stream}.{durable}",
                 f"{self.api_prefix}.CONSUMER.DURABLE.CREATE.{self.stream}.{durable}",
                 self.subject,
+                CONSUMER_ACK_WAIT_SECONDS,
+                CONSUMER_MAX_DELIVER,
                 self.deliver_subject,
                 durable,
             )

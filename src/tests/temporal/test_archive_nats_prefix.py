@@ -16,8 +16,11 @@
 
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from nv_config_manager.temporal.archive.main import main
 from nv_config_manager.temporal.client.nats import NatsConsumer
+from nv_config_manager.temporal.ngc.activities.nats import PublishNatsInput, publish_nats
 
 BASE_NATS_CONFIG = """
 [nats]
@@ -83,3 +86,22 @@ def test_archive_main_does_not_override_the_stream_prefix(custom_ini):
     assert kwargs["stream"] == "nv-config-manager"
     assert kwargs["subject"] == "nv-config-manager.workflow.result"
     assert "api_prefix" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_workflow_result_publish_subject_is_unchanged(custom_ini):
+    """Account routing must not rename the workflow-result data subject."""
+    custom_ini(PREFIXED_NATS_CONFIG)
+    producer = AsyncMock()
+
+    with patch(
+        "nv_config_manager.temporal.ngc.activities.nats.NatsProducer",
+        return_value=producer,
+    ):
+        await publish_nats(PublishNatsInput(message='{"workflow_id":"workflow-1"}'))
+
+    producer.publish.assert_awaited_once_with(
+        "nv-config-manager.workflow.result",
+        '{"workflow_id":"workflow-1"}',
+        stream="nv-config-manager",
+    )

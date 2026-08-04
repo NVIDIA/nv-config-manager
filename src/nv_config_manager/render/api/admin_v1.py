@@ -49,9 +49,15 @@ class ConsumerType(StrEnum):
 
 responses: dict[int | str, dict[str, Any]] = {
     200: {"description": "Operation successful"},
-    403: {"description": "NATS account lacks the required consumer permission"},
-    404: {"description": "Consumer not found"},
     500: {"description": "Internal server error"},
+}
+
+permission_response: dict[int | str, dict[str, Any]] = {
+    403: {"description": "NATS account lacks the required consumer permission"}
+}
+consumer_lookup_responses: dict[int | str, dict[str, Any]] = {
+    **permission_response,
+    404: {"description": "Consumer not found"},
 }
 
 router = APIRouter(prefix="/admin", responses=responses)
@@ -197,7 +203,11 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
             await nats_conn.close()
 
 
-@router.delete("/consumers/{consumer_type}/reset", response_model=ConsumerResetResponse)
+@router.delete(
+    "/consumers/{consumer_type}/reset",
+    response_model=ConsumerResetResponse,
+    responses=permission_response,
+)
 async def reset_consumer(consumer_type: ConsumerType, request: Request) -> ConsumerResetResponse:
     """Delete a consumer so the running service recreates it at the stream head."""
 
@@ -209,7 +219,7 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
         try:
             jetstream = jetstream_for_consumer(nats_conn, config)
 
-            pending_msgs = 0
+            pending_msgs: int | None = 0
             permission_errors.clear()
             try:
                 consumer_info = await jetstream.consumer_info(
@@ -225,7 +235,7 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
                         "with an unknown pending-message count",
                         config["durable_name"],
                     )
-                    pending_msgs = -1
+                    pending_msgs = None
                 else:
                     raise
 
@@ -234,11 +244,16 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
                 await jetstream.delete_consumer(
                     stream=config["stream"], consumer=config["durable_name"]
                 )
+                backlog_message = (
+                    f"Had {pending_msgs} pending messages."
+                    if pending_msgs is not None
+                    else "The pending-message count was unavailable."
+                )
                 message = (
                     f"Consumer '{config['durable_name']}' deleted successfully. "
-                    f"Had {pending_msgs} pending messages. The running consumer will attempt "
-                    "to recreate it at the stream head; if create permission is not granted, "
-                    "ask the NATS administrator to provision it."
+                    f"{backlog_message} The running consumer will attempt to recreate it at "
+                    "the stream head; if create permission is not granted, ask the NATS "
+                    "administrator to provision it."
                 )
             except NotFoundError:
                 message = (
@@ -282,9 +297,9 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
         nats_conn, permission_errors = await nats_connection_with_permission_tracking()
         try:
             for consumer_type, config in consumer_configs.items():
-                jetstream = jetstream_for_consumer(nats_conn, config)
                 try:
-                    pending_msgs = 0
+                    jetstream = jetstream_for_consumer(nats_conn, config)
+                    pending_msgs: int | None = 0
                     permission_errors.clear()
                     try:
                         consumer_info = await jetstream.consumer_info(
@@ -300,7 +315,7 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                                 "the reset with an unknown pending-message count",
                                 config["durable_name"],
                             )
-                            pending_msgs = -1
+                            pending_msgs = None
                         else:
                             raise
 
@@ -309,9 +324,14 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                         await jetstream.delete_consumer(
                             stream=config["stream"], consumer=config["durable_name"]
                         )
+                        backlog_message = (
+                            f"Had {pending_msgs} pending messages."
+                            if pending_msgs is not None
+                            else "The pending-message count was unavailable."
+                        )
                         message = (
                             f"Consumer '{config['durable_name']}' deleted successfully. "
-                            f"Had {pending_msgs} pending messages."
+                            f"{backlog_message}"
                         )
                     except NotFoundError:
                         message = (
@@ -352,7 +372,11 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
         raise HTTPException(status_code=500, detail="Failed to reset consumers") from exc
 
 
-@router.get("/consumers/{consumer_type}", response_model=ConsumerInfo)
+@router.get(
+    "/consumers/{consumer_type}",
+    response_model=ConsumerInfo,
+    responses=consumer_lookup_responses,
+)
 async def get_consumer_info(consumer_type: ConsumerType, request: Request) -> ConsumerInfo:
     """Get detailed information about a specific consumer."""
 

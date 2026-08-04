@@ -17,6 +17,9 @@
 import nats.errors
 from nats.js.errors import APIError
 
+CONSUMER_ACK_WAIT_SECONDS = 360
+CONSUMER_MAX_DELIVER = -1
+
 
 def is_nats_permissions_error(exc: Exception) -> bool:
     """Return whether an exception represents a NATS authorization failure."""
@@ -44,7 +47,8 @@ def expected_consumer_configuration(durable: str, subject: str) -> str:
     """Return the fixed durable configuration an administrator should provision."""
     return (
         f"durable_name={durable!r}, filter_subject={subject!r}, "
-        "deliver_policy='new', ack_policy='explicit', ack_wait=360s, max_deliver=-1"
+        "deliver_policy='new', ack_policy='explicit', "
+        f"ack_wait={CONSUMER_ACK_WAIT_SECONDS}s, max_deliver={CONSUMER_MAX_DELIVER}"
     )
 
 
@@ -63,7 +67,8 @@ def update_consumer_request(stream: str, durable: str, subject: str) -> str:
     return (
         f"Ask the NATS administrator to update consumer {durable!r} on stream {stream!r} "
         f"to durable_name={durable!r}, filter_subject={subject!r}, ack_policy='explicit', "
-        "ack_wait=360s, max_deliver=-1. Delivery policy may retain the administrator's "
+        f"ack_wait={CONSUMER_ACK_WAIT_SECONDS}s, max_deliver={CONSUMER_MAX_DELIVER}. "
+        "Delivery policy may retain the administrator's "
         "migration boundary choice."
     )
 

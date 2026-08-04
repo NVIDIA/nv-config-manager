@@ -22,13 +22,11 @@ You can use the render service's API endpoints to trigger the rendering of netwo
 
 ### Event Consumers
 
-Three specialized pull-based consumers process NATS JetStream events:
+Two specialized pull-based consumers process NATS JetStream events:
 
 **Nautobot event consumer** responds to Nautobot model changes (device, interface, cable, IP address, and so on). The consumer dispatches events to model-specific handlers, and queues device renders.
 
 **Device change consumer** responds to queued device render requests from event handlers. The consumer executes renders with distributed locking, and updates the config store.
-
-**Template change consumer** responds to template version updates. The consumer re-renders devices with stale template versions. If the running version is less than the desired version, the consumer will NAK the message and wait for 30 seconds before trying again.
 
 ### External NATS administration
 
@@ -90,13 +88,13 @@ The rendering process is as follows:
 
 ## Template Version Management
 
-**Producer**: Runs as a Kubernetes job on service deployment. The producer queries Nautobot for devices with stale `template_version`, and publishes template-change events for outdated devices.
+**Template updater**: Runs as a Kubernetes job on service deployment. It queries Nautobot for devices with stale `template_version` and renders them directly with bounded concurrency and per-device locking.
 
-**Version tracking**: The producer records the `nv_config_manager_templates` version in Nautobot, and the template consumer refuses to process events for newer versions (NAKs with 30s delay). This allows for zero-downtime rolling deployments (old pods terminate, new pods process backlog).
+**Version tracking**: Successful renders record the `nv_config_manager_templates` version in Nautobot so subsequent updater runs can identify stale configurations.
 
 ## Deployment
 
-The service is deployed as a Kubernetes deployment, with three consumer deployments (nautobot, device, template), a producer job (runs on helm upgrade), and Redis for distributed locking. The service exposes Prometheus metrics on port 8000.
+The service is deployed with two consumer deployments (Nautobot and device), a template-updater job that runs on Helm upgrade, and Redis for distributed locking. The service exposes Prometheus metrics on port 8000.
 
 The service is configured using a configuration file (`config.py`). The configuration file contains the Nautobot URL and token, NATS connection details (TLS, credentials), Redis connection for locking, Config store client settings, and environment-specific aggregate management flags.
 

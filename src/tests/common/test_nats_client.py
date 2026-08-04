@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from nats.js.api import AckPolicy, DeliverPolicy
+from nats.js.errors import NotFoundError
 
 from nv_config_manager.common.client import DEFAULT_NATS_API_PREFIX, NatsClient, NatsConsumer
 
@@ -100,8 +101,8 @@ async def test_ensure_stream_uses_configured_api_prefix():
 
 
 @pytest.mark.asyncio
-async def test_consumer_subscribes_with_configured_api_prefix():
-    """Push-consumer creation goes through the account's rewritten API prefix."""
+async def test_consumer_binds_existing_durable_with_configured_api_prefix():
+    """An existing push consumer is inspected and bound through its account prefix."""
     consumer = NatsConsumer(
         stream="nautobot",
         subject="nautobot",
@@ -114,15 +115,20 @@ async def test_consumer_subscribes_with_configured_api_prefix():
     )
     conn = MagicMock()
     conn.is_closed = True
-    conn.jetstream.return_value.subscribe = AsyncMock()
+    expected = consumer._expected_consumer_config()
+    conn.jetstream.return_value.consumer_info = AsyncMock(return_value=MagicMock(config=expected))
+    conn.jetstream.return_value.subscribe_bind = AsyncMock()
 
     with patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn):
         await consumer.main()
 
     conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
-    kwargs = conn.jetstream.return_value.subscribe.await_args.kwargs
-    assert kwargs["subject"] == kwargs["stream"] == "nautobot"
-    assert kwargs["queue"] == "nv-config-manager-archive"
+    conn.jetstream.return_value.consumer_info.assert_awaited_once_with(
+        "nautobot", "nv-config-manager-archive"
+    )
+    kwargs = conn.jetstream.return_value.subscribe_bind.await_args.kwargs
+    assert kwargs["stream"] == "nautobot"
+    assert kwargs["consumer"] == "nv-config-manager-archive"
     assert kwargs["cb"] is consumer.handler
     config = kwargs["config"]
     assert config.durable_name == config.deliver_group == "nv-config-manager-archive"
@@ -134,6 +140,83 @@ async def test_consumer_subscribes_with_configured_api_prefix():
 
 
 @pytest.mark.asyncio
+async def test_consumer_creates_missing_durable_then_binds_it():
+    """The runtime creates only its exact durable when it is absent."""
+    consumer = NatsConsumer(
+        stream="nv-config-manager",
+        subject="nv-config-manager.workflow.result",
+        queue_suffix="archive",
+        handler=AsyncMock(),
+        server=TEST_SERVER,
+        durable_name="nv-config-manager-archive",
+        deliver_subject="nv-config-manager.archive.delivery",
+    )
+    conn = MagicMock(is_closed=True)
+    jetstream = conn.jetstream.return_value
+    created_info = MagicMock(config=consumer._expected_consumer_config())
+    jetstream.consumer_info = AsyncMock(side_effect=NotFoundError)
+    jetstream.add_consumer = AsyncMock(return_value=created_info)
+    jetstream.subscribe_bind = AsyncMock()
+
+    with patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn):
+        await consumer.main()
+
+    jetstream.add_consumer.assert_awaited_once()
+    create_kwargs = jetstream.add_consumer.await_args.kwargs
+    assert create_kwargs["stream"] == "nv-config-manager"
+    assert create_kwargs["config"].filter_subject == "nv-config-manager.workflow.result"
+    jetstream.subscribe_bind.assert_awaited_once_with(
+        stream="nv-config-manager",
+        consumer="nv-config-manager-archive",
+        config=created_info.config,
+        cb=consumer.handler,
+    )
+
+
+@pytest.mark.asyncio
+async def test_consumer_creation_race_binds_confirmed_durable():
+    """A second replica winning creation does not prevent this replica from binding."""
+    consumer = NatsConsumer(
+        stream="nv-config-manager",
+        subject="nv-config-manager.workflow.result",
+        queue_suffix="archive",
+        handler=AsyncMock(),
+        server=TEST_SERVER,
+        deliver_subject="nv-config-manager.archive.delivery",
+    )
+    conn = MagicMock(is_closed=True)
+    jetstream = conn.jetstream.return_value
+    existing_info = MagicMock(config=consumer._expected_consumer_config())
+    jetstream.consumer_info = AsyncMock(side_effect=[NotFoundError, existing_info])
+    jetstream.add_consumer = AsyncMock(side_effect=RuntimeError("consumer already exists"))
+    jetstream.subscribe_bind = AsyncMock()
+
+    with patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn):
+        await consumer.main()
+
+    assert jetstream.consumer_info.await_count == 2
+    jetstream.subscribe_bind.assert_awaited_once()
+
+
+def test_consumer_mismatch_does_not_enforce_delivery_policy():
+    """Migration delivery policy is accepted while operational drift is reported."""
+    consumer = NatsConsumer(
+        stream="nv-config-manager",
+        subject="nv-config-manager.workflow.result",
+        queue_suffix="archive",
+        handler=AsyncMock(),
+        server=TEST_SERVER,
+        deliver_subject="nv-config-manager.archive.delivery",
+    )
+    config = consumer._expected_consumer_config()
+    config.deliver_policy = DeliverPolicy.ALL
+    assert consumer._consumer_configuration_mismatches(MagicMock(config=config)) == []
+
+    config.ack_policy = AckPolicy.NONE
+    assert "ack_policy" in consumer._consumer_configuration_mismatches(MagicMock(config=config))[0]
+
+
+@pytest.mark.asyncio
 async def test_consumer_stays_alive_after_subscribing():
     """The consumer loop remains active until the NATS connection closes."""
     consumer = NatsConsumer(
@@ -142,10 +225,14 @@ async def test_consumer_stays_alive_after_subscribing():
         queue_suffix="archive",
         handler=AsyncMock(),
         server=TEST_SERVER,
+        deliver_subject="nv-config-manager.archive.delivery",
     )
     conn = MagicMock()
     type(conn).is_closed = PropertyMock(side_effect=[False, True])
-    conn.jetstream.return_value.subscribe = AsyncMock()
+    conn.jetstream.return_value.consumer_info = AsyncMock(
+        return_value=MagicMock(config=consumer._expected_consumer_config())
+    )
+    conn.jetstream.return_value.subscribe_bind = AsyncMock()
 
     with (
         patch.object(consumer, "connect", new_callable=AsyncMock, return_value=conn),

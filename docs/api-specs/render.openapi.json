@@ -379,12 +379,6 @@
             },
             "description": "Operation successful"
           },
-          "403": {
-            "description": "NATS account lacks the required consumer permission"
-          },
-          "404": {
-            "description": "Consumer not found"
-          },
           "500": {
             "description": "Internal server error"
           }
@@ -418,12 +412,6 @@
               }
             },
             "description": "Operation successful"
-          },
-          "403": {
-            "description": "NATS account lacks the required consumer permission"
-          },
-          "404": {
-            "description": "Consumer not found"
           },
           "500": {
             "description": "Internal server error"
@@ -523,9 +511,6 @@
           },
           "403": {
             "description": "NATS account lacks the required consumer permission"
-          },
-          "404": {
-            "description": "Consumer not found"
           },
           "422": {
             "content": {
