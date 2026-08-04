@@ -32,9 +32,9 @@ RUN set -eux; \
         isc-kea-hooks && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    # Create kea user if it doesn't exist
-    groupadd -r kea 2>/dev/null || true && \
-    useradd -r -g kea kea 2>/dev/null || true
+    # Create the kea group and user if they don't exist
+    { getent group kea >/dev/null || groupadd -r kea; } && \
+    { id -u kea >/dev/null 2>&1 || useradd -r -g kea kea; }
 
 # Install Stork agent (pinned to 2.4.x for Go dependency CVE fixes)
 COPY build/setup.stork.deb.sh /tmp/setup.stork.deb.sh
