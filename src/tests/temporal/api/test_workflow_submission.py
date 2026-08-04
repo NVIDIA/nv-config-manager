@@ -38,6 +38,9 @@ from nv_config_manager.temporal.ngc.workflows.cable_validation import (
 )
 from nv_config_manager.temporal.ngc.workflows.config_diff import ConfigDiffInput
 from nv_config_manager.temporal.ngc.workflows.deploy import TenantDeployInput
+from nv_config_manager.temporal.ngc.workflows.ib_pkey_creation import IBPKeyCreationInput
+from nv_config_manager.temporal.ngc.workflows.lldp import PortLLDPInfoInput
+from nv_config_manager.temporal.ngc.workflows.multi_deploy import MultiDeployInput
 from nv_config_manager.temporal.ngc.workflows.spx_overlay import SpXOverlayAssignmentInput
 
 DEVICE_ID = "910b85f8-e83c-48ad-9bbd-12b15e97a2d4"
@@ -162,6 +165,56 @@ async def test_explicit_location_takes_search_attribute_precedence() -> None:
 
     assert attributes[SITE_SEARCH_ATTRIBUTE] == ["Data Hall A"]
     assert attributes[DEVICE_ID_SEARCH_ATTRIBUTE] == [DEVICE_ID]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        MultiDeployInput(role="leaf", location=LOCATION_ID),
+        IBPKeyCreationInput(host="ufm01", site=LOCATION_ID),
+    ],
+)
+async def test_optional_location_references_are_resolved(body: BaseModel) -> None:
+    """Metadata wrapping an optional union must remain visible to the API resolver."""
+    client = _client()
+    client.get.return_value = {
+        "count": 1,
+        "results": [{"id": LOCATION_ID, "name": "Data Hall A"}],
+    }
+
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        return_value=client,
+    ):
+        attributes = await resolve_workflow_references(body)
+
+    assert attributes[SITE_SEARCH_ATTRIBUTE] == ["Data Hall A"]
+    client.get.assert_awaited_once_with("dcim/locations/", params={"id": LOCATION_ID})
+
+
+@pytest.mark.asyncio
+async def test_optional_device_reference_is_resolved() -> None:
+    """Optional device identifiers must retain validation and enrichment metadata."""
+    client = _client()
+    client.get_devices.return_value = [
+        {
+            "id": DEVICE_ID,
+            "name": "LEAF01",
+            "role": None,
+            "platform": None,
+            "location": None,
+        }
+    ]
+
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        return_value=client,
+    ):
+        attributes = await resolve_workflow_references(PortLLDPInfoInput(device_id=DEVICE_ID))
+
+    assert attributes[DEVICE_ID_SEARCH_ATTRIBUTE] == [DEVICE_ID]
+    assert attributes[DEVICE_NAME_SEARCH_ATTRIBUTE] == ["LEAF01"]
 
 
 @pytest.mark.asyncio

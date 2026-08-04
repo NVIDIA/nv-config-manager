@@ -86,11 +86,19 @@ DeviceReference = Annotated[
     str,
     DEVICE_REFERENCE,
 ]
+OptionalDeviceReference = Annotated[
+    str | None,
+    DEVICE_REFERENCE,
+]
 DeviceReferences = Annotated[
     list[str],
     DEVICE_REFERENCES,
 ]
 LocationReference = Annotated[
     str,
+    LOCATION_REFERENCE,
+]
+OptionalLocationReference = Annotated[
+    str | None,
     LOCATION_REFERENCE,
 ]

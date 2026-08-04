@@ -40,7 +40,7 @@ from nv_config_manager.temporal.common.search_attributes import (
     USER_SEARCH_ATTRIBUTE,
     upsert_missing_search_attributes,
 )
-from nv_config_manager.temporal.common.workflow_references import LocationReference
+from nv_config_manager.temporal.common.workflow_references import OptionalLocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -135,7 +135,7 @@ class MultiDeployInput(BaseModel):
     max_batch_size: int = Field(
         default=10, description="Maximum number of devices included in each deployment batch."
     )
-    location: LocationReference | None = Field(
+    location: OptionalLocationReference = Field(
         default=None, description="Location used to filter the selected network devices."
     )
     status: list[str] | None = Field(

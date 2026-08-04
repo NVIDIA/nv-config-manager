@@ -29,7 +29,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
-from nv_config_manager.temporal.common.workflow_references import LocationReference
+from nv_config_manager.temporal.common.workflow_references import OptionalLocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -73,7 +73,7 @@ class IBPKeyCreationInput(BaseModel):
     """
 
     host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
-    site: LocationReference | None = Field(
+    site: OptionalLocationReference = Field(
         default=None,
         description="Site used for UFM credential lookup; resolved from the host when omitted.",
     )

@@ -22,7 +22,7 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
-from nv_config_manager.temporal.common.workflow_references import DeviceReference
+from nv_config_manager.temporal.common.workflow_references import OptionalDeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.device import InterfaceNeighborData
@@ -52,7 +52,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
 class PortLLDPInfoInput(BaseModel):
     """Input for Port LLDP Info Workflow."""
 
-    device_id: DeviceReference | None = Field(
+    device_id: OptionalDeviceReference = Field(
         default=None, description="Identifier of the network device to inspect."
     )
     interface: str | None = Field(default=None, description="Name of the local interface.")
