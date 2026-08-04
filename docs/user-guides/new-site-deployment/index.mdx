@@ -115,7 +115,7 @@ kubectl -n <config-manager-namespace> logs \
 - **By serial number (hex; Cumulus Linux 5.10+)** — these switches send the serial number as DHCP client ID. Convert the serial to colon-separated hex and query for it:
 
   ```bash
-  uv run python -c "import sys; print(':'.join(f'{ord(c):02x}' for c in sys.argv[1]))" "MT2519J002PD"
+  python3 -c "import sys; print(':'.join(f'{ord(c):02x}' for c in sys.argv[1]))" "MT2519J002PD"
   # 4d:54:32:35:31:39:4a:30:30:32:50:44
   ```
 
@@ -241,7 +241,7 @@ A transient backend issue, most often a Nautobot timeout. Engage the platform te
 The device's reported serial number does not match the serial Nautobot expects for this configuration. This usually indicates miscabling or incorrect inventory data: the device may be trying to claim a /31 that belongs to another device, or the recorded serial may contain an error. Serial comparison is case-insensitive, so letter case alone is not a mismatch. Compare the complete serial reported by the device with Nautobot and the physical chassis label, then check LLDP on the upstream switch to identify the actual neighbor. For example, on Cumulus:
 
 ```bash
-nv show interface <port> lldp nei cumulus
+nv show interface <port> lldp neighbor
 ```
 
 On the device, use `nv show platform` to read the serial and interface commands such as `ip link show <interface>` to read the MAC. Do not infer identity from a DHCP pool address alone.
@@ -305,15 +305,19 @@ To perform the swap:
    **Do not rename the devices in Nautobot** — renaming forces you to rebuild all of the cabling relationships.
    </Warning>
 
-1. On the console for both switches, reset the DHCP/ZTP state and reboot. The following commands are for Cumulus Linux; use the vendor's equivalent procedure for another NOS:
+1. On the console for both switches, reset the DHCP configuration. The following commands are for Cumulus Linux; use the vendor's equivalent procedure for another NOS:
 
    ```bash
    nv unset interface eth0
    nv set interface eth0 ip address dhcp
    nv config apply
    nv config save
-   sudo ztp -X
-   nv action enable system ztp force
+   ```
+
+1. Reset ZTP to its original state and reboot. The documented reset command applies to Cumulus Linux 5.10 and later:
+
+   ```bash
+   sudo ztp -R
    sudo reboot
    ```
 

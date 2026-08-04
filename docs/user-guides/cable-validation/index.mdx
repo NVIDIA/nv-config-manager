@@ -25,7 +25,8 @@ Cable validation can detect:
 
 Cable validation runs from the perspective of each in-scope network device. For each enabled interface with a connected interface modeled in Nautobot, it compares the intended far end with observations from the local device in this order:
 
-1. **Is the local link operationally up?** If not, the workflow reports `Link is down`. This check applies to both full validation and link-state-only validation.
+1. **Does the intended neighbor have the required Nautobot data?** The connected device must have a name and role. Missing required data stops validation for the device before any link-state result is produced.
+1. **Is the local link operationally up?** If not, the workflow reports `Link is down`. This check applies to both full validation and link-state-only validation after the required Nautobot data passes validation.
 1. **Is the interface tagged for link-state-only validation?** If the link is up and the local interface has `cable-validation-link-state-only`, the connection passes without an identity check.
 1. **Does LLDP identify the intended neighbor?** The reported neighbor device and interface are compared with the far-end device and interface in Nautobot. The comparison is case-insensitive. The workflow also handles devices that advertise an interface MAC instead of a port or system name, including the supported DPU MAC-offset behavior.
 1. **Does the expected far-end MAC appear on the correct local interface?** The workflow takes the MAC from the connected far-end interface in Nautobot and looks for it in the local device's FDB or ARP table.
@@ -178,7 +179,7 @@ The device workflow runs six stages. The three data-collection stages (`get_devi
 
 1. **`validate_connections` — Compare intended vs actual and produce the report.**
 
-   Joins the three data sources and applies the decision order in [How each connection is evaluated](#how-each-connection-is-evaluated). Link state is always checked first. An up interface marked link-state-only passes immediately; otherwise either LLDP or the expected far-end MAC must match. The stage then classifies every mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
+   Joins the three data sources and applies the decision order in [How each connection is evaluated](#how-each-connection-is-evaluated). It validates the required intended-neighbor fields before checking link state. After that prerequisite passes, an up interface marked link-state-only passes immediately; otherwise either LLDP or the expected far-end MAC must match. The stage then classifies every mismatch (link down, wrong neighbor, no neighbor found, unexpected connection), decorates findings with the stable `ID` hash used across runs, and formats the per-device Markdown report. This stage is not retryable — if validation logic raises, the run fails outright rather than masking a real bug behind a retry.
 
 The workflow's final output is a `DeviceCableValidationResult` whose `interfaces` field maps each invalid interface name to its findings.
 
