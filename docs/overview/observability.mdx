@@ -54,15 +54,17 @@ Services expose Prometheus metrics on their operational `/metrics` endpoints. En
 
 When network policies are enabled, set `monitoring.prometheus.namespace` to the namespace where Prometheus runs so scraping traffic is allowed. The installer maps `infrastructure.monitoring.prometheus_namespace` (default `monitoring`) into that Helm value when **Enable monitoring** is on and **Enable local observability stack** is off. When the local observability stack is enabled, the installer uses `config.cluster.namespace` instead and ignores `prometheus_namespace`, because the bundled Prometheus runs in the same namespace as NVCM.
 
-The chart can also render HTTP probes for gateway-facing endpoints when `monitoring.probes.enabled` is set and a Blackbox Exporter is available. Set `monitoring.grafanaUrl` to display a Grafana link in the Config Manager UI.
+The chart can also render HTTP probes for gateway-facing endpoints when `monitoring.probes.enabled` is set and a Blackbox Exporter is available. Set `monitoring.grafanaUrl` to display a Grafana link in the Config Manager UI. The value is evaluated as a Helm template, so links can select the deployment's dashboard variables, for example `?var-namespace={{ .Values.global.namespace }}`.
 
 Key service metrics include:
 
 | Service | Examples |
 | :------ | :------- |
-| Render | Event processing duration, received events, processed events, skipped events, failed events |
+| Render | Event processing duration, received events, processed events, skipped events, failed events, NATS consumer pending/ack-pending/redelivery/waiting state |
 | DHCP | Config generation duration, config generation errors, Nautobot query errors, cache refresh failures, last refresh timestamp |
 | Config Store, ZTP, Temporal | FastAPI request metrics and service-specific metrics exposed by each component |
+
+Each render consumer polls the state of its exact durable consumer and publishes that state as `nv_config_manager_nats_consumer_*` gauges. The built-in dashboard uses these render-owned metrics, so displaying consumer backlog does not require access to the NATS HTTP monitoring endpoint or a NATS Prometheus exporter. Accurate idle backlog still requires the fixed durable's JetStream consumer-info permission, which the render runtime also uses for consumer lifecycle management.
 
 ## Tracing
 

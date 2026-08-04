@@ -39,6 +39,7 @@ from requests.adapters import HTTPAdapter
 # CLIENT IMPORTS
 # =============================================================================
 from nv_config_manager.common.client import (
+    DEFAULT_NATS_API_PREFIX,
     ConfigStoreClient,
     DHCPClient,
     NatsClient,
@@ -47,6 +48,7 @@ from nv_config_manager.common.client import (
     RenderClient,
     TemporalClient,
     ZTPClient,
+    config_manager_api_prefix,
 )
 
 # =============================================================================
@@ -141,6 +143,15 @@ def _nats_section(config: ConfigParser | None = None) -> SectionProxy:
     return config["nats"]
 
 
+def nats_config_manager_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for the config-manager-owned stream.
+
+    Render-change, device-change and archive events are subjects on this one stream,
+    so they share its prefix.
+    """
+    return config_manager_api_prefix(_nats_section(config))
+
+
 def nats_render_change_config(config: ConfigParser | None = None) -> tuple[str, str]:
     """Return the configured stream and subject for render-triggering changes."""
     nats_config = _nats_section(config)
@@ -189,6 +200,12 @@ def nats_nautobot_change_config(config: ConfigParser | None = None) -> tuple[str
     stream = nats_config.get("nautobot_stream", DEFAULT_NAUTOBOT_NATS_STREAM)
     subject = nats_config.get("nautobot_subject", DEFAULT_NAUTOBOT_NATS_SUBJECT)
     return stream, subject
+
+
+def nats_nautobot_api_prefix(config: ConfigParser | None = None) -> str:
+    """Return the JetStream API prefix for Nautobot changelog events."""
+    nats_config = _nats_section(config)
+    return nats_config.get("nautobot_api_prefix", DEFAULT_NATS_API_PREFIX)
 
 
 def parse_verify_param(

@@ -18,15 +18,25 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from nats.aio.client import Client
+from nats.js import JetStreamContext
+from nats.js.errors import NotFoundError
 from pydantic import BaseModel
 
 from nv_config_manager.common.config import (
+    DEFAULT_NATS_API_PREFIX,
     load_config,
+    nats_config_manager_api_prefix,
     nats_connection,
+    nats_nautobot_api_prefix,
     nats_nautobot_change_config,
     nats_render_change_config,
 )
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.common.nats_admin import (
+    is_nats_permissions_error,
+    reset_consumer_request,
+)
 
 
 class ConsumerType(StrEnum):
@@ -39,6 +49,7 @@ class ConsumerType(StrEnum):
 
 responses: dict[int | str, dict[str, Any]] = {
     200: {"description": "Operation successful"},
+    403: {"description": "NATS account lacks the required consumer permission"},
     404: {"description": "Consumer not found"},
     500: {"description": "Internal server error"},
 }
@@ -76,35 +87,66 @@ class ConsumerListResponse(BaseModel):
 def get_consumer_configs() -> dict[str, dict[str, str]]:
     """Get the consumer configurations mapped by consumer type."""
     config = load_config()
-    queue_prefix = config["nats"]["queue"]
+    nats_config = config["nats"]
 
     nautobot_stream, nautobot_subject = nats_nautobot_change_config(config)
+    nautobot_api_prefix = nats_nautobot_api_prefix(config)
     render_stream, render_subject = nats_render_change_config(config)
+    render_api_prefix = nats_config_manager_api_prefix(config)
 
     return {
         "nautobot": {
-            "durable_name": f"{queue_prefix}-nautobot",
+            "durable_name": nats_config.get("nautobot_consumer_name", "nv-config-manager-nautobot"),
             "stream": nautobot_stream,
             "subject": nautobot_subject,
+            "api_prefix": nautobot_api_prefix,
         },
         "device": {
-            "durable_name": f"{queue_prefix}-device",
+            "durable_name": nats_config.get(
+                "config_manager_consumer_name", "nv-config-manager-device"
+            ),
             "stream": render_stream,
             "subject": render_subject,
+            "api_prefix": render_api_prefix,
         },
     }
+
+
+def jetstream_for_consumer(nats_conn: Client, consumer_config: dict[str, str]) -> JetStreamContext:
+    """Return a JetStream context for this consumer's configured stream account."""
+    return nats_conn.jetstream(prefix=consumer_config.get("api_prefix", DEFAULT_NATS_API_PREFIX))
+
+
+async def nats_connection_with_permission_tracking() -> tuple[Client, list[Exception]]:
+    """Connect while retaining asynchronous NATS permission violations."""
+    permission_errors: list[Exception] = []
+
+    async def error_cb(exc: Exception) -> None:
+        if is_nats_permissions_error(exc):
+            permission_errors.append(exc)
+        else:
+            logger.error("Unhandled NATS error", exc_info=exc)
+
+    return await nats_connection(error_cb=error_cb), permission_errors
+
+
+def operation_was_denied(exc: Exception, permission_errors: list[Exception]) -> bool:
+    """Include permission violations delivered through the NATS error callback."""
+    return is_nats_permissions_error(exc) or bool(permission_errors)
 
 
 @router.get("/consumers", response_model=ConsumerListResponse)
 async def list_consumers(request: Request) -> ConsumerListResponse:
     """List all consumers and their current status."""
+    nats_conn: Client | None = None
     try:
-        nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
+        nats_conn, permission_errors = await nats_connection_with_permission_tracking()
         consumer_configs = get_consumer_configs()
         consumers = []
 
         for config in consumer_configs.values():
+            jetstream = jetstream_for_consumer(nats_conn, config)
+            permission_errors.clear()
             try:
                 consumer_info = await jetstream.consumer_info(
                     stream=config["stream"], consumer=config["durable_name"]
@@ -122,7 +164,17 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
                 )
 
             except Exception as e:
-                logger.warning(f"Could not get info for consumer {config['durable_name']}: {e}")
+                if operation_was_denied(e, permission_errors):
+                    logger.error(
+                        "NATS denied consumer lookup. Ask the NATS administrator to grant "
+                        "publish access to %s",
+                        f"{config['api_prefix']}.CONSUMER.INFO."
+                        f"{config['stream']}.{config['durable_name']}",
+                    )
+                else:
+                    logger.warning(
+                        "Could not get info for consumer %s: %s", config["durable_name"], e
+                    )
                 # Add consumer with unknown status
                 consumers.append(
                     ConsumerInfo(
@@ -135,65 +187,86 @@ async def list_consumers(request: Request) -> ConsumerListResponse:
                     )
                 )
 
-        await nats_conn.close()
         return ConsumerListResponse(consumers=consumers)
 
     except Exception as exc:
         logger.exception("Error listing consumers")
         raise HTTPException(status_code=500, detail="Failed to list consumers") from exc
+    finally:
+        if nats_conn is not None:
+            await nats_conn.close()
 
 
 @router.delete("/consumers/{consumer_type}/reset", response_model=ConsumerResetResponse)
 async def reset_consumer(consumer_type: ConsumerType, request: Request) -> ConsumerResetResponse:
-    """Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service."""
+    """Delete a consumer so the running service recreates it at the stream head."""
 
     try:
         consumer_configs = get_consumer_configs()
         config = consumer_configs[consumer_type]
 
-        nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
-
-        # Try to get consumer info first to check if it exists
+        nats_conn, permission_errors = await nats_connection_with_permission_tracking()
         try:
-            consumer_info = await jetstream.consumer_info(
-                stream=config["stream"], consumer=config["durable_name"]
-            )
-            pending_msgs = consumer_info.num_pending
-            logger.info(f"Consumer {config['durable_name']} has {pending_msgs} pending messages")
-        except Exception:
+            jetstream = jetstream_for_consumer(nats_conn, config)
+
             pending_msgs = 0
-            logger.info(f"Consumer {config['durable_name']} not found or already deleted")
+            permission_errors.clear()
+            try:
+                consumer_info = await jetstream.consumer_info(
+                    stream=config["stream"], consumer=config["durable_name"]
+                )
+                pending_msgs = consumer_info.num_pending
+            except NotFoundError:
+                logger.info("Consumer %s was already absent", config["durable_name"])
+            except Exception as e:
+                if operation_was_denied(e, permission_errors):
+                    logger.warning(
+                        "NATS denied backlog inspection for consumer %s; attempting the reset "
+                        "with an unknown pending-message count",
+                        config["durable_name"],
+                    )
+                    pending_msgs = -1
+                else:
+                    raise
 
-        # Delete the consumer
-        try:
-            await jetstream.delete_consumer(
-                stream=config["stream"], consumer=config["durable_name"]
-            )
-
-            status = "success"
-            message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages. Consumer will be automatically recreated within seconds."
-            logger.info(f"Successfully deleted consumer {config['durable_name']}")
-
-        except Exception as delete_error:
-            if "not found" in str(delete_error).lower():
-                status = "success"
+            permission_errors.clear()
+            try:
+                await jetstream.delete_consumer(
+                    stream=config["stream"], consumer=config["durable_name"]
+                )
+                message = (
+                    f"Consumer '{config['durable_name']}' deleted successfully. "
+                    f"Had {pending_msgs} pending messages. The running consumer will attempt "
+                    "to recreate it at the stream head; if create permission is not granted, "
+                    "ask the NATS administrator to provision it."
+                )
+            except NotFoundError:
                 message = (
                     f"Consumer '{config['durable_name']}' was already deleted or did not exist."
                 )
-                logger.info(f"Consumer {config['durable_name']} was already deleted")
-            else:
-                raise delete_error
+            except Exception as e:
+                if operation_was_denied(e, permission_errors):
+                    detail = reset_consumer_request(
+                        config["api_prefix"],
+                        config["stream"],
+                        config["durable_name"],
+                        config["subject"],
+                    )
+                    logger.error("NATS denied consumer reset. %s", detail)
+                    raise HTTPException(status_code=403, detail=detail) from e
+                raise
 
-        await nats_conn.close()
+            return ConsumerResetResponse(
+                consumer_name=config["durable_name"],
+                stream=config["stream"],
+                status="success",
+                message=message,
+            )
+        finally:
+            await nats_conn.close()
 
-        return ConsumerResetResponse(
-            consumer_name=config["durable_name"],
-            stream=config["stream"],
-            status=status,
-            message=message,
-        )
-
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Error resetting consumer %s", consumer_type)
         raise HTTPException(status_code=500, detail="Failed to reset consumer") from exc
@@ -201,50 +274,65 @@ async def reset_consumer(consumer_type: ConsumerType, request: Request) -> Consu
 
 @router.delete("/consumers/reset-all", response_model=list[ConsumerResetResponse])
 async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
-    """Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services."""
+    """Delete every consumer so the running services recreate them at the stream head."""
     try:
         results = []
         consumer_configs = get_consumer_configs()
 
-        nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
-
-        for consumer_type, config in consumer_configs.items():
-            try:
-                # Try to get consumer info first
+        nats_conn, permission_errors = await nats_connection_with_permission_tracking()
+        try:
+            for consumer_type, config in consumer_configs.items():
+                jetstream = jetstream_for_consumer(nats_conn, config)
                 try:
-                    consumer_info = await jetstream.consumer_info(
-                        stream=config["stream"], consumer=config["durable_name"]
-                    )
-                    pending_msgs = consumer_info.num_pending
-                    logger.info(
-                        f"Consumer {config['durable_name']} has {pending_msgs} pending messages"
-                    )
-                except Exception:
                     pending_msgs = 0
-                    logger.info(f"Consumer {config['durable_name']} not found")
-
-                # Delete the consumer
-                try:
-                    await jetstream.delete_consumer(
-                        stream=config["stream"], consumer=config["durable_name"]
-                    )
-
-                    status = "success"
-                    message = f"Consumer '{config['durable_name']}' deleted successfully. Had {pending_msgs} pending messages."
-                    logger.info(f"Successfully deleted consumer {config['durable_name']}")
-
-                except Exception as delete_error:
-                    if "not found" in str(delete_error).lower():
-                        status = "success"
-                        message = f"Consumer '{config['durable_name']}' was already deleted or did not exist."
-                        logger.info(f"Consumer {config['durable_name']} was already deleted")
-                    else:
-                        status = "error"
-                        message = f"Failed to delete consumer '{config['durable_name']}': {str(delete_error)}"
-                        logger.error(
-                            f"Failed to delete consumer {config['durable_name']}: {delete_error}"
+                    permission_errors.clear()
+                    try:
+                        consumer_info = await jetstream.consumer_info(
+                            stream=config["stream"], consumer=config["durable_name"]
                         )
+                        pending_msgs = consumer_info.num_pending
+                    except NotFoundError:
+                        logger.info("Consumer %s was already absent", config["durable_name"])
+                    except Exception as e:
+                        if operation_was_denied(e, permission_errors):
+                            logger.warning(
+                                "NATS denied backlog inspection for consumer %s; attempting "
+                                "the reset with an unknown pending-message count",
+                                config["durable_name"],
+                            )
+                            pending_msgs = -1
+                        else:
+                            raise
+
+                    permission_errors.clear()
+                    try:
+                        await jetstream.delete_consumer(
+                            stream=config["stream"], consumer=config["durable_name"]
+                        )
+                        message = (
+                            f"Consumer '{config['durable_name']}' deleted successfully. "
+                            f"Had {pending_msgs} pending messages."
+                        )
+                    except NotFoundError:
+                        message = (
+                            f"Consumer '{config['durable_name']}' was already deleted "
+                            "or did not exist."
+                        )
+                    status = "success"
+
+                except Exception as e:
+                    status = "error"
+                    if operation_was_denied(e, permission_errors):
+                        message = reset_consumer_request(
+                            config["api_prefix"],
+                            config["stream"],
+                            config["durable_name"],
+                            config["subject"],
+                        )
+                        logger.error("NATS denied reset of consumer %s. %s", consumer_type, message)
+                    else:
+                        message = f"Failed to delete consumer '{config['durable_name']}': {str(e)}"
+                        logger.error("Error processing consumer %s: %s", consumer_type, e)
 
                 results.append(
                     ConsumerResetResponse(
@@ -255,19 +343,9 @@ async def reset_all_consumers(request: Request) -> list[ConsumerResetResponse]:
                     )
                 )
 
-            except Exception as e:
-                logger.error(f"Error processing consumer {consumer_type}: {e}")
-                results.append(
-                    ConsumerResetResponse(
-                        consumer_name=config["durable_name"],
-                        stream=config["stream"],
-                        status="error",
-                        message=f"Error processing consumer: {str(e)}",
-                    )
-                )
-
-        await nats_conn.close()
-        return results
+            return results
+        finally:
+            await nats_conn.close()
 
     except Exception as exc:
         logger.exception("Error resetting all consumers")
@@ -282,10 +360,10 @@ async def get_consumer_info(consumer_type: ConsumerType, request: Request) -> Co
         consumer_configs = get_consumer_configs()
         config = consumer_configs[consumer_type]
 
-        nats_conn = await nats_connection()
-        jetstream = nats_conn.jetstream()
-
+        nats_conn, permission_errors = await nats_connection_with_permission_tracking()
         try:
+            jetstream = jetstream_for_consumer(nats_conn, config)
+            permission_errors.clear()
             consumer_info = await jetstream.consumer_info(
                 stream=config["stream"], consumer=config["durable_name"]
             )
@@ -299,16 +377,24 @@ async def get_consumer_info(consumer_type: ConsumerType, request: Request) -> Co
                 num_delivered=consumer_info.delivered.consumer_seq,
             )
 
+        except NotFoundError as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Consumer '{config['durable_name']}' not found",
+            ) from e
         except Exception as e:
-            if "not found" in str(e).lower():
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Consumer '{config['durable_name']}' not found",
-                ) from e
-            else:
-                raise e
+            if operation_was_denied(e, permission_errors):
+                detail = (
+                    "Ask the NATS administrator to grant publish access to "
+                    f"{config['api_prefix']}.CONSUMER.INFO."
+                    f"{config['stream']}.{config['durable_name']}"
+                )
+                logger.error("NATS denied consumer lookup. %s", detail)
+                raise HTTPException(status_code=403, detail=detail) from e
+            raise
+        finally:
+            await nats_conn.close()
 
-        await nats_conn.close()
         return result
 
     except HTTPException:

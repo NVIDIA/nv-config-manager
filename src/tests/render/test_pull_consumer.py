@@ -17,11 +17,18 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nats.errors
 import pytest
 from nats.aio.msg import Msg
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+from nats.js.errors import NotFoundError
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from nv_config_manager.render.pull_consumer import (
+    CONSUMER_ACK_PENDING,
+    CONSUMER_PENDING,
+    CONSUMER_REDELIVERED,
+    CONSUMER_WAITING,
     PullConsumer,
     PullDeviceChangeConsumer,
     PullNautobotConsumer,
@@ -36,12 +43,16 @@ password=T0pS3cr3t  # NOSONAR - mock password for testing
 auth_method=password
 local=false
 config_manager_stream=nv-config-manager
+config_manager_api_prefix=$JS.API
+config_manager_consumer_name=nv-config-manager-device
 config_manager_subjects=nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result
 render_change_stream=nv-config-manager
 render_change_subject=nv-config-manager.nautobotchange
 device_change_stream=nv-config-manager
 device_change_subject=nv-config-manager.devicechange
 nautobot_stream=nautobot
+nautobot_api_prefix=$JS.CUSTOM.API
+nautobot_consumer_name=nv-config-manager-nautobot
 nautobot_subjects=nautobot
 nautobot_subject=nautobot
 """
@@ -75,8 +86,10 @@ def mock_jetstream():
     """Mock JetStream context."""
     mock_js = MagicMock()
     mock_js.pull_subscribe = AsyncMock()
+    mock_js.pull_subscribe_bind = AsyncMock()
     mock_js.consumer_info = AsyncMock()
     mock_js.add_consumer = AsyncMock()
+    mock_js.delete_consumer = AsyncMock()
     return mock_js
 
 
@@ -121,6 +134,41 @@ async def test_pull_consumer_can_process_message(custom_ini):
     assert await consumer.can_process_message() is True
 
 
+def test_render_consumer_metrics_are_labeled_by_fixed_consumer(custom_ini, monkeypatch):
+    """Render exports consumer state without relying on a NATS monitoring exporter."""
+    custom_ini(TEST_NATS_CONFIG)
+    monkeypatch.setenv("NV_CONFIG_MANAGER_K8S_NAMESPACE", "site-a")
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    info = MagicMock(
+        num_pending=12,
+        num_ack_pending=3,
+        num_redelivered=2,
+        num_waiting=4,
+    )
+
+    consumer._record_consumer_metrics(info)
+
+    labels = (consumer.queue, consumer.stream, "site-a")
+    assert CONSUMER_PENDING.labels(*labels)._value.get() == 12
+    assert CONSUMER_ACK_PENDING.labels(*labels)._value.get() == 3
+    assert CONSUMER_REDELIVERED.labels(*labels)._value.get() == 2
+    assert CONSUMER_WAITING.labels(*labels)._value.get() == 4
+
+    consumer._remove_consumer_metrics()
+
+    for metric in (
+        CONSUMER_PENDING,
+        CONSUMER_ACK_PENDING,
+        CONSUMER_REDELIVERED,
+        CONSUMER_WAITING,
+    ):
+        assert labels not in metric._metrics
+
+
 @pytest.mark.asyncio
 async def test_pull_consumer_message_handler_not_implemented(custom_ini):
     """Test that message_handler raises NotImplementedError in base class."""
@@ -144,7 +192,22 @@ async def test_pull_nautobot_consumer_initialization(custom_ini):
     consumer = PullNautobotConsumer()
     assert consumer.stream == "nautobot"
     assert consumer.subject == "nautobot"
+    assert consumer.api_prefix == "$JS.CUSTOM.API"
     assert "nautobot" in consumer.queue
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_uses_configured_durable_name(custom_ini):
+    """Each stream can provide its exact authorized durable name."""
+    configured = TEST_NATS_CONFIG.replace(
+        "nautobot_consumer_name=nv-config-manager-nautobot",
+        "nautobot_consumer_name=externally-owned-nautobot",
+    )
+    custom_ini(configured)
+
+    consumer = PullNautobotConsumer()
+
+    assert consumer.queue == "externally-owned-nautobot"
 
 
 @pytest.mark.asyncio
@@ -209,7 +272,35 @@ async def test_pull_device_change_consumer_initialization(custom_ini):
     consumer = PullDeviceChangeConsumer()
     assert consumer.stream == "nv-config-manager"
     assert consumer.subject == "nv-config-manager.nautobotchange"
+    assert consumer.api_prefix == "$JS.API"
     assert "device" in consumer.queue
+
+
+@pytest.mark.asyncio
+async def test_pull_consumer_uses_configured_api_prefix(custom_ini):
+    """Test that pull consumers create JetStream context with the configured API prefix."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+        api_prefix="$JS.CUSTOM.API",
+    )
+    mock_conn = MagicMock()
+    mock_conn.is_closed = True
+    mock_conn.jetstream.return_value = MagicMock()
+
+    with (
+        patch(
+            "nv_config_manager.render.pull_consumer.nats_connection", new_callable=AsyncMock
+        ) as mock_nats_connection,
+        patch.object(consumer, "_run_pull_consumer", new_callable=AsyncMock),
+    ):
+        mock_nats_connection.return_value = mock_conn
+
+        await consumer.main()
+
+    mock_conn.jetstream.assert_called_once_with(prefix="$JS.CUSTOM.API")
 
 
 @pytest.mark.asyncio
@@ -370,8 +461,8 @@ async def test_resilient_message_handler_general_error(custom_ini):
 
 
 @pytest.mark.asyncio
-async def test_ensure_consumer_exists_new_consumer(custom_ini, mock_jetstream):
-    """Test _ensure_consumer_exists when consumer doesn't exist."""
+async def test_missing_consumer_is_created(custom_ini, mock_jetstream):
+    """Runtime creates the exact durable authorized by the NATS owner."""
     custom_ini(TEST_NATS_CONFIG)
     consumer = PullConsumer(
         stream="test_stream",
@@ -379,20 +470,24 @@ async def test_ensure_consumer_exists_new_consumer(custom_ini, mock_jetstream):
         queue_suffix="test_queue",
     )
     consumer.jetstream = mock_jetstream
-
-    # Mock consumer_info to raise exception (consumer doesn't exist)
-    mock_jetstream.consumer_info.side_effect = Exception("consumer not found")
+    mock_jetstream.consumer_info.side_effect = NotFoundError
 
     await consumer._ensure_consumer_exists()
 
-    # Should call consumer_info and add_consumer
     mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
-    mock_jetstream.add_consumer.assert_called_once()
+    mock_jetstream.add_consumer.assert_awaited_once()
+    stream = mock_jetstream.add_consumer.await_args.kwargs["stream"]
+    config = mock_jetstream.add_consumer.await_args.kwargs["config"]
+    assert stream == "test_stream"
+    assert config.durable_name == consumer.queue
+    assert config.filter_subject == "test_subject"
+    assert config.deliver_policy == DeliverPolicy.NEW
+    mock_jetstream.delete_consumer.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_ensure_consumer_exists_existing_consumer(custom_ini, mock_jetstream):
-    """Test _ensure_consumer_exists when consumer already exists."""
+async def test_existing_consumer_is_not_modified(custom_ini, mock_jetstream):
+    """An existing durable retains its established delivery position and policy."""
     custom_ini(TEST_NATS_CONFIG)
     consumer = PullConsumer(
         stream="test_stream",
@@ -401,14 +496,122 @@ async def test_ensure_consumer_exists_existing_consumer(custom_ini, mock_jetstre
     )
     consumer.jetstream = mock_jetstream
 
-    # Mock consumer_info to succeed (consumer exists)
-    mock_jetstream.consumer_info.return_value = {"name": consumer.queue}
+    await consumer._ensure_consumer_exists()
+
+    mock_jetstream.add_consumer.assert_not_called()
+    mock_jetstream.delete_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_existing_consumer_mismatch_logs_admin_update_request(custom_ini, mock_jetstream):
+    """An externally managed consumer mismatch produces an actionable request."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+    consumer.logger = MagicMock()
+    existing = MagicMock()
+    existing.config = ConsumerConfig(
+        durable_name=consumer.queue,
+        filter_subject="wrong.subject",
+        deliver_policy=DeliverPolicy.ALL,
+        ack_policy=AckPolicy.NONE,
+        ack_wait=30,
+        max_deliver=5,
+    )
+    mock_jetstream.consumer_info.return_value = existing
 
     await consumer._ensure_consumer_exists()
 
-    # Should call consumer_info but NOT add_consumer
-    mock_jetstream.consumer_info.assert_called_once_with("test_stream", consumer.queue)
+    warning = consumer.logger.warning.call_args.args
+    assert "filter_subject" in warning[2]
+    assert "ack_policy" in warning[2]
+    assert "ack_wait" in warning[2]
+    assert "max_deliver" in warning[2]
+    assert "Ask the NATS administrator" in warning[3]
+    assert "Delivery policy may retain" in warning[3]
+
+
+@pytest.mark.asyncio
+async def test_missing_consumer_permission_error_logs_provision_request(custom_ini, mock_jetstream):
+    """Restricted accounts tell operators exactly how to provision the durable."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+        api_prefix="$JS.IMPORTED.API",
+    )
+    consumer.jetstream = mock_jetstream
+    consumer.logger = MagicMock()
+    mock_jetstream.consumer_info.side_effect = NotFoundError
+
+    async def denied_creation(*_args, **_kwargs):
+        consumer._last_permission_error = nats.errors.Error(
+            "nats: permissions violation for publish"
+        )
+        raise nats.errors.TimeoutError
+
+    mock_jetstream.add_consumer.side_effect = denied_creation
+
+    with pytest.raises(nats.errors.TimeoutError):
+        await consumer._ensure_consumer_exists()
+
+    message = consumer.logger.error.call_args.args[2]
+    assert "$JS.IMPORTED.API.CONSUMER.DURABLE.CREATE.test_stream" in message
+    assert "deliver_policy='new'" in message
+    assert "filter_subject='test_subject'" in message
+
+
+@pytest.mark.asyncio
+async def test_consumer_lookup_propagates_transient_errors(custom_ini, mock_jetstream):
+    """A transient lookup failure retries without attempting creation."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="test_stream",
+        subject="test_subject",
+        queue_suffix="test_queue",
+    )
+    consumer.jetstream = mock_jetstream
+
+    mock_jetstream.consumer_info.side_effect = TimeoutError("transient")
+
+    with pytest.raises(TimeoutError):
+        await consumer._ensure_consumer_exists()
+
     mock_jetstream.add_consumer.assert_not_called()
+    mock_jetstream.delete_consumer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_consumer_cycle_binds_stream_explicitly(
+    custom_ini, mock_jetstream, mock_pull_subscription
+):
+    """Naming the stream avoids a $JS.API.STREAM.NAMES lookup, which is not exported
+    across NATS account boundaries."""
+    custom_ini(TEST_NATS_CONFIG)
+    consumer = PullConsumer(
+        stream="nautobot",
+        subject="nautobot",
+        queue_suffix="nautobot",
+        api_prefix="$JS.EXTERNAL.API",
+    )
+    consumer.jetstream = mock_jetstream
+    mock_jetstream.pull_subscribe_bind.return_value = mock_pull_subscription
+    consumer.nats_conn = MagicMock()
+    consumer.nats_conn.is_closed = False
+    # Skip the message loop; this asserts only how the subscription is bound.
+    consumer.running = False
+
+    await consumer._run_consumer_cycle()
+
+    mock_jetstream.pull_subscribe_bind.assert_awaited_once_with(
+        consumer=consumer.queue, stream="nautobot"
+    )
+    mock_jetstream.pull_subscribe.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -433,8 +636,6 @@ async def test_resilient_ack_success(custom_ini):
 async def test_resilient_ack_no_responders_error(custom_ini):
     """Test resilient_ack handles NoRespondersError gracefully."""
     custom_ini(TEST_NATS_CONFIG)
-    import nats.errors
-
     consumer = PullConsumer(
         stream="test_stream",
         subject="test_subject",
@@ -507,8 +708,6 @@ async def test_resilient_nak_with_delay(custom_ini):
 async def test_resilient_nak_no_responders_error(custom_ini):
     """Test resilient_nak handles NoRespondersError gracefully."""
     custom_ini(TEST_NATS_CONFIG)
-    import nats.errors
-
     consumer = PullConsumer(
         stream="test_stream",
         subject="test_subject",

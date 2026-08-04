@@ -861,13 +861,13 @@ class TestKindImageLoading:
         ]
         monkeypatch.setenv(
             "NVCM_KIND_PRELOAD_IMAGES",
-            "docker.io/library/nats:2.10-alpine,docker.io/library/redis:7-alpine",
+            "docker.io/library/nats:2.14-alpine,docker.io/library/redis:7-alpine",
         )
 
         assert _kind_preload_images(config) == [
             "docker.io/library/busybox:1.36",
             "docker.io/library/redis:7-alpine",
-            "docker.io/library/nats:2.10-alpine",
+            "docker.io/library/nats:2.14-alpine",
         ]
 
     def test_load_kind_tags_arch_specific_loader_image_as_canonical(self, monkeypatch):

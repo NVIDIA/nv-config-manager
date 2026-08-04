@@ -30,6 +30,7 @@ from nv_config_manager.common.config import (
     get_logger,
     is_aggregate_environment,
     is_local_environment,
+    nats_config_manager_api_prefix,
     nats_connection,
     nats_render_change_config,
     pynautobot_client,
@@ -245,7 +246,7 @@ async def queue_render(device_uuid: str, commit_message: str, user: str, timesta
         should_close = False
 
     try:
-        jetstream = nats_conn.jetstream()
+        jetstream = nats_conn.jetstream(prefix=nats_config_manager_api_prefix())
         queue_client = _get_queue_redis_client()
 
         # Use the shared processing function
@@ -323,7 +324,7 @@ async def queue_render_batch(
         # Pre-warm Nautobot connection (it's already shared via singleton)
         pynautobot_client()
 
-        jetstream = nats_conn.jetstream()
+        jetstream = nats_conn.jetstream(prefix=nats_config_manager_api_prefix())
         queue_client = _get_queue_redis_client()
 
         # Create semaphore to limit concurrency across all devices

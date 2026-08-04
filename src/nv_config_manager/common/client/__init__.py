@@ -28,9 +28,11 @@ from nv_config_manager.common.client.dhcp import DHCPClient, DHCPClientException
 
 # NATS Client
 from nv_config_manager.common.client.nats import (
+    DEFAULT_NATS_API_PREFIX,
     NatsClient,
     NatsConsumer,
     NatsProducer,
+    config_manager_api_prefix,
 )
 
 # Nautobot Client
@@ -78,9 +80,11 @@ __all__ = [
     "DHCPClient",
     "DHCPClientException",
     # NATS
+    "DEFAULT_NATS_API_PREFIX",
     "NatsClient",
     "NatsConsumer",
     "NatsProducer",
+    "config_manager_api_prefix",
     # Nautobot
     "NautobotClient",
     "NautobotException",

@@ -76,6 +76,10 @@ SCALEDOBJECT_RESOURCE = "scaledobjects.keda.sh"
 # renderService.autoscaling.consumers in values.yaml (the template also iterates
 # "template", which is skipped while unconfigured).
 EXPECTED_CONSUMER_TYPES = ("device", "nautobot")
+EXPECTED_CONSUMER_NAMES = {
+    "device": "nv-config-manager-device",
+    "nautobot": "nv-config-manager-nautobot",
+}
 SCALEDOBJECT_NAME_SUFFIX = "-render-consumer-"
 
 # Set by values-observability.yaml (prometheus.server.fullnameOverride) and
@@ -230,8 +234,8 @@ def test_trigger_query_filters_the_exporter_series(
 
     A cheap shape check (no cluster round-trip) for the parts a template edit is
     most likely to break: the metric name, the leader filter that prevents
-    double-counting under HA, and the ``{queue}-{type}`` consumer name that ties
-    the query to this specific ScaledObject.
+    double-counting under HA, and the fixed durable name authorized for the
+    stream.
     """
     triggers = scaled_objects[consumer_type].get("spec", {}).get("triggers", [])
     queries = [t.get("metadata", {}).get("query", "") for t in triggers]
@@ -244,9 +248,10 @@ def test_trigger_query_filters_the_exporter_series(
         f"{consumer_type} trigger query is missing {LEADER_LABEL}, so replicas of "
         f"the same consumer would be double-counted: {query}"
     )
-    assert f'-{consumer_type}"' in query, (
-        f"{consumer_type} trigger query does not filter on a consumer_name ending "
-        f"in '-{consumer_type}': {query}"
+    expected_name = EXPECTED_CONSUMER_NAMES[consumer_type]
+    assert f'consumer_name="{expected_name}"' in query, (
+        f"{consumer_type} trigger query does not filter on the fixed durable "
+        f"{expected_name!r}: {query}"
     )
 
 

@@ -9,7 +9,7 @@
 # Local Nautobot Stack Deployment
 # =============================================================================
 # This template deploys a local Nautobot instance within the nv-config-manager namespace
-# for environments without full Cerebro deployment.
+# for environments that bundle Nautobot with NVIDIA Config Manager.
 # Includes: Nautobot Server, Celery Workers, Redis, NATS, PostgreSQL (via CNPG)
 #
 # NOTE: Secrets (nautobot-admin, nautobot-django-secret, nats-*) are created
@@ -280,20 +280,16 @@ spec:
               --max-bytes="$MAX_BYTES" \
               --force
           fi
-          
+
           # Verify streams were created
           echo "Verifying streams..."
           nats stream ls -s "$NV_CONFIG_MANAGER_SERVER"
-          STREAM_COUNT=$(nats stream ls -s "$NV_CONFIG_MANAGER_SERVER" --json 2>/dev/null | grep -c '"name"' || echo "0")
-          if [ "$STREAM_COUNT" -lt 2 ]; then
-            echo "ERROR: Expected 2 streams but found $STREAM_COUNT"
-            exit 1
-          fi
+          nats stream info "$CONFIG_MANAGER_STREAM" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
+          nats stream info "$NAUTOBOT_STREAM" --server="$NV_CONFIG_MANAGER_SERVER" >/dev/null
           echo "NATS streams ready"
         {{- else }}
-        # Use nats-ready binary for production (streams have 20GB max_bytes)
-        # Note: Production nats-ready creates both streams using nv-config-manager account
-        # For local dev, we use nats CLI which creates streams in each account
+        # Use nats-ready binary for production (streams have 20GB max_bytes).
+        # It creates/reconciles both streams.
         image: {{ include "nv-config-manager.image" (dict "root" . "image" .Values.global.images.natsReady) }}
         imagePullPolicy: {{ .Values.global.imagePullPolicy | default .Values.global.images.natsReady.pullPolicy }}
         command: ["/nats-ready"]

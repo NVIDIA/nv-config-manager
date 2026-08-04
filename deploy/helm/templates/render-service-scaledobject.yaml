@@ -5,7 +5,7 @@
 # Scales render-service consumers based on NATS JetStream pending message count.
 # Uses Prometheus to query nats_consumer_num_pending metrics.
 #
-# Consumer naming: {nats.queue}-{consumer_type} (e.g., nv-config-manager-test01-device)
+# Consumer names come from externalServices.nats.streams.*.consumer.name.
 # Stream: nv-config-manager
 # =============================================================================
 {{- if and .Values.renderService.enabled .Values.renderService.autoscaling.enabled }}
@@ -27,18 +27,13 @@ so the two cannot disagree about which Prometheus KEDA queries.
 {{- range $consumerType := list "device" "template" "nautobot" }}
 {{- $consumerConfig := index $autoscaling.consumers $consumerType }}
 {{- $streamName := ternary $.Values.externalServices.nats.streams.nautobot.name $.Values.externalServices.nats.streams.configManager.name (eq $consumerType "nautobot") }}
+{{- $consumerName := ternary (include "nv-config-manager.nautobotConsumerName" $) (include "nv-config-manager.configManagerConsumerName" $) (eq $consumerType "nautobot") }}
 {{- if $consumerConfig.enabled }}
 {{- /*
-On a shared external Prometheus the query below has to pick this environment's
-consumer out of every other environment's. consumer_name is what actually does
-that, since it carries nats.queue. The namespace label does not: cells reuse
-namespace names, so several unrelated ones report under the same namespace to
-the same Prometheus.
-
-Require it regardless. It narrows the query enough that a consumer_name which
-stops being unique -- two environments sharing a nats.queue, or a rename that
-reuses a retired name -- scales this deployment on its own backlog instead of
-silently on someone else's.
+On a shared external Prometheus, fixed stream and consumer names do not identify
+the site. Require the exporter namespace label to scope the series. Operators
+using a centralized metrics backend must configure this to a label value that
+is unique for the site/cluster, even when Kubernetes namespace names repeat.
 */}}
 {{- if and $prometheus.serverAddress (not $prometheus.natsMetricsNamespace) }}
 {{- fail (printf "renderService.autoscaling.prometheus.natsMetricsNamespace is required for the %s consumer when serverAddress points at an external Prometheus, otherwise the trigger query can match NATS series from another environment." $consumerType) }}
@@ -93,13 +88,12 @@ spec:
         */}}
         serverAddress: {{ required (printf "renderService.autoscaling is enabled for the %s consumer but no Prometheus endpoint is available. Set renderService.autoscaling.prometheus.serverAddress to an external Prometheus, or enable the in-cluster one via prometheus.enabled." $consumerType) $promAddress | quote }}
         # Query NATS consumer pending messages
-        # consumer_name matches what the render service creates: {nats.queue}-{type}
-        #   and is what distinguishes this environment from every other one
+        # consumer_name matches the fixed durable configured for the stream
         # is_consumer_leader="true" avoids double-counting in HA
-        # namespace narrows the series further where it is set; see the note above
-        #   on why it is not sufficient on its own
+        # namespace distinguishes sites that use the same fixed durable names;
+        #   centralized metrics backends require a site-unique label value
         query: |
-          max(nats_consumer_num_pending{is_consumer_leader="true", stream_name="{{ $streamName }}", consumer_name="{{ $.Values.externalServices.nats.queue }}-{{ $consumerType }}"{{- if $prometheus.natsMetricsNamespace }}, namespace="{{ $prometheus.natsMetricsNamespace }}"{{- end }}})
+          max(nats_consumer_num_pending{is_consumer_leader="true", stream_name="{{ $streamName }}", consumer_name="{{ $consumerName }}"{{- if $prometheus.natsMetricsNamespace }}, namespace="{{ $prometheus.natsMetricsNamespace }}"{{- end }}})
         threshold: {{ $consumerConfig.targetPendingPerPod | default 10 | quote }}
         {{- if $prometheus.ignoreNullValues }}
         ignoreNullValues: {{ $prometheus.ignoreNullValues | quote }}
