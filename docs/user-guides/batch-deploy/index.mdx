@@ -4,7 +4,7 @@ sidebar-title: Batch Deploy
 position: 20
 ---
 
-The Batch Deploy workflow applies one shared configuration diff to a small group of network devices behind a single human approval gate. It is an internal child workflow invoked by [Multi-Device Deploy](../multi-deploy/index.mdx): Multi-Deploy discovers deploy-enabled devices, collects their diffs, groups devices with identical diffs, and starts one Batch Deploy per group. Batch Deploy is not exposed through the Workflow API or as a standalone UI workflow.
+The Batch Deploy workflow applies one shared configuration diff to a small group of network devices behind a single human approval gate. It is an internal child workflow invoked by [Multi-Device Deploy](../multi-deploy/index.mdx): Multi-Deploy discovers deploy-enabled devices, collects their diffs, groups devices with identical diffs, splits oversized groups into batches, and starts one Batch Deploy child workflow per batch. Batch Deploy is not exposed through the Workflow API or as a standalone UI workflow.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Before approving a Batch Deploy child invocation, confirm the following:
 
 ## Running the workflow
 
-Batch Deploy is not exposed as a standalone form in the Config Manager UI today. It runs as a child of [Multi-Deploy](../multi-deploy/index.mdx), which collects diffs across a role, groups devices with identical diffs, and spawns one Batch Deploy per group. Multi-Deploy posts a deep link on its `execute_batches` display for every batch it spawns; click that link to land directly on the child workflow's status page.
+Batch Deploy is not exposed as a standalone form in the Config Manager UI today. It runs as a child of [Multi-Deploy](../multi-deploy/index.mdx), which collects diffs across a role, groups devices with identical diffs, splits oversized groups into batches, and spawns one Batch Deploy child workflow per batch. Multi-Deploy posts a deep link on its `execute_batches` display for every batch it spawns; click that link to land directly on the child workflow's status page.
 
 The operator's job on a Batch Deploy run is to **review and approve (or reject) the diff** at the first stage. The workflow blocks at that stage until a human approves or rejects.
 
