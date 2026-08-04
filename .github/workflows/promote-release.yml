@@ -27,6 +27,7 @@ jobs:
       go_source_tag: ${{ steps.resolve.outputs.go_source_tag }}
       go_target_tag: ${{ steps.resolve.outputs.go_target_tag }}
       source_rc_tag: ${{ steps.resolve.outputs.source_rc_tag }}
+      tags_exist: ${{ steps.resolve.outputs.tags_exist }}
       target_tag: ${{ steps.resolve.outputs.target_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -79,11 +80,6 @@ jobs:
           fi
 
           commit="$(git rev-parse "${SOURCE_RC_TAG}^{commit}")"
-          if git rev-parse --verify "refs/tags/${target_tag}" >/dev/null 2>&1; then
-            echo "Tag ${target_tag} already exists."
-            exit 1
-          fi
-
           go_source_tag="bindings/go/v${SOURCE_RC_TAG}"
           go_target_tag="bindings/go/v${target_tag}"
           if ! git rev-parse --verify "refs/tags/${go_source_tag}" >/dev/null 2>&1; then
@@ -94,8 +90,24 @@ jobs:
             echo "Go module RC tag ${go_source_tag} does not match ${SOURCE_RC_TAG}."
             exit 1
           fi
+          target_exists=false
+          go_target_exists=false
+          if git rev-parse --verify "refs/tags/${target_tag}" >/dev/null 2>&1; then
+            target_exists=true
+            if [ "$(git rev-parse "${target_tag}^{commit}")" != "$commit" ]; then
+              echo "Tag ${target_tag} exists at a different commit."
+              exit 1
+            fi
+          fi
           if git rev-parse --verify "refs/tags/${go_target_tag}" >/dev/null 2>&1; then
-            echo "Tag ${go_target_tag} already exists."
+            go_target_exists=true
+            if [ "$(git rev-parse "${go_target_tag}^{commit}")" != "$commit" ]; then
+              echo "Tag ${go_target_tag} exists at a different commit."
+              exit 1
+            fi
+          fi
+          if [ "$target_exists" != "$go_target_exists" ]; then
+            echo "Stable platform and Go module tags must either both exist or both be absent."
             exit 1
           fi
 
@@ -104,10 +116,17 @@ jobs:
             exit 1
           fi
 
+          if ! git show "${commit}:CHANGELOG.md" \
+            | .github/scripts/extract-release-notes "$target_tag" >/dev/null; then
+            echo "Finalize the ${target_tag} section in CHANGELOG.md before promotion."
+            exit 1
+          fi
+
           echo "commit=${commit}" >> "$GITHUB_OUTPUT"
           echo "go_source_tag=${go_source_tag}" >> "$GITHUB_OUTPUT"
           echo "go_target_tag=${go_target_tag}" >> "$GITHUB_OUTPUT"
           echo "source_rc_tag=${SOURCE_RC_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tags_exist=${target_exists}" >> "$GITHUB_OUTPUT"
           echo "target_tag=${target_tag}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
@@ -140,7 +159,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push stable tag
+      - name: Create and push stable tags
+        if: needs.validate.outputs.tags_exist != 'true'
         env:
           COMMIT: ${{ needs.validate.outputs.commit }}
           GO_TARGET_TAG: ${{ needs.validate.outputs.go_target_tag }}
@@ -151,15 +171,6 @@ jobs:
           set -euo pipefail
           git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
 
-          if git rev-parse --verify "refs/tags/${TARGET_TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TARGET_TAG} already exists."
-            exit 1
-          fi
-          if git rev-parse --verify "refs/tags/${GO_TARGET_TAG}" >/dev/null 2>&1; then
-            echo "Tag ${GO_TARGET_TAG} already exists."
-            exit 1
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TARGET_TAG" "$COMMIT" -m "Promote ${SOURCE_RC_TAG} to ${TARGET_TAG}"
@@ -169,3 +180,29 @@ jobs:
           git push --atomic origin "refs/tags/${TARGET_TAG}" "refs/tags/${GO_TARGET_TAG}"
 
           echo "Promoted ${SOURCE_RC_TAG} to ${TARGET_TAG} and created ${GO_TARGET_TAG} at ${COMMIT}."
+
+      - name: Publish GitHub Release
+        env:
+          COMMIT: ${{ needs.validate.outputs.commit }}
+          GH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN || github.token }}
+          TARGET_TAG: ${{ needs.validate.outputs.target_tag }}
+        run: |
+          set -euo pipefail
+
+          git show "${COMMIT}:CHANGELOG.md" \
+            | .github/scripts/extract-release-notes "$TARGET_TAG" \
+            > "$RUNNER_TEMP/release-notes.md"
+
+          if gh release view "$TARGET_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release ${TARGET_TAG} already exists."
+          else
+            gh release create "$TARGET_TAG" \
+              --verify-tag \
+              --title "NVIDIA Config Manager ${TARGET_TAG}" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --latest
+          fi
+
+          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TARGET_TAG}"
+          echo "Published ${release_url}"
+          echo "- GitHub Release: ${release_url}" >> "$GITHUB_STEP_SUMMARY"
