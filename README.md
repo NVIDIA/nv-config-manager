@@ -1,7 +1,7 @@
 # NVIDIA Config Manager
 
 [![Latest stable release](https://img.shields.io/github/v/release/NVIDIA/nv-config-manager?display_name=tag&label=stable&sort=semver)](https://github.com/NVIDIA/nv-config-manager/releases/latest)
-[![Latest release candidate](https://img.shields.io/github/v/tag/NVIDIA/nv-config-manager?filter=*-rc.*&label=rc&sort=semver&color=orange)](https://github.com/NVIDIA/nv-config-manager/tags)
+[![Latest release candidate](https://img.shields.io/github/v/tag/NVIDIA/nv-config-manager?filter=*-rc.*&label=rc&sort=date&color=orange)](https://github.com/NVIDIA/nv-config-manager/tags)
 
 NVIDIA Config Manager (NVCM) is an open-source network automation and configuration management platform for large-scale datacenter operations. It combines Nautobot inventory, event-driven rendering, ZTP, DHCP, workflow automation, and configuration storage behind a single Helm deployment.
 
