@@ -84,6 +84,7 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 _VISIBILITY_SAFE_VALUE = re.compile(r"^[\w.@:/ -]+$")
 _WORKFLOW_LIST_QUERY_CONCURRENCY = 25
+_WORKFLOW_LIST_QUERY_TIMEOUT_SECONDS = 2
 _WORKFLOW_STAGE_QUERY_CACHE_NAMES = ("pending_approval", "compressed_stages")
 _PENDING_APPROVAL_STATUS_VALUES = {
     StateEnum.PENDING_APPROVAL.value,
@@ -273,6 +274,7 @@ class WorkflowSummaryResponse(WorkflowResponse):
         handle: WorkflowHandle,
         description: WorkflowExecutionDescription,
         queries: list[str],
+        query_timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         is_active = description.status in WorkflowSummaryResponse._ACTIVE_WORKFLOW_STATUSES
         cache = RedisClient.from_config(load_config())
@@ -286,7 +288,23 @@ class WorkflowSummaryResponse(WorkflowResponse):
                         results[query] = data
                         continue
 
-                data = await handle.query(query)
+                if query_timeout_seconds is None:
+                    data = await handle.query(query)
+                else:
+                    try:
+                        async with asyncio.timeout(query_timeout_seconds):
+                            data = await handle.query(query)
+                    except TimeoutError:
+                        logger.warning(
+                            "Workflow %s of type %s timed out after %s seconds running the %s "
+                            "query while building a list response.",
+                            handle.id,
+                            description.workflow_type,
+                            query_timeout_seconds,
+                            query,
+                        )
+                        results[query] = None
+                        continue
 
                 if WorkflowSummaryResponse._should_cache(query, data, is_active):
                     await cache.cache_query(handle.id, query, data)
@@ -324,7 +342,10 @@ class WorkflowSummaryResponse(WorkflowResponse):
             )
             queries = ["input"] if pending_approval is not None else ["pending_approval", "input"]
             query_results = await WorkflowSummaryResponse._execute_queries(
-                handle, description, queries
+                handle,
+                description,
+                queries,
+                query_timeout_seconds=_WORKFLOW_LIST_QUERY_TIMEOUT_SECONDS,
             )
             workflow_input = query_results.get("input")
             if pending_approval is None:

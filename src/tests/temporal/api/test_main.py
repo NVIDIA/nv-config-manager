@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
 from configparser import ConfigParser
 from datetime import datetime
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
@@ -928,6 +929,44 @@ async def test_active_workflow_query_miss_uses_durable_cache(mock_redis, mock_lo
     assert result == {"pending_approval": True, "input": {"user": "live"}}
     cache.cache_query.assert_any_await("active-workflow", "pending_approval", True)
     cache.cache_query.assert_any_await("active-workflow", "input", {"user": "live"})
+    mock_redis.from_config.assert_called_once_with(mock_load_config.return_value)
+
+
+@pytest.mark.asyncio
+@patch(
+    "nv_config_manager.temporal.api.workflow_v1._WORKFLOW_LIST_QUERY_TIMEOUT_SECONDS",
+    0.01,
+)
+@patch("nv_config_manager.temporal.api.workflow_v1.load_config")
+@patch("nv_config_manager.temporal.api.workflow_v1.RedisClient")
+async def test_active_workflow_query_timeout_does_not_block_summary(mock_redis, mock_load_config):
+    """A workerless workflow cannot block list enrichment or cached query data."""
+    cache = mock_redis.from_config.return_value
+    cache.get_cached_query = AsyncMock(side_effect=[None, {"user": "cached"}])
+    cache.cache_query = AsyncMock()
+
+    async def workerless_query(_query: str):
+        await asyncio.Event().wait()
+
+    handle = MagicMock()
+    handle.id = "workerless-workflow"
+    handle.query = AsyncMock(side_effect=workerless_query)
+
+    description = MagicMock()
+    description.status = WorkflowExecutionStatus.RUNNING
+    description.workflow_type = "UnavailableWorkflow"
+    description.search_attributes = {"User": ["test"]}
+    description.start_time = datetime.fromisoformat("1970-01-01T00:00:00+00:00")
+    description.close_time = None
+    handle.describe = AsyncMock(return_value=description)
+
+    result = await asyncio.wait_for(WorkflowSummaryResponse.from_handle(handle), timeout=0.2)
+
+    assert result.id == "workerless-workflow"
+    assert result.pending_approval is False
+    assert result.workflow_input == {"user": "cached"}
+    handle.query.assert_awaited_once_with("pending_approval")
+    cache.cache_query.assert_not_awaited()
     mock_redis.from_config.assert_called_once_with(mock_load_config.return_value)
 
 
