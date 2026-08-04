@@ -17,6 +17,9 @@
 import pytest
 from pydantic import BaseModel
 
+from nv_config_manager.temporal.common.lock import WorkflowLockSpec, build_workflow_lock_key
+from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
+from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS
 from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMixin
 
 
@@ -38,3 +41,69 @@ async def test_canonicalizes_host_before_run(mocker):
 
     assert result.host == "10.0.0.5"
     assert result.pkey == "0x0100"
+
+
+@pytest.mark.asyncio
+async def test_host_spellings_collapse_to_one_lock_key(mocker):
+    """Name and IP that resolve to the same device produce one lock key.
+
+    Guards the end-to-end contract the lock relies on: canonicalization at the API
+    boundary plus deterministic key construction must serialize equivalent hosts.
+    """
+    mocker.patch(
+        "nv_config_manager.temporal.ngc.activities.ib_nautobot.canonicalize_ufm_host",
+        new=mocker.AsyncMock(return_value="10.0.0.5"),
+    )
+    spec = WorkflowLockSpec(key_fields=["host", "pkey"])
+
+    by_name = await UFMHostLockMixin.canonicalize_input(_HostInput(host="ufm01"))
+    by_ip = await UFMHostLockMixin.canonicalize_input(_HostInput(host="10.0.0.5"))
+
+    key_from_name = build_workflow_lock_key(
+        spec, workflow_name="IBPKeyMemberAdd", namespace="ngc", workflow_input=by_name
+    )
+    key_from_ip = build_workflow_lock_key(
+        spec, workflow_name="IBPKeyMemberAdd", namespace="ngc", workflow_input=by_ip
+    )
+
+    assert key_from_name == key_from_ip == "wf-lock:ngc:host=10.0.0.5:pkey=0x0100"
+
+
+def _host_keyed_locked_workflows() -> list[type]:
+    """Registered workflows whose lock key includes the host field."""
+    keyed: list[type] = []
+    for workflow_class in REGISTERED_WORKFLOWS:
+        spec = getattr(workflow_class, "workflow_lock", None)
+        if spec is not None and "host" in spec.key_fields:
+            keyed.append(workflow_class)
+    return keyed
+
+
+@pytest.mark.parametrize("workflow_class", _host_keyed_locked_workflows())
+@pytest.mark.asyncio
+async def test_host_keyed_lock_requires_canonicalization(workflow_class, mocker):
+    """A workflow that locks on ``host`` must collapse name and IP to one value.
+
+    Inheritance alone is not enough: a no-op override would still let equivalent
+    hosts map to different lock keys. Assert ``canonicalize_input`` produces the
+    same host for both spellings on every registered host-keyed workflow.
+    """
+    assert (
+        workflow_class.canonicalize_input.__func__
+        is not WorkflowMetadataMixin.canonicalize_input.__func__
+    ), (
+        f"{workflow_class.__name__} locks on 'host' but does not override "
+        "canonicalize_input; its lock key would not be canonical"
+    )
+
+    canonical_host = "10.0.0.5"
+    mocker.patch(
+        "nv_config_manager.temporal.ngc.activities.ib_nautobot.canonicalize_ufm_host",
+        new=mocker.AsyncMock(return_value=canonical_host),
+    )
+    input_class = workflow_class.get_workflow_input_class()
+    by_name = input_class(host="ufm01", pkey="0x0100", guids=["0000:0000:0000:0001"])
+    by_ip = input_class(host=canonical_host, pkey="0x0100", guids=["0000:0000:0000:0001"])
+
+    assert (await workflow_class.canonicalize_input(by_name)).host == canonical_host
+    assert (await workflow_class.canonicalize_input(by_ip)).host == canonical_host
