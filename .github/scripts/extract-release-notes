@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "Usage: $0 VERSION [CHANGELOG]" >&2
+  exit 2
+fi
+
+version="$1"
+changelog="${2:--}"
+
+if ! awk -v heading="## ${version}" '
+  $0 == heading {
+    found = 1
+    next
+  }
+
+  found && /^## / {
+    exit
+  }
+
+  found {
+    print
+    if ($0 ~ /[^[:space:]]/) {
+      content = 1
+    }
+  }
+
+  END {
+    if (!found || !content) {
+      exit 1
+    }
+  }
+' "$changelog"; then
+  echo "CHANGELOG.md does not contain non-empty release notes for ${version}." >&2
+  exit 1
+fi
