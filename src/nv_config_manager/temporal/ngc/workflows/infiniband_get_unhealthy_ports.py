@@ -30,6 +30,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.activities.nautobot import (
@@ -50,7 +51,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class InfinibandGetUnhealthyPortsInput(BaseModel):
     """Unhealthy Ports Validation Workflow Input Definition."""
 
-    device_id: str = Field(description="Identifier of the UFM device to inspect.")
+    device_id: DeviceReference = Field(description="Identifier of the UFM device to inspect.")
 
 
 @workflow.defn

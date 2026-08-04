@@ -21,7 +21,6 @@ from typing import Any, ClassVar
 
 import netaddr
 from pydantic import BaseModel, computed_field
-from temporalio import workflow
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
@@ -31,6 +30,7 @@ from nv_config_manager.temporal.common.search_attributes import (
     DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
     DEVICE_ROLE_SEARCH_ATTRIBUTE,
     SITE_SEARCH_ATTRIBUTE,
+    upsert_missing_search_attributes,
 )
 
 
@@ -314,4 +314,4 @@ class DeviceMixin(BaseMixin):
         }
         if isinstance(device, NetworkDeviceData):
             attrs[DEVICE_PLATFORM_SEARCH_ATTRIBUTE] = [device.platform]
-        workflow.upsert_search_attributes(attrs)
+        upsert_missing_search_attributes(attrs)

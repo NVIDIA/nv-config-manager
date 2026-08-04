@@ -36,6 +36,7 @@ from nv_config_manager.temporal.common.search_attributes import (
     READ_ROLES_SEARCH_ATTRIBUTE,
     USER_SEARCH_ATTRIBUTE,
 )
+from nv_config_manager.temporal.common.workflow_references import LocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -76,7 +77,7 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class SitePasswordRotationInput(BaseModel):
     """Site Password Rotation Workflow Input Definition."""
 
-    location: str = Field(
+    location: LocationReference = Field(
         min_length=1,
         description="Location containing the devices to update.",
     )

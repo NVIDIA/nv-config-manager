@@ -33,9 +33,15 @@ from nv_config_manager.temporal.api.workflow_v1 import (
 )
 from nv_config_manager.temporal.common.mixins.stage import ReviewSignalInput, Stage, StageMixin
 from nv_config_manager.temporal.common.search_attributes import (
+    DEVICE_ID_SEARCH_ATTRIBUTE,
+    DEVICE_NAME_SEARCH_ATTRIBUTE,
+    DEVICE_PLATFORM_SEARCH_ATTRIBUTE,
+    DEVICE_ROLE_SEARCH_ATTRIBUTE,
     FAILED_STAGE_SEARCH_ATTRIBUTE,
     PENDING_APPROVAL_SEARCH_ATTRIBUTE,
+    SITE_SEARCH_ATTRIBUTE,
 )
+from nv_config_manager.temporal.common.workflow_references import LocationReference
 from nv_config_manager.temporal.hello_world.workflows.hello_world_workflow import (
     HelloWorld,
     HelloWorldInput,
@@ -48,7 +54,7 @@ TEMPORAL_UI_WORKFLOW_BASE = "https://temporal-ui.example.com/namespaces/default/
 class LocationWorkflowInput(BaseModel):
     """Minimal location-based input for workflow start tests."""
 
-    site: str
+    site: LocationReference
 
 
 def test_healthcheck():
@@ -72,6 +78,11 @@ def test_openapi_operation_tags_are_unique():
             assert len(tags) == len(set(tags)), (
                 f"{method.upper()} {path} has duplicate tags: {tags}"
             )
+
+
+def test_batch_deploy_child_workflow_is_not_exposed_by_api():
+    """Parent-generated device connection data must not have an external API path."""
+    assert "/v1/workflow/ngc/batch_deploy" not in app.openapi()["paths"]
 
 
 def test_metrics():
@@ -162,7 +173,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     )
     mock_cache_input.assert_awaited_once_with("mockuuid", body)
 
-    # Location UUIDs are validated and canonicalized in the workflow input.
+    # Location UUIDs remain unchanged while the search attribute uses the canonical name.
     mock_connect.reset_mock()
     mock_cache_input.reset_mock()
     mock_rbac_instance.get_workflow_roles.return_value = {
@@ -181,16 +192,15 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         }
     )
     with patch(
-        "nv_config_manager.temporal.api.workflow_v1.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
         return_value=location_client,
     ):
         result = await start_workflow(request, HelloWorld, location_body)
 
     assert result == "mockuuid"
-    canonical_location_body = LocationWorkflowInput(site="SJC01")
     mock_connect.return_value.start_workflow.assert_called_with(
         HelloWorld.run,
-        canonical_location_body,
+        location_body,
         id="mockuuid",
         task_queue="default-task-queue",
         search_attributes={
@@ -198,10 +208,11 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
             FAILED_STAGE_SEARCH_ATTRIBUTE: [False],
             PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["all"],
+            SITE_SEARCH_ATTRIBUTE: ["SJC01"],
             "User": ["testuser"],
         },
     )
-    mock_cache_input.assert_awaited_once_with("mockuuid", canonical_location_body)
+    mock_cache_input.assert_awaited_once_with("mockuuid", location_body)
     assert location_body.site == location_id
     location_client.get.assert_awaited_once_with(
         "dcim/locations/",
@@ -215,10 +226,10 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     location_body = LocationWorkflowInput(site="missing-site")
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_v1.NautobotClient",
+            "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
             return_value=location_client,
         ),
-        pytest.raises(HTTPException, match="Unknown site or location") as exc_info,
+        pytest.raises(HTTPException, match="Unknown location") as exc_info,
     ):
         await start_workflow(request, HelloWorld, location_body)
 
@@ -229,6 +240,29 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         params={"name": "missing-site"},
     )
 
+    # Multiple exact name matches are rejected before Temporal workflow creation.
+    mock_connect.reset_mock()
+    location_client.get.reset_mock()
+    location_client.get.return_value = {
+        "count": 2,
+        "results": [
+            {"id": str(uuid4()), "name": "duplicate-site"},
+            {"id": str(uuid4()), "name": "duplicate-site"},
+        ],
+    }
+    location_body = LocationWorkflowInput(site="duplicate-site")
+    with (
+        patch(
+            "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+            return_value=location_client,
+        ),
+        pytest.raises(HTTPException, match="Ambiguous location") as exc_info,
+    ):
+        await start_workflow(request, HelloWorld, location_body)
+
+    assert exc_info.value.status_code == 422
+    mock_connect.return_value.start_workflow.assert_not_called()
+
     # Test that more strict workflow permissions are respected
     mock_connect.reset_mock()
     mock_cache_input.reset_mock()
@@ -237,9 +271,8 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         "read_roles": {"ngc-cfa", "ngc-gni"},
         "execute_roles": {"ngc-cfa", "ngc-gni"},
     }
-    body = DeployInput(
-        device_id="test",
-    )
+    device_id = "910b85f8-e83c-48ad-9bbd-12b15e97a2d4"
+    body = DeployInput(device_id=device_id)
     with pytest.raises(HTTPException) as e:
         result = await start_workflow(request, DeployWorkflow, body)
         assert e.value.status_code == 403
@@ -247,7 +280,32 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
 
     # Now modify headers to include an allowed role and try again
     request.state.roles = {"ngc-gni"}
-    result = await start_workflow(request, DeployWorkflow, body)
+    device_client = MagicMock()
+    device_client.__aenter__.return_value = device_client
+    device_client.get_devices = AsyncMock(
+        return_value=[
+            {
+                "id": device_id,
+                "name": "LEAF01",
+                "role": {"name": "Leaf Switch"},
+                "platform": {"name": "Cumulus Linux"},
+                "location": {
+                    "name": "Rack 1",
+                    "location_type": {"name": "Rack"},
+                    "parent": {
+                        "name": "SJC01",
+                        "location_type": {"name": "Site"},
+                        "parent": None,
+                    },
+                },
+            }
+        ]
+    )
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        return_value=device_client,
+    ):
+        result = await start_workflow(request, DeployWorkflow, body)
     assert result == "mockuuid"
     mock_connect.return_value.start_workflow.assert_called_with(
         DeployWorkflow.run,
@@ -256,13 +314,41 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         task_queue="default-task-queue",
         search_attributes={
             "ExecuteRoles": ["ngc-cfa", "ngc-gni"],
+            DEVICE_ID_SEARCH_ATTRIBUTE: [device_id],
+            DEVICE_NAME_SEARCH_ATTRIBUTE: ["LEAF01"],
+            DEVICE_PLATFORM_SEARCH_ATTRIBUTE: ["cumulus-linux"],
+            DEVICE_ROLE_SEARCH_ATTRIBUTE: ["leaf-switch"],
             FAILED_STAGE_SEARCH_ATTRIBUTE: [False],
             PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
             "ReadRoles": ["ngc-cfa", "ngc-gni"],
+            SITE_SEARCH_ATTRIBUTE: ["SJC01"],
             "User": ["testuser"],
         },
     )
     mock_cache_input.assert_awaited_once_with("mockuuid", body)
+    device_client.get_devices.assert_awaited_once_with(ANY, device_ids=[device_id])
+
+    # Well-formed UUIDs must also resolve to an existing Nautobot device.
+    mock_connect.reset_mock()
+    device_client.get_devices.reset_mock()
+    device_client.get_devices.return_value = []
+    with (
+        patch(
+            "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+            return_value=device_client,
+        ),
+        pytest.raises(HTTPException, match="Unknown device") as exc_info,
+    ):
+        await start_workflow(request, DeployWorkflow, body)
+    assert exc_info.value.status_code == 422
+    mock_connect.return_value.start_workflow.assert_not_called()
+
+    # Device identifiers must be UUIDv4 values before Nautobot is queried.
+    mock_connect.reset_mock()
+    with pytest.raises(HTTPException, match="Device identifier must be a UUID v4") as exc_info:
+        await start_workflow(request, DeployWorkflow, DeployInput(device_id="LEAF01"))
+    assert exc_info.value.status_code == 422
+    mock_connect.return_value.start_workflow.assert_not_called()
 
 
 @pytest.mark.asyncio

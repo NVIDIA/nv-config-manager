@@ -15,12 +15,17 @@
 """Read-only configuration diff workflow."""
 
 from datetime import timedelta
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
+from nv_config_manager.temporal.common.workflow_references import (
+    DEVICE_REFERENCE,
+    DeviceReference,
+)
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.decorators.workflow import (
@@ -51,8 +56,8 @@ CONFIG_DIFF_DEVICE_DESCRIPTION = "Preloaded network device data, if available."
 class ConfigDiffInput(BaseModel):
     """Config Diff Workflow input."""
 
-    device_id: str = Field(description="Identifier of the network device to compare.")
-    device: NetworkDeviceData | None = Field(
+    device_id: DeviceReference = Field(description="Identifier of the network device to compare.")
+    device: Annotated[NetworkDeviceData | None, DEVICE_REFERENCE] = Field(
         default=None,
         description=CONFIG_DIFF_DEVICE_DESCRIPTION,
     )

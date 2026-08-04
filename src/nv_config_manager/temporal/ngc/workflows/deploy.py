@@ -15,7 +15,7 @@
 """Network Device Backup Workflow Definition."""
 
 from datetime import timedelta
-from typing import cast
+from typing import Annotated, cast
 
 from pydantic import (
     BaseModel,
@@ -40,6 +40,10 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageRuntimeFailure,
     StateEnum,
     stage_executor,
+)
+from nv_config_manager.temporal.common.workflow_references import (
+    DEVICE_REFERENCE,
+    DeviceReference,
 )
 
 with workflow.unsafe.imports_passed_through():
@@ -89,7 +93,7 @@ INTENDED_CONFIG_COMMIT_ID_DESCRIPTION = (
 class DeployInput(BaseModel):
     """Config Deployment Workflow Input Definiton."""
 
-    device_id: str = Field(description="Identifier of the network device to configure.")
+    device_id: DeviceReference = Field(description="Identifier of the network device to configure.")
     commit_confirm: bool = Field(
         default=True,
         description="Whether to use commit-confirmed mode when the platform supports it.",
@@ -408,7 +412,7 @@ class TenantDeployInput(BaseModel):
         }
     )
 
-    device: str | NetworkDeviceData = Field(
+    device: Annotated[str | NetworkDeviceData, DEVICE_REFERENCE] = Field(
         description="Identifier or preloaded data for the network device to configure."
     )
     tenant_config_commit_id: str | None = Field(

@@ -32,6 +32,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     stage_executor,
 )
 from nv_config_manager.temporal.common.search_attributes import ISSUE_KEY_SEARCH_ATTRIBUTE
+from nv_config_manager.temporal.common.workflow_references import DeviceReferences
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -88,7 +89,9 @@ _PREFLIGHT_RETRY = RetryPolicy(maximum_attempts=1)  # fail fast before touching 
 
 
 class DiagnosticsWorkflowInput(BaseModel):
-    device_ids: list[str] = Field(description="Nautobot identifiers of the devices to diagnose.")
+    device_ids: DeviceReferences = Field(
+        description="Nautobot identifiers of the devices to diagnose."
+    )
     commands: list[str] = Field(
         description="Diagnostic command catalog names to run on each device."
     )
