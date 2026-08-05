@@ -114,7 +114,7 @@ spec:
         {{- end }}
         {{- if and .Values.monitoring .Values.monitoring.grafanaUrl }}
         - name: GRAFANA_URL
-          value: {{ .Values.monitoring.grafanaUrl | quote }}
+          value: {{ tpl .Values.monitoring.grafanaUrl . | quote }}
         {{- end }}
         ports:
         - containerPort: 3000

@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed" // Required to enable the //go:embed directives below.
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -163,6 +164,9 @@ func (n *natsReady) getOrCreateStream(ctx context.Context, streamConfig *StreamC
 	// Try to get the existing stream
 	stream, err := n.js.Stream(ctx, streamName)
 	if err != nil {
+		if !errors.Is(err, jetstream.ErrStreamNotFound) {
+			return fmt.Errorf("check stream %s: %w", streamName, err)
+		}
 		// Stream doesn't exist, create it
 		n.log.Info().Str("stream", streamName).Msg("Stream not found, creating new stream")
 		return n.createStream(ctx, streamConfig)

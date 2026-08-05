@@ -379,9 +379,6 @@
             },
             "description": "Operation successful"
           },
-          "404": {
-            "description": "Consumer not found"
-          },
           "500": {
             "description": "Internal server error"
           }
@@ -399,7 +396,7 @@
     },
     "/v1/admin/consumers/reset-all": {
       "delete": {
-        "description": "Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services.",
+        "description": "Delete every consumer so the running services recreate them at the stream head.",
         "operationId": "reset_all_consumers_v1_admin_consumers_reset_all_delete",
         "responses": {
           "200": {
@@ -415,9 +412,6 @@
               }
             },
             "description": "Operation successful"
-          },
-          "404": {
-            "description": "Consumer not found"
           },
           "500": {
             "description": "Internal server error"
@@ -459,6 +453,9 @@
             },
             "description": "Operation successful"
           },
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
+          },
           "404": {
             "description": "Consumer not found"
           },
@@ -489,7 +486,7 @@
     },
     "/v1/admin/consumers/{consumer_type}/reset": {
       "delete": {
-        "description": "Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service.",
+        "description": "Delete a consumer so the running service recreates it at the stream head.",
         "operationId": "reset_consumer_v1_admin_consumers__consumer_type__reset_delete",
         "parameters": [
           {
@@ -512,8 +509,8 @@
             },
             "description": "Operation successful"
           },
-          "404": {
-            "description": "Consumer not found"
+          "403": {
+            "description": "NATS account lacks the required consumer permission"
           },
           "422": {
             "content": {

@@ -22,13 +22,56 @@ You can use the render service's API endpoints to trigger the rendering of netwo
 
 ### Event Consumers
 
-Three specialized pull-based consumers process NATS JetStream events:
+Two specialized pull-based consumers process NATS JetStream events:
 
 **Nautobot event consumer** responds to Nautobot model changes (device, interface, cable, IP address, and so on). The consumer dispatches events to model-specific handlers, and queues device renders.
 
 **Device change consumer** responds to queued device render requests from event handlers. The consumer executes renders with distributed locking, and updates the config store.
 
-**Template change consumer** responds to template version updates. The consumer re-renders devices with stale template versions. If the running version is less than the desired version, the consumer will NAK the message and wait for 30 seconds before trying again.
+### External NATS administration
+
+The bundled NATS deployment creates the streams automatically. The application creates missing durable consumers at runtime in both bundled and externally managed deployments. When NATS is owned outside the Config Manager deployment, coordinate the streams, account imports, and user permissions with the NATS administrator. An administrator can own consumer provisioning instead by omitting create permission and provisioning the fixed durables described below.
+
+The application uses three fixed durable names in every deployment:
+
+| Stream value | Default stream | Durable consumer |
+| :----------- | :------------- | :--------------- |
+| `externalServices.nats.streams.configManager` | `nv-config-manager` | `nv-config-manager-device` |
+| `externalServices.nats.streams.configManager.archiveConsumer` | `nv-config-manager` | `nv-config-manager-archive` |
+| `externalServices.nats.streams.nautobot` | `nautobot` | `nv-config-manager-nautobot` |
+
+Each stream also has an `apiPrefix` value. Its default, `$JS.API`, addresses JetStream in the connected account directly. Override it when the stream belongs to another NATS account and its JetStream API service export is imported under a different local subject prefix. For example:
+
+```yaml
+externalServices:
+  nats:
+    streams:
+      configManager:
+        apiPrefix: $JS.API
+      nautobot:
+        apiPrefix: $JS.IMPORTED.API
+```
+
+The prefix is configured per stream because the Config Manager stream can remain local while the Nautobot event stream is imported from another account. It is a local routing prefix, not a stream or consumer name. The NATS user permissions and account service imports must refer to the selected prefix.
+
+For each render pull-consumer `<prefix>`, `<stream>`, and `<consumer>` tuple, the application account needs these consumer subjects:
+
+| Subject | Required | Purpose |
+| :------ | :------- | :------ |
+| `<prefix>.CONSUMER.INFO.<stream>.<consumer>` | Yes | Validate the durable and export backlog metrics |
+| `<prefix>.CONSUMER.MSG.NEXT.<stream>.<consumer>` | Yes | Fetch messages from the pull consumer |
+| `<prefix>.CONSUMER.DURABLE.CREATE.<stream>.<consumer>` | Optional | Create a missing fixed durable; omit only when an administrator owns provisioning |
+| `<prefix>.CONSUMER.DELETE.<stream>.<consumer>` | Optional | Reset backlog by deleting the durable; omit when resets are administrator-operated |
+
+The account also needs the ordinary data-plane permissions for its configured subjects: subscribe access to request/delivery inboxes, permission to publish acknowledgements to the reply subjects supplied by JetStream, and publish access to any event subjects produced by the application. In an account-import design, the owning administrator must export the corresponding JetStream service subjects and the application account must import them at `apiPrefix`.
+
+When `temporal.archive.enabled=true`, the archive service consumes `archiveSubject` through the fixed `archiveConsumer.name` and `archiveConsumer.deliverySubject`. It requires consumer INFO and durable CREATE for that exact stream and durable, subscribe access to the configured delivery subject, and publish access to JetStream acknowledgement subjects. The archive service creates the push durable when it is missing. An administrator can provision the same durable with `deliver_policy=new`, `ack_policy=explicit`, `ack_wait=360s`, `max_deliver=-1`, the configured filter and delivery subjects, and a delivery group matching the durable name.
+
+Clients specify their stream explicitly and do not request `STREAM.INFO` for externally managed streams. Stream creation, mutation, and inspection therefore remain administrator operations. When `externalServices.nats.local=true`, the application retains its existing stream setup behavior for local development.
+
+An administrator-provisioned consumer should use the configured stream and filter subject with the fixed durable name, `deliver_policy=new`, `ack_policy=explicit`, `ack_wait=360s`, and `max_deliver=-1`. The application validates operational settings but does not change an existing consumer or require its delivery policy to match; the owner can retain the delivery policy chosen for a migration boundary.
+
+If create permission is omitted and the durable is absent, the consumer logs the exact provisioning request. If delete permission is omitted, the reset API returns instructions to delete and recreate the exact durable at the stream head. Configuration mismatches likewise produce an administrator-ready update request in the consumer log.
 
 ### Event Dispatcher
 
@@ -45,13 +88,13 @@ The rendering process is as follows:
 
 ## Template Version Management
 
-**Producer**: Runs as a Kubernetes job on service deployment. The producer queries Nautobot for devices with stale `template_version`, and publishes template-change events for outdated devices.
+**Template updater**: Runs as a Kubernetes job on service deployment. It queries Nautobot for devices with stale `template_version` and renders them directly with bounded concurrency and per-device locking.
 
-**Version tracking**: The producer records the `nv_config_manager_templates` version in Nautobot, and the template consumer refuses to process events for newer versions (NAKs with 30s delay). This allows for zero-downtime rolling deployments (old pods terminate, new pods process backlog).
+**Version tracking**: Successful renders record the `nv_config_manager_templates` version in Nautobot so subsequent updater runs can identify stale configurations.
 
 ## Deployment
 
-The service is deployed as a Kubernetes deployment, with three consumer deployments (nautobot, device, template), a producer job (runs on helm upgrade), and Redis for distributed locking. The service exposes Prometheus metrics on port 8000.
+The service is deployed with two consumer deployments (Nautobot and device), a template-updater job that runs on Helm upgrade, and Redis for distributed locking. The service exposes Prometheus metrics on port 8000.
 
 The service is configured using a configuration file (`config.py`). The configuration file contains the Nautobot URL and token, NATS connection details (TLS, credentials), Redis connection for locking, Config store client settings, and environment-specific aggregate management flags.
 

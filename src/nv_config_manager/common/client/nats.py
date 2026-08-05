@@ -24,19 +24,39 @@ import logging
 import signal
 import ssl
 from collections.abc import Awaitable, Callable
-from configparser import ConfigParser
-from typing import Any
+from configparser import ConfigParser, SectionProxy
+from typing import Any, cast
 
 import certifi
 import nats
 import nats.js.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
-from nats.js.api import DeliverPolicy, StreamInfo
+from nats.js import JetStreamContext
+from nats.js.api import AckPolicy, ConsumerConfig, ConsumerInfo, DeliverPolicy, StreamInfo
+from nats.js.errors import NotFoundError
 
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.common.nats_admin import (
+    CONSUMER_ACK_WAIT_SECONDS,
+    CONSUMER_MAX_DELIVER,
+    is_nats_permissions_error,
+)
 
 logger = get_logger(__name__, category=LogCategory.NATS)
+
+# Defined here rather than in common.config because that module imports this
+# package; common.config re-exports it as the public name.
+DEFAULT_NATS_API_PREFIX = "$JS.API"
+
+
+def config_manager_api_prefix(nats_config: SectionProxy) -> str:
+    """Return the JetStream API prefix for the stream owned by the config-manager account.
+
+    A JetStream API prefix identifies the NATS account hosting a stream, so it is a
+    property of the stream rather than of any individual subject on it.
+    """
+    return nats_config.get("config_manager_api_prefix", DEFAULT_NATS_API_PREFIX)
 
 
 class NatsClient:
@@ -53,6 +73,7 @@ class NatsClient:
         creds_path: str | None = None,
         default_stream_name: str = "nv-config-manager",
         default_stream_subjects: list[str] | None = None,
+        api_prefix: str = DEFAULT_NATS_API_PREFIX,
     ) -> None:
         """Initialize the NATS client.
 
@@ -64,6 +85,8 @@ class NatsClient:
             user: Username for password auth
             password: Password for password auth
             creds_path: Path to credentials file for JWT auth
+            api_prefix: JetStream API prefix. Use the exporting account's rewritten
+                prefix when the stream is imported from another NATS account.
         """
         self.server = server
         self.queue = queue
@@ -74,6 +97,7 @@ class NatsClient:
         self.creds_path = creds_path
         self.default_stream_name = default_stream_name
         self.default_stream_subjects = default_stream_subjects or ["nv-config-manager.>"]
+        self.api_prefix = api_prefix
 
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.load_verify_locations(certifi.where())
@@ -109,6 +133,7 @@ class NatsClient:
             creds_path=nats_config.get("creds_path"),
             default_stream_name=nats_config.get("config_manager_stream", "nv-config-manager"),
             default_stream_subjects=stream_subjects,
+            api_prefix=config_manager_api_prefix(nats_config),
         )
 
     async def _disconnected_cb(self) -> None:
@@ -154,7 +179,11 @@ class NatsClient:
 
         try:
             self.conn = await nats.connect(self.server, **options)
-            await self._ensure_stream()
+            # Stream lifecycle belongs to the bundled deployment or an external
+            # administrator. Avoid requiring STREAM.INFO merely to publish to or
+            # consume from an explicitly configured externally managed stream.
+            if self.local:
+                await self._ensure_stream()
         except Exception as err:
             logger.error(
                 "NATS connection failed: server=%s error=%s",
@@ -172,7 +201,7 @@ class NatsClient:
         if not self.conn:
             return
 
-        jetstream = self.conn.jetstream()
+        jetstream = self.conn.jetstream(prefix=self.api_prefix)
         try:
             self.stream_info = await jetstream.stream_info(self.default_stream_name)
         except nats.js.errors.NotFoundError:
@@ -209,7 +238,7 @@ class NatsProducer(NatsClient):
         """
         stream_name = stream or self.default_stream_name
         async with await self.connect() as conn:
-            await conn.jetstream().publish(
+            await conn.jetstream(prefix=self.api_prefix).publish(
                 subject=subject, payload=message.encode("utf-8"), stream=stream_name
             )
             logger.debug("Published NATS message on stream %s subject %s", stream_name, subject)
@@ -224,6 +253,8 @@ class NatsConsumer(NatsClient):
         subject: str,
         queue_suffix: str,
         handler: Callable[[Msg], Awaitable[None]],
+        durable_name: str | None = None,
+        deliver_subject: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the consumer.
@@ -233,19 +264,23 @@ class NatsConsumer(NatsClient):
             subject: Subject to subscribe to
             queue_suffix: Suffix for the queue group name
             handler: Async callback for handling messages
+            durable_name: Exact durable name. Defaults to the legacy queue-based name.
+            deliver_subject: Fixed push delivery subject for administrator provisioning.
             **kwargs: Additional arguments passed to NatsClient
         """
         super().__init__(**kwargs)
         self.stream = stream
         self.subject = subject
         self.queue_suffix = queue_suffix
+        self.durable_name = durable_name
+        self.deliver_subject = deliver_subject
         self.handler = handler
         self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def full_queue_name(self) -> str:
         """Get the full queue name."""
-        return f"{self.queue}-{self.queue_suffix}"
+        return self.durable_name or f"{self.queue}-{self.queue_suffix}"
 
     def run(self) -> None:
         """Run the consumer (blocking)."""
@@ -264,13 +299,14 @@ class NatsConsumer(NatsClient):
     async def main(self) -> None:
         """Main consumer loop."""
         self.conn = await self.connect()
-        jetstream = self.conn.jetstream()
+        jetstream = self.conn.jetstream(prefix=self.api_prefix)
+        durable = self.full_queue_name
+        consumer_info = await self._ensure_consumer(jetstream)
 
-        await jetstream.subscribe(
-            subject=self.subject,
+        await jetstream.subscribe_bind(
             stream=self.stream,
-            deliver_policy=DeliverPolicy.NEW,
-            queue=self.full_queue_name,
+            consumer=durable,
+            config=consumer_info.config,
             cb=self.handler,
         )
         logger.info(
@@ -282,6 +318,97 @@ class NatsConsumer(NatsClient):
 
         while not self.conn.is_closed:
             await asyncio.sleep(1)
+
+    def _expected_consumer_config(self) -> ConsumerConfig:
+        """Build the exact push-consumer configuration owned by this runtime."""
+        if not self.deliver_subject:
+            raise ValueError("A fixed deliver_subject is required for a durable push consumer")
+        durable = self.full_queue_name
+        return ConsumerConfig(
+            durable_name=durable,
+            deliver_policy=DeliverPolicy.NEW,
+            ack_policy=AckPolicy.EXPLICIT,
+            ack_wait=CONSUMER_ACK_WAIT_SECONDS,
+            max_deliver=CONSUMER_MAX_DELIVER,
+            filter_subject=self.subject,
+            deliver_subject=self.deliver_subject,
+            deliver_group=durable,
+        )
+
+    async def _ensure_consumer(self, jetstream: JetStreamContext) -> ConsumerInfo:
+        """Return the fixed durable, creating it only when it is absent."""
+        durable = self.full_queue_name
+        try:
+            consumer_info = await jetstream.consumer_info(self.stream, durable)
+        except NotFoundError:
+            expected = self._expected_consumer_config()
+            try:
+                consumer_info = await jetstream.add_consumer(
+                    stream=self.stream,
+                    config=expected,
+                )
+                logger.info("Created NATS consumer %s on stream %s", durable, self.stream)
+            except Exception as create_error:
+                # Another replica may have created the durable after our lookup. Bind to
+                # it only when a fresh lookup confirms that race; otherwise preserve the
+                # original creation failure and its permission guidance.
+                try:
+                    consumer_info = await jetstream.consumer_info(self.stream, durable)
+                except Exception as lookup_error:
+                    raise create_error from lookup_error
+
+        mismatches = self._consumer_configuration_mismatches(consumer_info)
+        if mismatches:
+            logger.warning(
+                "Consumer %s on stream %s differs from the archive runtime: %s. Ask the "
+                "NATS administrator to update the durable before relying on archival.",
+                durable,
+                self.stream,
+                "; ".join(mismatches),
+            )
+        return cast(ConsumerInfo, consumer_info)
+
+    def _consumer_configuration_mismatches(self, consumer_info: ConsumerInfo) -> list[str]:
+        """Return operational differences without enforcing the migration policy."""
+        config = consumer_info.config
+        expected = self._expected_consumer_config()
+        mismatches = []
+        for field in (
+            "durable_name",
+            "filter_subject",
+            "ack_policy",
+            "ack_wait",
+            "max_deliver",
+            "deliver_subject",
+            "deliver_group",
+        ):
+            actual_value = getattr(config, field)
+            expected_value = getattr(expected, field)
+            if actual_value != expected_value:
+                mismatches.append(f"{field}={actual_value!r} expected {expected_value!r}")
+        return mismatches
+
+    async def _error_cb(self, error: Exception) -> None:
+        """Log exact administrator guidance for restricted consumer operations."""
+        if is_nats_permissions_error(error):
+            durable = self.full_queue_name
+            logger.error(
+                "NATS denied an operation for consumer %s on stream %s. Ask the NATS "
+                "administrator to grant publish access to %s and %s, or provision that "
+                "durable with filter_subject=%r, deliver_policy='new', ack_policy='explicit', "
+                "ack_wait=%ss, max_deliver=%s, deliver_subject=%r, and deliver_group=%r.",
+                durable,
+                self.stream,
+                f"{self.api_prefix}.CONSUMER.INFO.{self.stream}.{durable}",
+                f"{self.api_prefix}.CONSUMER.DURABLE.CREATE.{self.stream}.{durable}",
+                self.subject,
+                CONSUMER_ACK_WAIT_SECONDS,
+                CONSUMER_MAX_DELIVER,
+                self.deliver_subject,
+                durable,
+            )
+            return
+        await super()._error_cb(error)
 
     def _clean_exit(self) -> None:
         """Cancel all running tasks and close the connection."""

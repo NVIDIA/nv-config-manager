@@ -33,6 +33,7 @@ from nv_config_manager.common.client import (
 from nv_config_manager.common.client import (
     NatsProducer as BaseNatsProducer,
 )
+from nv_config_manager.common.client import config_manager_api_prefix
 from nv_config_manager.common.config import load_config
 
 
@@ -53,6 +54,7 @@ class NatsClient(BaseNatsClient):
         local = local_str.lower() == "true" if isinstance(local_str, str) else bool(local_str)
 
         super().__init__(
+            api_prefix=config_manager_api_prefix(nats_config),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,
@@ -79,6 +81,7 @@ class NatsProducer(BaseNatsProducer):
         local = local_str.lower() == "true" if isinstance(local_str, str) else bool(local_str)
 
         super().__init__(
+            api_prefix=config_manager_api_prefix(nats_config),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,
@@ -115,6 +118,13 @@ class NatsConsumer(BaseNatsConsumer):
             subject=subject,
             queue_suffix=queue_suffix,
             handler=handler,
+            durable_name=nats_config.get(
+                "archive_consumer_name", f"nv-config-manager-{queue_suffix}"
+            ),
+            deliver_subject=nats_config.get(
+                "archive_deliver_subject", "nv-config-manager.archive.delivery"
+            ),
+            api_prefix=config_manager_api_prefix(nats_config),
             server=nats_config["server"],
             queue=nats_config.get("queue", "nv-config-manager"),
             local=local,

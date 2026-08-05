@@ -1162,6 +1162,22 @@ mcp-auth.ini: |
 {{- .Values.externalServices.nats.externalSecretName | default (printf "%s-eso" (include "nv-config-manager.natsSecretName" .)) -}}
 {{- end }}
 
+{{- define "nv-config-manager.configManagerConsumerName" -}}
+{{- required "externalServices.nats.streams.configManager.consumer.name is required" .Values.externalServices.nats.streams.configManager.consumer.name -}}
+{{- end -}}
+
+{{- define "nv-config-manager.archiveConsumerName" -}}
+{{- required "externalServices.nats.streams.configManager.archiveConsumer.name is required" .Values.externalServices.nats.streams.configManager.archiveConsumer.name -}}
+{{- end -}}
+
+{{- define "nv-config-manager.archiveConsumerDeliverySubject" -}}
+{{- required "externalServices.nats.streams.configManager.archiveConsumer.deliverySubject is required" .Values.externalServices.nats.streams.configManager.archiveConsumer.deliverySubject -}}
+{{- end -}}
+
+{{- define "nv-config-manager.nautobotConsumerName" -}}
+{{- required "externalServices.nats.streams.nautobot.consumer.name is required" .Values.externalServices.nats.streams.nautobot.consumer.name -}}
+{{- end -}}
+
 {{- define "nv-config-manager.vaultSecretStoreName" -}}
 {{- .Values.secrets.vault.secretStoreName | default "vault-secretstore-nv-config-manager" -}}
 {{- end }}

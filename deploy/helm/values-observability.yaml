@@ -75,6 +75,7 @@ global:
 # test_probe_labels.py asserts), not real blackbox probing. A real deployment
 # points this at its own blackbox-exporter Service.
 monitoring:
+  grafanaUrl: 'http://localhost:3000/d/nv-config-manager-overview?var-namespace={{ .Values.global.namespace }}'
   probes:
     enabled: true
     blackboxExporterUrl: "blackbox-exporter:9115"
