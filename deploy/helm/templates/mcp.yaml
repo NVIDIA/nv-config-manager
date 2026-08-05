@@ -10,7 +10,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $mcpName }}
-    component: api
+    component: mcp-api
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: mcp
 spec:
@@ -18,13 +18,13 @@ spec:
   selector:
     matchLabels:
       app: {{ $mcpName }}
-      component: api
+      component: mcp-api
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
         app: {{ $mcpName }}
-        component: api
+        component: mcp-api
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}
@@ -105,7 +105,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $mcpName }}
-    component: api
+    component: mcp-api
 spec:
   type: ClusterIP
   ports:
@@ -116,5 +116,5 @@ spec:
     appProtocol: agentgateway.dev/mcp
   selector:
     app: {{ $mcpName }}
-    component: api
+    component: mcp-api
 {{- end }}

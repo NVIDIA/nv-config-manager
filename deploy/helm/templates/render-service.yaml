@@ -10,7 +10,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $renderName }}
-    component: api
+    component: render-api
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: render-service
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -19,13 +19,13 @@ spec:
   selector:
     matchLabels:
       app: {{ $renderName }}
-      component: api
+      component: render-api
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
         app: {{ $renderName }}
-        component: api
+        component: render-api
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -129,7 +129,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $renderName }}
-    component: api
+    component: render-api
 spec:
   type: ClusterIP
   ports:
@@ -139,7 +139,7 @@ spec:
     name: http
   selector:
     app: {{ $renderName }}
-    component: api
+    component: render-api
 ---
 # Render Service - Nautobot Consumer Deployment
 apiVersion: apps/v1

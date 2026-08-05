@@ -16,6 +16,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $ztpName }}
+    component: network-ztp
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: network-ztp
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -29,6 +30,7 @@ spec:
     metadata:
       labels:
         app: {{ $ztpName }}
+        component: network-ztp
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
