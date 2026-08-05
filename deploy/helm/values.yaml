@@ -2303,7 +2303,13 @@ cnpg:
   # PostgreSQL Cluster pods; poolerImageName is reserved for CNPG Pooler resources.
   imageName: ""
   poolerImageName: ""
-  # Monitoring via PodMonitor (requires Prometheus Operator)
+  # Chart-managed CNPG PodMonitors live in monitoring.yaml and render when
+  # monitoring.podMonitors.enabled and cnpg.enabled are true. Operator
+  # enablePodMonitor is intentionally unused (deprecated upstream).
+  # Scraped samples get global.customLabels via Cluster inheritedMetadata
+  # (podTargetLabels) and PodMonitor metricRelabelings.
+  # The installer sets this true when infrastructure monitoring or the local
+  # observability stack is enabled.
   monitoring:
     enabled: true
   # ---------------------------------------------------------------------------

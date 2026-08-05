@@ -817,7 +817,18 @@ def _build_nautobot(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 def _build_cnpg(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the ``cnpg`` section."""
     svc = config.services
-    section: dict[str, Any] = {"enabled": True, "monitoring": {"enabled": False}}
+    # Align CNPG monitoring flag with chart PodMonitors / local observability.
+    # Chart-managed CNPG PodMonitors gate on monitoring.podMonitors.enabled;
+    # keep this in sync so generated values reflect whether Postgres scrapes
+    # are expected when monitoring is on.
+    cnpg_monitoring = (
+        config.infrastructure.monitoring.enabled
+        or config.infrastructure.monitoring.observability_enabled
+    )
+    section: dict[str, Any] = {
+        "enabled": True,
+        "monitoring": {"enabled": cnpg_monitoring},
+    }
     backup_cfg = config.infrastructure.cnpg_s3_backup
     if backup_cfg.enabled:
         section["backup"] = {
