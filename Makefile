@@ -58,9 +58,9 @@ NAUTOBOT_NV_CONFIG_MANAGER_VERSION_ARG = $(if $(NAUTOBOT_NV_CONFIG_MANAGER_VERSI
 # Keep this aligned with the currently approved production server version.
 # A Temporal server upgrade is a separately planned schema migration.
 TEMPORAL_SERVER_VERSION ?= 1.29.7
-# Admin tools run only in the bootstrap init containers.  Temporal does not
-# publish an admin-tools:1.29.7 tag, so retain the available 1.29.6 release.
-TEMPORAL_ADMIN_TOOLS_VERSION ?= 1.29.6
+# Admin tools run only in the bootstrap init containers. Temporal publishes
+# 1.29.7 under its fully qualified server/tctl/CLI tag.
+TEMPORAL_ADMIN_TOOLS_VERSION ?= 1.29.7-tctl-1.18.4-cli-1
 # UI is independently deployable and does not change Temporal persistence.
 TEMPORAL_UI_VERSION ?= 2.52.1
 TEMPORAL_BUILD_ARGS = --build-arg TEMPORAL_SERVER_VERSION=$(TEMPORAL_SERVER_VERSION) --build-arg TEMPORAL_ADMIN_TOOLS_VERSION=$(TEMPORAL_ADMIN_TOOLS_VERSION) --build-arg TEMPORAL_UI_VERSION=$(TEMPORAL_UI_VERSION)
