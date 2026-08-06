@@ -37,12 +37,13 @@ const BackupWorkflowForm = () => {
       workflow_id: "", //NOTE: not relevant for trigger type API
       intended_config_commit_id: "", //NOTE: not relevant for trigger type API
     };
-    startWorkflow(endpoint, params).catch((error) => {
+    return startWorkflow(endpoint, params).catch((error) => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
         description: `${error}`,
       });
+      throw error;
     });
   };
 

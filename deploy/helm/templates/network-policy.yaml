@@ -58,6 +58,28 @@ spec:
           port: {{ .Values.networkDhcp.kea.storkAgentPort }}
         - protocol: TCP
           port: 9187  # CNPG metrics exporter
+        {{- if .Values.nautobotNats.metrics.enabled }}
+        - protocol: TCP
+          port: {{ .Values.nautobotNats.metrics.port | default 7777 }}  # nautobot NATS exporter
+        {{- end }}
+    {{- end }}
+    {{- if and .Values.renderService.enabled .Values.renderService.autoscaling.enabled (include "nv-config-manager.inClusterPrometheusAddress" .) }}
+    # Allow KEDA to read the render-consumer trigger metric from the Prometheus
+    # this release deploys. KEDA runs in its own namespace, so its queries are
+    # cross-namespace ingress that the same-namespace rule above does not cover;
+    # without this the ScaledObjects never resolve a value.
+    #
+    # Keyed on the same helper the ScaledObject uses for its serverAddress, so
+    # this opens only when that in-cluster Prometheus is genuinely the endpoint
+    # KEDA queries. An explicit serverAddress (external Prometheus) yields no
+    # rule, rather than granting access to a port KEDA never dials here.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.kedaNamespace | default "keda" | quote }}
+      ports:
+        - protocol: TCP
+          port: 9090
     {{- end }}
     {{- if .Values.networkPolicy.allowFromGatewayNamespace }}
     # Allow traffic from Envoy Gateway system namespace (data plane proxies)

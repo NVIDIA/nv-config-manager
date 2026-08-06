@@ -30,6 +30,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.activities.nautobot import (
@@ -60,7 +61,9 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class InfinibandMlnxOSUpgradeInput(BaseModel):
     """Infiniband Mellanox OS Upgrade Workflow Input Definition."""
 
-    device_id: str = Field(description="Identifier of the InfiniBand switch to upgrade.")
+    device_id: DeviceReference = Field(
+        description="Identifier of the InfiniBand switch to upgrade."
+    )
 
 
 @workflow.defn

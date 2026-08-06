@@ -29,6 +29,8 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import OptionalLocationReference
+from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostSiteValidationMixin
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -72,7 +74,7 @@ class IBPKeyCreationInput(BaseModel):
     """
 
     host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
-    site: str | None = Field(
+    site: OptionalLocationReference = Field(
         default=None,
         description="Site used for UFM credential lookup; resolved from the host when omitted.",
     )
@@ -102,7 +104,12 @@ class IBPKeyCreationWorkflowOutput(BaseModel):
 
 
 @workflow.defn
-class IBPKeyCreationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
+class IBPKeyCreationWorkflow(
+    UFMHostSiteValidationMixin,
+    WorkflowMetadataMixin,
+    StageMixin,
+    ArchiveMixin,
+):
     """Create an InfiniBand PKey partition on UFM for tenant isolation."""
 
     workflow_name = "InfiniBand PKey Creation"

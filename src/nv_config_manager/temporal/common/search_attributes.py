@@ -14,6 +14,12 @@
 # limitations under the License.
 """Temporal search attribute names used by NVIDIA Config Manager."""
 
+from typing import Any
+
+from temporalio import workflow
+
+INITIAL_SEARCH_ATTRIBUTES_PATCH_ID = "initial-search-attributes-v1"
+
 DEVICE_ID_SEARCH_ATTRIBUTE = "DeviceID"
 DEVICE_NAME_SEARCH_ATTRIBUTE = "DeviceName"
 DEVICE_PLATFORM_SEARCH_ATTRIBUTE = "DevicePlatform"
@@ -25,3 +31,14 @@ PENDING_APPROVAL_SEARCH_ATTRIBUTE = "PendingApproval"
 READ_ROLES_SEARCH_ATTRIBUTE = "ReadRoles"
 SITE_SEARCH_ATTRIBUTE = "Site"
 USER_SEARCH_ATTRIBUTE = "User"
+
+
+def upsert_missing_search_attributes(attributes: dict[str, list[Any]]) -> None:
+    """Upsert attributes not already attached when the workflow was started."""
+    if workflow.patched(INITIAL_SEARCH_ATTRIBUTES_PATCH_ID):
+        initial_attributes = workflow.info().search_attributes
+        attributes = {
+            name: value for name, value in attributes.items() if name not in initial_attributes
+        }
+    if attributes:
+        workflow.upsert_search_attributes(attributes)

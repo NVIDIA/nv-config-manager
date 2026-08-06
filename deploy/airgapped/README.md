@@ -107,7 +107,7 @@ images:
       tag: "7-alpine"
     nats:
       repository: registry.example.com/nv-config-manager/library/nats
-      tag: "2.10-alpine"
+      tag: "2.14-alpine"
     natsBox:
       repository: registry.example.com/nv-config-manager/natsio/nats-box
       tag: "0.14.3"

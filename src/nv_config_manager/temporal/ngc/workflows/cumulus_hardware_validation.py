@@ -33,7 +33,11 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StateEnum,
     stage_executor,
 )
-from nv_config_manager.temporal.common.search_attributes import SITE_SEARCH_ATTRIBUTE
+from nv_config_manager.temporal.common.search_attributes import (
+    SITE_SEARCH_ATTRIBUTE,
+    upsert_missing_search_attributes,
+)
+from nv_config_manager.temporal.common.workflow_references import LocationReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -265,7 +269,9 @@ def analyze_flagged_results(
 class ValidateHardwareInput(BaseModel):
     """Validate Hardware Workflow Input."""
 
-    site: str = Field(description="Site used to select network devices for validation.")
+    site: LocationReference = Field(
+        description="Site used to select network devices for validation."
+    )
     roles: list[str] = Field(
         default=[], description="Device roles used to filter the selected network devices."
     )
@@ -946,7 +952,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
     ) -> HardwareValidationResult:
         """Execute hardware validation workflow."""
         self.set_input(workflow_input)
-        workflow.upsert_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
+        upsert_missing_search_attributes({SITE_SEARCH_ATTRIBUTE: [workflow_input.site]})
 
         devices_to_validate_output = await self.get_devices_to_validate(
             self.GetDevicesToValidateStageInput(

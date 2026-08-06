@@ -346,6 +346,14 @@ def _docker_image_id(image: str) -> str:
 _DEFAULT_IMAGE_REGISTRY = "nvcr.io/nvidian/cfa"
 _CNPG_OPERATOR_IMAGE_TAG = "1.29.0"
 _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION = "28.0.1"
+_KEDA_CHART_VERSION = "2.20.1"
+# Tracked separately from the chart version, as with _CNPG_OPERATOR_IMAGE_TAG:
+# KEDA happens to keep the two in lockstep today, but they are independent knobs
+# and the chart would otherwise default the tag from its own appVersion.
+_KEDA_IMAGE_TAG = "2.20.1"
+# Must stay in sync with networkPolicy.kedaNamespace in deploy/helm/values.yaml,
+# which allows KEDA's trigger queries through the namespace-isolation policy.
+_KEDA_NAMESPACE = "keda"
 _KIND_PRELOAD_IMAGES_ENV = "NVCM_KIND_PRELOAD_IMAGES"
 _KIND_PRELOAD_IMAGES = (LOADER_POD_IMAGE,)
 _KIND_PRELOAD_PLATFORM_IMAGES: dict[str, dict[str, str]] = {
@@ -462,6 +470,33 @@ def _append_split_image_set_strings(
     if image is None:
         return
     repository, tag = image
+    _append_set_string(args, f"{value_prefix}.repository", repository)
+    _append_set_string(args, f"{value_prefix}.tag", tag)
+
+
+def _append_registry_split_image_set_strings(
+    args: list[str],
+    config: NVConfigManagerInstallConfig,
+    key: str,
+    value_prefix: str,
+    source_repository: str,
+    default_tag: str,
+) -> None:
+    """Override an image on a chart that keeps registry and repository separate.
+
+    KEDA composes ``<registry>/<repository>:<tag>``, so overriding only the
+    repository with a rewritten path would yield ``ghcr.io/<private-registry>/…``
+    and still pull upstream. Blanking the registry is only correct when an
+    override actually applies: the chart's own default repository is
+    registry-relative (``kedacore/keda``), so clearing the registry
+    unconditionally would silently redirect the default install to Docker Hub.
+    Hence the same early return as ``_append_split_image_set_strings``.
+    """
+    image = _image_override_parts(config, key, source_repository, default_tag)
+    if image is None:
+        return
+    repository, tag = image
+    _append_set_string(args, f"{value_prefix}.registry", "")
     _append_set_string(args, f"{value_prefix}.repository", repository)
     _append_set_string(args, f"{value_prefix}.tag", tag)
 
@@ -1943,6 +1978,85 @@ class Deployer:
                 prom_crds_args.extend(["--version", _PROMETHEUS_OPERATOR_CRDS_CHART_VERSION])
             _run_logged(
                 prom_crds_args,
+                step,
+                self.callback,
+            )
+
+            # values-observability.yaml also turns on render-service
+            # autoscaling, whose ScaledObjects are keda.sh/v1alpha1 — so KEDA
+            # has the same ordering constraint as the CRDs above and must be a
+            # separate release installed first, or the parent chart fails API
+            # discovery with "no matches for kind ScaledObject".
+            #
+            # Installing the operator rather than only its CRDs is deliberate:
+            # KEDA marks a ScaledObject Ready only after it resolves the
+            # trigger against Prometheus, so the operator is what turns the
+            # rendered PromQL into something CI can actually verify. CRDs alone
+            # would admit a ScaledObject whose query matches no series.
+            self.callback.on_log("Installing KEDA...")
+            keda_chart = self._require_airgap_artifact(
+                self._local_operator_chart(bundle_root, "keda", _KEDA_CHART_VERSION),
+                f"keda chart {_KEDA_CHART_VERSION}",
+            )
+            keda_chart_ref = str(keda_chart) if keda_chart is not None else "kedacore/keda"
+            keda_args = [
+                "helm",
+                "upgrade",
+                "--install",
+                "keda",
+                keda_chart_ref,
+                "-n",
+                _KEDA_NAMESPACE,
+                "--create-namespace",
+                "--wait",
+                # Longer than the CRD-only release above: this one waits on the
+                # operator, metrics-apiserver, and admission-webhooks
+                # deployments, each pulling from ghcr.io.
+                "--timeout",
+                "300s",
+            ]
+            if keda_chart is not None:
+                self.callback.on_log(f"Using local chart: {keda_chart}")
+            else:
+                _run(
+                    [
+                        "helm",
+                        "repo",
+                        "add",
+                        "kedacore",
+                        "https://kedacore.github.io/charts",
+                        "--force-update",
+                    ],
+                    check=False,
+                )
+                keda_args.extend(["--version", _KEDA_CHART_VERSION])
+            # Swapping in the bundled chart is not enough for a private registry
+            # or airgapped install: the chart's image defaults still point at
+            # ghcr.io, so without these the operator would pull upstream and the
+            # ScaledObjects would never be reconciled.
+            for image_key, value_prefix, source_repository in (
+                ("kedaOperator", "image.keda", "ghcr.io/kedacore/keda"),
+                (
+                    "kedaMetricsApiServer",
+                    "image.metricsApiServer",
+                    "ghcr.io/kedacore/keda-metrics-apiserver",
+                ),
+                (
+                    "kedaAdmissionWebhooks",
+                    "image.webhooks",
+                    "ghcr.io/kedacore/keda-admission-webhooks",
+                ),
+            ):
+                _append_registry_split_image_set_strings(
+                    keda_args,
+                    self.config,
+                    image_key,
+                    value_prefix,
+                    source_repository,
+                    _KEDA_IMAGE_TAG,
+                )
+            _run_logged(
+                keda_args,
                 step,
                 self.callback,
             )

@@ -166,8 +166,9 @@ _GLOBAL_IMAGE_DEFAULTS: dict[str, tuple[str, str]] = {
     "kubectl": ("docker.io/alpine/kubectl", "1.35.4"),
     "busybox": ("docker.io/library/busybox", "1.36"),
     "redis": ("docker.io/library/redis", "7-alpine"),
-    "nats": ("docker.io/library/nats", "2.10-alpine"),
+    "nats": ("docker.io/library/nats", "2.14-alpine"),
     "natsBox": ("docker.io/natsio/nats-box", "0.14.3"),
+    "natsExporter": ("docker.io/natsio/prometheus-nats-exporter", "0.20.1"),
 }
 
 _NESTED_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {

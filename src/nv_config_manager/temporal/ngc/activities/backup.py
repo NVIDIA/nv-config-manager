@@ -100,15 +100,26 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
         existing_backup = await nbclient.load_config_manager_plugin_backup_config(
             activity_input.device_id
         )
-        if (
-            existing_backup.get("commit_id") == activity_input.commit_id
-            and existing_backup.get("deployed_commit_id") == activity_input.deployed_commit_id
-        ):
+        deployed_commit_id = activity_input.deployed_commit_id or None
+        config_store_changed = existing_backup.get("commit_id") != activity_input.commit_id
+        deployed_commit_changed = (
+            existing_backup.get("deployed_commit_id") or None
+        ) != deployed_commit_id
+        if not config_store_changed and not deployed_commit_changed:
             # Check if it was updated by this workflow,
             # if so this may be a retry that occurred despite the update succeeding
             if existing_backup.get("workflow_id") == activity_input.workflow_id:
                 return True, f"Persisted new backup configuration:\n{markdown}"
             return False, f"No diff to previous backup execution:\n{markdown}"
+
+        # Updating only the deployed commit metadata does not represent a new Config Store
+        # backup. Preserve the workflow that wrote the existing backup so an activity retry
+        # cannot incorrectly report this metadata-only update as a new backup.
+        workflow_id = (
+            activity_input.workflow_id
+            if config_store_changed
+            else existing_backup.get("workflow_id") or activity_input.workflow_id
+        )
 
         await nbclient.update_config_manager_plugin_backup_config(
             activity_input.device_id,
@@ -117,7 +128,9 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
             fname,
             activity_input.user,
             activity_input.commit_message,
-            activity_input.workflow_id,
-            activity_input.deployed_commit_id,
+            workflow_id,
+            deployed_commit_id,
         )
-    return True, f"Persisted new backup configuration:\n{markdown}"
+    if config_store_changed:
+        return True, f"Persisted new backup configuration:\n{markdown}"
+    return False, f"No diff to previous backup execution:\n{markdown}"

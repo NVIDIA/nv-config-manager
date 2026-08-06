@@ -29,6 +29,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
@@ -64,7 +65,9 @@ REPROVISION_WORKFLOW_UPDATES_PATCH_ID = "reprovision-workflow-updates-v1"
 class ReprovisionInput(BaseModel):
     """Reprovision Workflow Input Definition."""
 
-    device_id: str = Field(description="Identifier of the network device to reprovision.")
+    device_id: DeviceReference = Field(
+        description="Identifier of the network device to reprovision."
+    )
 
 
 @workflow.defn

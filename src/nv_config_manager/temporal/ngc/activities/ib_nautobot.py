@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 from temporalio import activity
@@ -1036,6 +1037,7 @@ query ($host: [String]) {
   devices(name: $host) {
     id
     name
+    role { name }
     primary_ip4 { host }
     tenant { id name }
     location {
@@ -1089,6 +1091,7 @@ query ($ip: [String]) {
       device {
         id
         name
+        role { name }
         primary_ip4 { host }
         tenant { id name }
         location {
@@ -1197,6 +1200,39 @@ async def canonicalize_ufm_host(host: str) -> str:
     return str(canonical)
 
 
+async def canonicalize_ufm_host_for_site(host: str, site_reference: str | None) -> str:
+    """Resolve an API-supplied UFM host and verify its optional Site reference."""
+    client = NautobotClient()
+    async with client:
+        device = await _find_device(client, host)
+
+    if (device.get("role") or {}).get("name") != "UFM":
+        raise ApplicationError(
+            f"Device {device['name']!r} is not assigned the UFM role in Nautobot",
+            non_retryable=True,
+        )
+
+    site = _require_device_site(device)
+    normalized_reference = site_reference
+    if site_reference is not None:
+        try:
+            normalized_reference = str(UUID(site_reference))
+        except ValueError:
+            pass
+    if normalized_reference is not None and normalized_reference not in {
+        str(site["id"]),
+        str(site["name"]),
+    }:
+        raise ApplicationError(
+            f"UFM device {device['name']!r} belongs to Site {site['name']!r}, "
+            f"not {site_reference!r}",
+            non_retryable=True,
+        )
+
+    canonical = (device.get("primary_ip4") or {}).get("host") or device["name"]
+    return str(canonical)
+
+
 def _walk_location_chain(location: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Return [location, parent, grandparent, ...] until parent is missing."""
     chain: list[dict[str, Any]] = []
@@ -1213,6 +1249,24 @@ def _find_site_in_chain(chain: list[dict[str, Any]]) -> dict[str, Any] | None:
         if (location.get("location_type") or {}).get("name") == SITE_LOCATION_TYPE_NAME:
             return location
     return None
+
+
+def _require_device_site(device: dict[str, Any]) -> dict[str, Any]:
+    """Return the device's Site-typed location or raise a non-retryable error."""
+    chain = _walk_location_chain(device.get("location") or {})
+    site = _find_site_in_chain(chain)
+    if site is not None:
+        return site
+
+    chain_repr = " -> ".join(
+        f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
+        for loc in chain
+    )
+    raise ApplicationError(
+        f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
+        f"{device.get('name')!r}: {chain_repr}",
+        non_retryable=True,
+    )
 
 
 def _iter_pkey_matches(
@@ -1269,18 +1323,7 @@ async def resolve_ib_site_for_host(
     async with client:
         device = await _find_device(client, input.host)
 
-    chain = _walk_location_chain(device.get("location") or {})
-    site = _find_site_in_chain(chain)
-    if site is None:
-        chain_repr = " -> ".join(
-            f"{loc.get('name', '?')}:{(loc.get('location_type') or {}).get('name', '?')}"
-            for loc in chain
-        )
-        raise ApplicationError(
-            f"No {SITE_LOCATION_TYPE_NAME}-typed location in hierarchy for device "
-            f"{device.get('name')!r}: {chain_repr}",
-            non_retryable=True,
-        )
+    site = _require_device_site(device)
 
     primary_ip = (device.get("primary_ip4") or {}).get("host")
 

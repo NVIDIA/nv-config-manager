@@ -149,6 +149,36 @@ jobs:
             exit 2
           fi
 
+          # Route Kind's in-cluster containerd at the runner's Docker Hub mirror.
+          # The runner's *host* Docker already uses it (setup-proxy-cache), but
+          # Kind's containerd does its own pulls and bypasses it, so anonymous
+          # in-cluster docker.io pulls draw on the shared runner IP's budget
+          # (~100/6h). Once that's spent the pull 429s into ImagePullBackOff and
+          # helm's --wait stalls until the 20m deploy timeout. Any path that
+          # pulls a docker.io image in-cluster can hit this, not just the
+          # security stack, so discover the mirror once here and hand the patched
+          # config to every deploy path below.
+          kind_config=deploy/kind-config.yaml
+          dockerhub_mirror="$(scripts/configure-kind-dockerhub-mirror \
+            --input "${kind_config}" \
+            --output "${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml")"
+          if [ -n "${dockerhub_mirror}" ]; then
+            echo "Kind containerd docker.io mirror: ${dockerhub_mirror}"
+            kind_config="${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml"
+          elif [ "${SECURITY}" = "true" ]; then
+            # The security stack pulls ~2x more docker.io images than a plain
+            # deploy and has no preload fallback, so without the mirror it
+            # reliably exhausts the budget. Fail fast rather than 429 into a
+            # 20-minute timeout.
+            echo "No Docker Hub mirror discoverable on this runner; the security stack's in-cluster pulls would exhaust the anonymous Docker Hub rate limit. Aborting." >&2
+            exit 1
+          else
+            # Plain and observability deploys pull few enough docker.io images to
+            # usually fit in the budget, so degrade instead of blocking CI
+            # outright on a runner that has no mirror configured.
+            echo "No Docker Hub mirror discoverable on this runner; using the base Kind config (in-cluster docker.io pulls may be rate limited)."
+          fi
+
           # Observability is the one lightweight exception: it flips the two
           # monitoring switches on the base config in place (the runner checkout
           # is throwaway, so we keep a single source of truth instead of a
@@ -182,6 +212,7 @@ jobs:
 
             make kind-up \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              KIND_CONFIG="${kind_config}" \
               INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
               HELM_TIMEOUT=20m
 
@@ -198,29 +229,14 @@ jobs:
           #
           # `make kind-up-sec` creates the cluster and installs the security
           # dependencies (cert-manager, Envoy Gateway, SPIRE, Keycloak) itself,
-          # pulling their images in-cluster. The security stack pulls ~2x more
-          # docker.io images than a plain deploy, which exhausts the shared
-          # runner's anonymous Docker Hub pull budget and 429s the in-cluster
-          # pulls (stalling the SPIRE install / keycloak-config job / app --wait).
-          # Fix: point Kind's containerd at the runner's Docker Hub mirror so
-          # every docker.io pull is served from cache. This is the sole backstop
-          # (there is no image preload), so if the mirror can't be discovered we
-          # fail fast rather than 429 into a 20-minute deploy timeout.
+          # pulling their images in-cluster -- which is why the Docker Hub mirror
+          # resolved above is mandatory for this path.
           elif [ "${SECURITY}" = "true" ]; then
             echo "Security run: kind-up-sec security stack + CONFIGURED group mapping"
 
-            dockerhub_mirror="$(scripts/configure-kind-dockerhub-mirror \
-              --input deploy/kind-config.yaml \
-              --output "${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml")"
-            if [ -z "${dockerhub_mirror}" ]; then
-              echo "No Docker Hub mirror discoverable on this runner; the security stack's in-cluster pulls would exhaust the anonymous Docker Hub rate limit. Aborting." >&2
-              exit 1
-            fi
-            echo "Kind containerd docker.io mirror: ${dockerhub_mirror}"
-
             make kind-up-sec \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
-              KIND_CONFIG="${RUNNER_TEMP}/kind-config-dockerhub-mirror.yaml" \
+              KIND_CONFIG="${kind_config}" \
               HELM_TIMEOUT=20m
 
             helm upgrade "${NV_CONFIG_MANAGER_RELEASE}" deploy/helm \
@@ -237,6 +253,7 @@ jobs:
             echo "Default run: plain kind-up (no security stack)"
             make kind-up \
               KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME}" \
+              KIND_CONFIG="${kind_config}" \
               INSTALL_CONFIG=deploy/configs/ci-integration-test.yaml \
               HELM_TIMEOUT=20m
           fi

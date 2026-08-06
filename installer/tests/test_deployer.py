@@ -406,6 +406,48 @@ class TestInstallCrds:
         )
         assert cert_cmd[cert_cmd.index("--version") + 1] == "v1.20.2"
 
+    def test_keda_online_install_leaves_upstream_images_alone(self, tmp_path, monkeypatch):
+        """With no private registry, KEDA's image defaults must be left untouched.
+
+        The chart's repository values are registry-relative ("kedacore/keda"), so
+        emitting the ``image.*.registry=""`` that the private-registry path needs
+        would resolve them against Docker Hub instead of ghcr.io.
+        """
+        (tmp_path / "helm").mkdir()
+        (tmp_path / "operator-versions.env").write_text(_OPERATOR_VERSIONS)
+        run_commands: list[list[str]] = []
+        logged_commands: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            run_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        def fake_run_logged(cmd, step, callback, **kwargs):
+            logged_commands.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run", fake_run)
+        monkeypatch.setattr("nv_config_manager_installer.deployer._run_logged", fake_run_logged)
+
+        config = _make_config()
+        config.infrastructure.monitoring.observability_enabled = True
+        deployer = Deployer(
+            config,
+            DeployOptions(chart_dir=str(tmp_path / "helm")),
+            RecordingCallback(),
+        )
+        deployer._install_crds()
+
+        keda_cmd = next(
+            cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "keda"]
+        )
+        assert "kedacore/keda" in keda_cmd
+        assert keda_cmd[keda_cmd.index("--version") + 1] == "2.20.1"
+        assert any("kedacore.github.io" in " ".join(cmd) for cmd in run_commands)
+        assert not any(arg.startswith("image.") for arg in keda_cmd), (
+            f"KEDA install should not override images without a registry: {keda_cmd}"
+        )
+
     def test_airgap_operator_installs_use_local_artifacts(self, tmp_path, monkeypatch):
         root = tmp_path / "bundle"
         chart_dir = root / "helm"
@@ -419,6 +461,7 @@ class TestInstallCrds:
         (charts_dir / "cloudnative-pg-0.28.0.tgz").touch()
         (charts_dir / "gateway-helm-v1.6.5.tgz").touch()
         (charts_dir / "prometheus-operator-crds-28.0.1.tgz").touch()
+        (charts_dir / "keda-2.20.1.tgz").touch()
         (manifests_dir / "gateway-api-v1.4.1.yaml").touch()
 
         run_commands: list[list[str]] = []
@@ -517,6 +560,31 @@ class TestInstallCrds:
             in cnpg_cmd
         )
         assert "image.tag=1.29.0" in cnpg_cmd
+
+        # KEDA comes with observability_enabled (it reconciles the ScaledObjects
+        # values-observability.yaml turns on), so it has to resolve from the
+        # bundle too -- and must not fall back to `helm repo add`, which has no
+        # network to reach in an airgapped install.
+        keda_cmd = next(
+            cmd for cmd in logged_commands if cmd[:4] == ["helm", "upgrade", "--install", "keda"]
+        )
+        assert str(charts_dir / "keda-2.20.1.tgz") in keda_cmd
+        assert "--version" not in keda_cmd
+        assert not any(cmd[:3] == ["helm", "repo", "add"] for cmd in run_commands)
+        # All three KEDA images must come from the private registry. The chart
+        # composes registry + repository, so the registry has to be blanked too or
+        # the rewritten repository would end up appended to ghcr.io.
+        for value_prefix, repository in (
+            ("image.keda", "kedacore/keda"),
+            ("image.metricsApiServer", "kedacore/keda-metrics-apiserver"),
+            ("image.webhooks", "kedacore/keda-admission-webhooks"),
+        ):
+            assert f"{value_prefix}.registry=" in keda_cmd
+            assert (
+                f"{value_prefix}.repository=registry.example.com/nv-config-manager/{repository}"
+                in keda_cmd
+            )
+            assert f"{value_prefix}.tag=2.20.1" in keda_cmd
 
         prom_crds_cmd = next(
             cmd
@@ -793,13 +861,13 @@ class TestKindImageLoading:
         ]
         monkeypatch.setenv(
             "NVCM_KIND_PRELOAD_IMAGES",
-            "docker.io/library/nats:2.10-alpine,docker.io/library/redis:7-alpine",
+            "docker.io/library/nats:2.14-alpine,docker.io/library/redis:7-alpine",
         )
 
         assert _kind_preload_images(config) == [
             "docker.io/library/busybox:1.36",
             "docker.io/library/redis:7-alpine",
-            "docker.io/library/nats:2.10-alpine",
+            "docker.io/library/nats:2.14-alpine",
         ]
 
     def test_load_kind_tags_arch_specific_loader_image_as_canonical(self, monkeypatch):

@@ -78,7 +78,7 @@ global:
   # the installer overrides these with local image names when building images.
   # Checked-in service repositories intentionally use registry.example.com placeholders.
   # Internal CI rewrites these to the configured image target when publishing charts or
-  # updating downstream kiwi-argocd values. Replace the placeholder with the public
+  # updating downstream deployment values. Replace the placeholder with the public
   # NVIDIA registry path when public publishing is enabled.
   # Service image tags are optional. When omitted, templates use appVersion if
   # a pipeline supplies it, otherwise the chart version.
@@ -135,10 +135,15 @@ global:
       tag: "7-alpine"
     nats:
       repository: docker.io/library/nats
-      tag: "2.10-alpine"
+      tag: "2.14-alpine"
     natsBox:
       repository: docker.io/natsio/nats-box
       tag: "0.14.3"
+    # prometheus-nats-exporter sidecar (optional; nautobotNats.metrics.enabled).
+    # Polls the NATS monitoring endpoint and exposes nats_* Prometheus metrics.
+    natsExporter:
+      repository: docker.io/natsio/prometheus-nats-exporter
+      tag: "0.20.1"
     # Project-owned Temporal images use distroless runtimes. temporalServer
     # and temporalUi may be replaced with compatible upstream or locally built
     # images. temporalBootstrap is intentionally project-owned: it contains
@@ -507,19 +512,36 @@ externalServices:
     credsPath: /etc/nv-config-manager/secrets/nats.creds
     streams:
       configManager:
-        name: kiwi
+        name: nv-config-manager
+        # JetStream API prefix for this stream. Render-change, device-change and
+        # archive events are subjects on it, so they share this prefix.
+        apiPrefix: "$JS.API"
         subjects:
-          - kiwi.nautobotchange
-          - kiwi.devicechange
-          - kiwi.workflow.result
-        renderChangeSubject: kiwi.nautobotchange
-        deviceChangeSubject: kiwi.devicechange
-        archiveSubject: kiwi.workflow.result
+          - nv-config-manager.nautobotchange
+          - nv-config-manager.devicechange
+          - nv-config-manager.workflow.result
+        renderChangeSubject: nv-config-manager.nautobotchange
+        deviceChangeSubject: nv-config-manager.devicechange
+        archiveSubject: nv-config-manager.workflow.result
+        # Fixed durable name used in every deployment. Keeping it independent of
+        # queue/site naming permits exact-name consumer permissions.
+        consumer:
+          name: nv-config-manager-device
+        # Fixed durable used by the optional Temporal workflow-result archive.
+        archiveConsumer:
+          name: nv-config-manager-archive
+          deliverySubject: nv-config-manager.archive.delivery
       nautobot:
         name: nautobot
+        # Set to a custom prefix (e.g. "$JS.CUSTOM.API") when the Nautobot
+        # stream is imported from another NATS account instead of owned here.
+        apiPrefix: "$JS.API"
         subjects:
           - nautobot
         subject: nautobot
+        # Fixed durable exported by the account that owns the Nautobot stream.
+        consumer:
+          name: nv-config-manager-nautobot
   # Redis Configuration (Shared by all services including Nautobot)
   redis:
     # Set to true to deploy a local Redis instance in the nv-config-manager namespace
@@ -2161,6 +2183,12 @@ networkPolicy:
   # Useful for: cnpg-system (CNPG operator needs HTTP to instance status port 8000),
   # monitoring (prometheus), logging, or other platform services
   additionalAllowedNamespaces: []
+  # Namespace the KEDA operator runs in. Only used when render autoscaling is on
+  # *and* Prometheus runs in this namespace (the observability overlay): KEDA
+  # queries it from its own namespace, so the same-namespace rule above does not
+  # cover it and the trigger would silently fail to resolve. Must match where
+  # KEDA is installed (_KEDA_NAMESPACE in the installer's deployer.py).
+  kedaNamespace: keda
 # =============================================================================
 # Reference Grants (for cross-namespace service references)
 # =============================================================================
@@ -2471,7 +2499,7 @@ cnpg:
 # Local Nautobot Deployment (Optional)
 # =============================================================================
 # Deploy Nautobot, Redis, and NATS locally within the nv-config-manager namespace.
-# Enable this for environments without full Cerebro deployment.
+# Enable this when Nautobot is bundled with NVIDIA Config Manager.
 # When enabled, externalServices.nautobot.local should also be true.
 # =============================================================================
 nautobot:
@@ -2830,6 +2858,26 @@ nautobotNats:
     maxFile: 10G # Max file storage (increase for production or use nats-ready binary)
   # Max payload size (8MB)
   maxPayload: 8388608
+  # Prometheus metrics exporter (prometheus-nats-exporter sidecar).
+  # Off by default (zero blast radius). When enabled, a sidecar polls the NATS
+  # monitoring endpoint (:8222) and re-exposes nats_* Prometheus metrics on the
+  # port below — including the JetStream nats_consumer_num_pending series that
+  # KEDA render autoscaling (renderService.autoscaling) scrapes. Pair with
+  # monitoring.podMonitors.enabled so Prometheus scrapes the exporter.
+  metrics:
+    enabled: false
+    # Port the exporter serves /metrics on (scraped by the NATS PodMonitor).
+    port: 7777
+    # Resources for the prometheus-nats-exporter sidecar. -jsz=all scrapes every
+    # JetStream stream/consumer, so the transient response scales with consumer
+    # count; the memory limit is set above the observed footprint to avoid OOM
+    # kills on larger deployments. Tune here if you run many consumers.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
   # NATS resources
   resources:
     requests:
@@ -2846,7 +2894,8 @@ nautobotNats:
     nautobot:
       enabled: true
   # nats-ready init container configuration
-  # This creates the JetStream streams needed by nautobot and nv-config-manager services
+  # This creates the JetStream streams and durable render consumers needed by
+  # Nautobot and NVIDIA Config Manager services.
   natsReady:
     enabled: true
     # Use nats CLI instead of nats-ready binary (for local dev with smaller streams)
@@ -2876,8 +2925,11 @@ monitoring:
   enabled: false
   # Group FastAPI response status labels into classes such as 2xx and 5xx.
   groupFastApiStatusCodes: true
-  # External Grafana URL.
-  # When set, the UI splash page links to this URL. 
+  # External Grafana URL. This is evaluated as a Helm template so the dashboard
+  # variables can follow the deployment's namespace.
+  # Example:
+  # grafanaUrl: 'https://grafana.example/d/nv-config-manager-overview?var-namespace={{ .Values.global.namespace }}'
+  # When set, the UI splash page links to this URL.
   grafanaUrl: ""
   # Prometheus namespace (for network policy to allow scraping)
   prometheus:

@@ -31,7 +31,7 @@ const WorkflowTable: React.FC<WorkflowTableProps> = ({
   );
 
   return (
-    <div className="container py-6" key={title}>
+    <div className="w-full px-8 py-6" key={title}>
       <div className="mb-4 flex flex-row items-center justify-between">
         <h1 className="mr-4 text-2xl font-semibold">{title}</h1>
       </div>

@@ -249,7 +249,7 @@ func (r ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest) Execute() ([]
 /*
 ResetAllConsumersV1AdminConsumersResetAllDelete Reset All Consumers
 
-Reset all consumers by deleting them. Consumers will be automatically recreated within seconds by the running services.
+Delete every consumer so the running services recreate them at the stream head.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiResetAllConsumersV1AdminConsumersResetAllDeleteRequest
@@ -350,7 +350,7 @@ func (r ApiResetConsumerV1AdminConsumersConsumerTypeResetDeleteRequest) Execute(
 /*
 ResetConsumerV1AdminConsumersConsumerTypeResetDelete Reset Consumer
 
-Reset a consumer by deleting it. The consumer will be automatically recreated within seconds by the running service.
+Delete a consumer so the running service recreates it at the stream head.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@param consumerType

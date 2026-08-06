@@ -32,12 +32,13 @@ const ReprovisionWorkflowForm = () => {
     const params: ReprovisionWorkflowInput = {
       device_id: data.device,
     };
-    startWorkflow(endpoint, params).catch((error) => {
+    return startWorkflow(endpoint, params).catch((error) => {
       toast({
         variant: "destructive",
         title: "Workflow Failed",
         description: `${error}`,
       });
+      throw error;
     });
   };
 

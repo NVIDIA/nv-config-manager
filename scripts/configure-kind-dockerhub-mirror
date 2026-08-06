@@ -6,14 +6,15 @@
 # mirror so that anonymous docker.io pulls from inside the cluster are served
 # from the cache instead of registry-1.docker.io directly.
 #
-# Why: the secure bring-up (SPIRE + Keycloak + the app) pulls many more docker.io
-# images than a plain deploy, which exhausts the shared CI runner's anonymous
-# Docker Hub pull budget (~100/6h per IP). Once exhausted, any further in-cluster
-# pull 429s -- stalling the SPIRE install, the keycloak-config job, and the app
-# --wait. The runner's *host* Docker already uses this mirror (via the
-# setup-proxy-cache action), but Kind's containerd does its own pulls and bypasses
-# it. Adding a containerdConfigPatches mirror fixes every docker.io image at once,
-# which is why this supersedes the per-image preload in the Makefile.
+# Why: in-cluster pulls draw on the shared CI runner IP's anonymous Docker Hub
+# budget (~100/6h). Once exhausted, any further pull 429s into ImagePullBackOff
+# and helm's --wait stalls until the deploy timeout. The runner's *host* Docker
+# already uses this mirror (via the setup-proxy-cache action), but Kind's
+# containerd does its own pulls and bypasses it. Adding a containerdConfigPatches
+# mirror fixes every docker.io image at once, which is why this supersedes the
+# per-image preload in the Makefile. The secure bring-up (SPIRE + Keycloak + the
+# app) is the heaviest consumer, but any deploy path that pulls a docker.io image
+# in-cluster can hit the limit, so CI applies this to all of them.
 #
 # The mirror endpoint is discovered from (in order):
 #   1. the DOCKERHUB_MIRROR environment variable, or
@@ -21,8 +22,10 @@
 #      configures it there).
 #
 # If no mirror can be discovered this prints nothing and exits 0; the caller
-# decides what to do (the CI security run treats an empty result as fatal, since
-# there is no image-preload fallback anymore).
+# decides what to do. CI treats an empty result as fatal for the security run
+# (no image-preload fallback there) and as a warning for the plain and
+# observability runs, which pull few enough docker.io images to usually fit in
+# the budget.
 #
 # Usage:
 #   configure-kind-dockerhub-mirror --input deploy/kind-config.yaml \
@@ -69,10 +72,9 @@ discover_mirror() {
         # Extract the mirror endpoint ONLY from the [registry."docker.io"]
         # section. buildkitd.toml can define mirrors for several registries, so
         # grabbing the first `mirrors =` anywhere would misassign another
-        # registry's endpoint to docker.io -- and since the secure run relies on
-        # this mirror as its sole backstop, a wrong or unreachable endpoint would
-        # break every in-cluster docker.io pull. Tolerates single- or
-        # double-quoted values.
+        # registry's endpoint to docker.io -- and since this mirror is the only
+        # backstop for in-cluster pulls, a wrong or unreachable endpoint would
+        # break every one of them. Tolerates single- or double-quoted values.
         awk '
             /^\[registry\."docker\.io"\][[:space:]]*$/ { in_docker_hub = 1; next }
             /^\[/ { in_docker_hub = 0 }

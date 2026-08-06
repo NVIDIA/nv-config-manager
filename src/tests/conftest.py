@@ -65,6 +65,7 @@ queue = nv-config-manager
 auth_method = none
 local = true
 config_manager_stream = nv-config-manager
+config_manager_api_prefix = $JS.API
 config_manager_subjects = nv-config-manager.nautobotchange,nv-config-manager.devicechange,nv-config-manager.workflow.result
 render_change_stream = nv-config-manager
 render_change_subject = nv-config-manager.nautobotchange
@@ -73,6 +74,7 @@ device_change_subject = nv-config-manager.devicechange
 archive_stream = nv-config-manager
 archive_subject = nv-config-manager.workflow.result
 nautobot_stream = nautobot
+nautobot_api_prefix = $JS.API
 nautobot_subjects = nautobot
 nautobot_subject = nautobot
 

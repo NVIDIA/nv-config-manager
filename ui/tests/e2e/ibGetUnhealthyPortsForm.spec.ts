@@ -362,6 +362,44 @@ test.describe("IB Validation Form - Additional Tests", () => {
     ).toBeDisabled();
   });
 
+  test("shows API validation details and allows resubmission", async ({ page }) => {
+    let submissionCount = 0;
+    await page.route(
+      "**/v1/workflow/ngc/infiniband_get_unhealthy_ports",
+      async (route) => {
+        submissionCount += 1;
+        await route.fulfill({
+          status: 422,
+          json: { detail: "Device identifier must be a valid UUID" },
+        });
+      }
+    );
+
+    const site = SITES_LIST.pdx01;
+    const ufmDevice = DEVICES_LIST[site].find(
+      (device) => device.platform === "UFM"
+    );
+    expect(ufmDevice).toBeDefined();
+
+    await page.getByRole("button", { name: "Site" }).click();
+    await page.getByRole("dialog").getByText(site).click();
+    await page.getByRole("button", { name: "Device" }).click();
+    await page.getByRole("dialog").getByText(ufmDevice!.name).click();
+
+    await page.getByRole("button", { name: "Submit" }).click();
+
+    await expect(
+      page.getByText(
+        "Failed to create workflow: Error: Device identifier must be a valid UUID",
+        { exact: true }
+      )
+    ).toBeVisible({ timeout: TEST_TIMEOUT });
+    await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Submit" }).click();
+    await expect.poll(() => submissionCount).toBe(2);
+  });
+
   test("displays forbidden error notification when submitting with forbidden values", async ({
     page,
   }) => {

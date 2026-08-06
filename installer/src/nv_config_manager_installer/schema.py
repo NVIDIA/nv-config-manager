@@ -791,6 +791,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("redis", "docker.io/library/redis"),
     ("nats", "docker.io/library/nats"),
     ("natsBox", "docker.io/natsio/nats-box"),
+    ("natsExporter", "docker.io/natsio/prometheus-nats-exporter"),
     # The bootstrap image is intentionally absent: it is version-coupled to
     # the project-managed server schema.  Operators may override the server
     # and UI with compatible upstream or locally built images instead.
@@ -815,6 +816,11 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("prometheusConfigReloader", "quay.io/prometheus-operator/prometheus-config-reloader"),
     ("alloy", "docker.io/grafana/alloy"),
     ("alloyConfigReloader", "quay.io/prometheus-operator/prometheus-config-reloader"),
+    # KEDA ships as three separate images, all installed with the observability
+    # stack to reconcile the render-consumer ScaledObjects.
+    ("kedaOperator", "ghcr.io/kedacore/keda"),
+    ("kedaMetricsApiServer", "ghcr.io/kedacore/keda-metrics-apiserver"),
+    ("kedaAdmissionWebhooks", "ghcr.io/kedacore/keda-admission-webhooks"),
 ]
 
 

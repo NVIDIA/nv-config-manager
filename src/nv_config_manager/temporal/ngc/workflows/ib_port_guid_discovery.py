@@ -34,6 +34,10 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageOutput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.workflow_references import (
+    DeviceReference,
+    DeviceReferences,
+)
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.ngc.activities.ib_guid_discovery import (
@@ -59,10 +63,10 @@ DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
 class IBPortGuidDiscoveryInput(BaseModel):
     """Input for the IB Port GUID Discovery workflow."""
 
-    ufm_device_id: str = Field(
+    ufm_device_id: DeviceReference = Field(
         description="Identifier of the UFM device used to discover port GUIDs."
     )
-    switch_device_ids: list[str] = Field(
+    switch_device_ids: DeviceReferences = Field(
         description="Identifiers of the InfiniBand switches whose interfaces will be synchronized."
     )
     dry_run: bool = Field(
