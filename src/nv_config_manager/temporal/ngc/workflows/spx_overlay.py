@@ -1142,6 +1142,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         device: NetworkDeviceData
         tenant_config_commit_id: str | None = None
         intended_config_commit_id: str | None = None
+        use_full_intended_config: bool = False
 
     class DeployStageOutput(StageOutput):
         """Deploy Stage Output."""
@@ -1164,12 +1165,16 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             stage_input.tenant_config_commit_id is None
             and stage_input.intended_config_commit_id is None
         ):
-            tenant_deploy_input = TenantDeployInput(device=stage_input.device)
+            tenant_deploy_input = TenantDeployInput(
+                device=stage_input.device,
+                use_full_intended_config=stage_input.use_full_intended_config,
+            )
         else:
             tenant_deploy_input = TenantDeployInput(
                 device=stage_input.device,
                 tenant_config_commit_id=stage_input.tenant_config_commit_id,
                 intended_config_commit_id=stage_input.intended_config_commit_id,
+                use_full_intended_config=stage_input.use_full_intended_config,
             )
 
         try:
@@ -1264,6 +1269,11 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 ),
             )
         )
+        use_full_intended_config = bool(
+            assign_output.unassigned_ports
+            or assign_output.removed_vrf_ids
+            or assign_output.overlay_assignments_removed
+        )
 
         if not deployment_action_output.deploy_required:
             self.set_stage_state("render_tenant_config", StateEnum.UNREACHABLE)
@@ -1288,6 +1298,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             deploy_output = await self.deploy_stage(
                 self.DeployStageInput(
                     device=device_output.device,
+                    use_full_intended_config=use_full_intended_config,
                 )
             )
             if deploy_output.error:
@@ -1322,6 +1333,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                     device=device_output.device,
                     tenant_config_commit_id=render_output.tenant_config_commit_id,
                     intended_config_commit_id=render_output.intended_config_commit_id,
+                    use_full_intended_config=use_full_intended_config,
                 )
             )
             if deploy_output.error:

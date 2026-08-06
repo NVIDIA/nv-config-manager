@@ -440,10 +440,20 @@ async def test_spx_assignment_stage_publishes_child_link_before_failure():
 class MockTenantDeployWorkflow:
     """Mock tenant deploy child workflow."""
 
+    def __init__(self) -> None:
+        """Initialize the captured workflow input."""
+        self.workflow_input: TenantDeployInput | None = None
+
     @workflow.run
-    async def run(self, _workflow_input: TenantDeployInput) -> bool:
+    async def run(self, workflow_input: TenantDeployInput) -> bool:
         """Mock tenant deploy run."""
+        self.workflow_input = workflow_input
         return True
+
+    @workflow.query
+    def input(self) -> TenantDeployInput | None:
+        """Return the tenant deploy input for parent workflow assertions."""
+        return self.workflow_input
 
 
 @workflow.defn(name="SpXOverlayAssignmentWorkflow", sandboxed=False)
@@ -662,6 +672,8 @@ async def test_spx_overlay_tenant_change_removes_assignment_without_replacement(
 
         result = await handle.result()
         stages = {stage["name"]: stage for stage in await handle.query("stages")}
+        deploy_child_id = stages["deploy"]["child_workflows"][0]
+        deploy_input = await env.client.get_workflow_handle(deploy_child_id).query("input")
 
     assert result.assigned_ports == []
     assert result.unassigned_ports == ["swp1"]
@@ -682,6 +694,9 @@ async def test_spx_overlay_tenant_change_removes_assignment_without_replacement(
     )
     assert stages["render_tenant_config"]["state"] == "COMPLETE"
     assert stages["deploy"]["state"] == "COMPLETE"
+    assert deploy_input["tenant_config_commit_id"] == "7"
+    assert deploy_input["intended_config_commit_id"] == "11"
+    assert deploy_input["use_full_intended_config"] is True
 
 
 @pytest.mark.asyncio

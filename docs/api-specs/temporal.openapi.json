@@ -1830,6 +1830,12 @@
             ],
             "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
             "title": "Tenant Config Commit Id"
+          },
+          "use_full_intended_config": {
+            "default": false,
+            "description": "Use the full intended configuration as a replacement candidate while restricting the accepted diff to tenant configuration changes.",
+            "title": "Use Full Intended Config",
+            "type": "boolean"
           }
         },
         "required": [

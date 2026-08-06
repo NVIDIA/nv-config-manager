@@ -186,6 +186,13 @@ async def mock_load_partial_configuration(
     activity_input: LoadPartialConfigurationActivityInput,
 ) -> tuple[str, str, str]:
     commit_id = activity_input.commit_id or "mock_tenant_commit_id"
+    if activity_input.config_file == activity_input.device_data.intended_config_file:
+        return (
+            "mock intended config",
+            commit_id,
+            f"https://config-manager.example.com/device/mock_device_uuid/"
+            f"startup.yaml?commit={commit_id}",
+        )
     # Check if we should return a newer commit for testing
     if _newer_commit_mock_state.get("use_newer_commit", False):
         commit_id = activity_input.commit_id or "7"
@@ -213,6 +220,27 @@ async def mock_load_partial_configuration(
         "mock tenant config",
         commit_id,
         f"https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit={commit_id}",
+    )
+
+
+@activity.defn(name="load_partial_configuration")
+async def mock_load_empty_tenant_configuration(
+    activity_input: LoadPartialConfigurationActivityInput,
+) -> tuple[str, str, str]:
+    """Return the empty tenant render and its matching full intended render."""
+    commit_id = activity_input.commit_id or "mock_commit_id"
+    if activity_input.config_file == activity_input.device_data.intended_config_file:
+        return (
+            "mock intended config",
+            commit_id,
+            f"https://config-manager.example.com/device/mock_device_uuid/"
+            f"startup.yaml?commit={commit_id}",
+        )
+    return (
+        "- set: {}\n",
+        commit_id,
+        f"https://config-manager.example.com/device/mock_device_uuid/"
+        f"tenant.yaml?commit={commit_id}",
     )
 
 
@@ -1023,6 +1051,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                     "device": "mock_device_uuid",
                     "intended_config_commit_id": "11",
                     "tenant_config_commit_id": "7",
+                    "use_full_intended_config": False,
                 },
                 "name": "load_tenant_configuration",
                 "output": {
@@ -1031,6 +1060,8 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                     "display": "Loaded tenant configuration from "
                     "[mock_device_uuid/tenant.yaml](https://config-manager.example.com/device/mock_device_uuid/tenant.yaml?commit=7).",
                     "intended_config_commit_id": "11",
+                    "deployment_config": "mock tenant config",
+                    "partial": True,
                     "tenant_config": "mock tenant config",
                 },
                 "rejecters": [],
@@ -1054,7 +1085,8 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device": ANY,
-                    "tenant_config": "mock tenant config",
+                    "deployment_config": "mock tenant config",
+                    "partial": True,
                 },
                 "name": "perform_configuration_diff",
                 "output": {
@@ -1107,8 +1139,9 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "execution_time": 0.0,
                 "input": {
                     "device": ANY,
+                    "deployment_config": "mock tenant config",
                     "diff": mock_tenant_diff,
-                    "tenant_config": "mock tenant config",
+                    "partial": True,
                 },
                 "name": "apply_configuration",
                 "output": {"display": "Configuration Applied Successfully."},
@@ -1329,6 +1362,76 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
         for attr, val in expected_search_attributes.items():
             assert search_attrs[attr] == val
         assert mock_nats_client.return_value.publish.called == 1
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.client.device.CumulusConnection")
+@patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+async def test_tenant_deploy_uses_full_intended_config_for_removals(
+    _,
+    _mock_nats_client,
+    mock_cumulus_connection,
+    env,
+):
+    """Use replacement semantics so absent tenant settings are removed."""
+    task_queue_name = str(uuid.uuid4())
+    mock_diff = """nv unset interface swp1 ip vrf test-vrf
+nv unset vrf test-vrf router bgp enable on
+"""
+    mock_cumulus_connection.return_value.get_running_configuration.return_value = (
+        "mock running config"
+    )
+    mock_cumulus_connection.return_value.perform_candidate_diff.return_value = mock_diff
+
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[TenantDeployWorkflow, BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_load_empty_tenant_configuration,
+            mock_load_intended_configuration,
+            perform_candidate_diff,
+            validate_config_diff,
+            apply_approved_configuration,
+            load_running_configuration,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_get_ui_base_url,
+            mock_send_slack_message,
+            publish_nats,
+        ],
+        activity_executor=ThreadPoolExecutor(5),
+    ):
+        handle = await env.client.start_workflow(
+            TenantDeployWorkflow.run,
+            TenantDeployInput(
+                device="mock_device_uuid",
+                tenant_config_commit_id="7",
+                intended_config_commit_id="11",
+                use_full_intended_config=True,
+            ),
+            id=str(uuid.uuid4()),
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=10),
+        )
+
+        assert await handle.result() is True
+        stages = {stage["name"]: stage for stage in await handle.query("stages")}
+
+    load_stage = stages["load_tenant_configuration"]
+    assert load_stage["output"]["tenant_config"] == "- set: {}\n"
+    assert load_stage["output"]["deployment_config"] == "mock intended config"
+    assert load_stage["output"]["partial"] is False
+    assert stages["perform_configuration_diff"]["input"]["partial"] is False
+    assert stages["apply_configuration"]["input"]["partial"] is False
+    mock_cumulus_connection.return_value.commit_candidate_config.assert_called_once_with(
+        "mock intended config",
+        mock_diff,
+        commit_confirm=True,
+        partial=False,
+    )
 
 
 @pytest.mark.asyncio
