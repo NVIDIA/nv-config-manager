@@ -8,8 +8,8 @@
 # version.  Changing it requires the Temporal database-upgrade procedure.
 ARG TEMPORAL_SERVER_VERSION=1.29.7
 # The bootstrap-only admin-tools image supplies Temporal's schema files and
-# command-line tools. Temporal does not publish an admin-tools:1.29.7 tag.
-ARG TEMPORAL_ADMIN_TOOLS_VERSION=1.29.6
+# command-line tools. Temporal publishes 1.29.7 under this fully qualified tag.
+ARG TEMPORAL_ADMIN_TOOLS_VERSION=1.29.7-tctl-1.18.4-cli-1
 # The UI is independently deployable and does not change Temporal persistence.
 ARG TEMPORAL_UI_VERSION=2.52.1
 
