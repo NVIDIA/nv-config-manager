@@ -434,7 +434,8 @@ class SpXOverlayAssignmentInput(BaseModel):
         title="Overlay ID",
         description=(
             "Identifier of the SpX overlay whose VRF will be assigned to the device and ports. "
-            "Omit it to remove the selected ports' current SpX assignment."
+            "Omit the overlay_id property or explicitly set it to null to remove the selected "
+            "ports' current SpX assignment."
         ),
     )
     device: Annotated[str | NetworkDeviceData, DEVICE_REFERENCE] = Field(
@@ -792,7 +793,8 @@ class SpXOverlayTenantChangeInput(BaseModel):
         title="Overlay ID",
         description=(
             "Identifier of the SpX overlay to assign and deploy tenant configuration for. "
-            "Omit it to remove the selected ports' current SpX assignment."
+            "Omit the overlay_id property or explicitly set it to null to remove the selected "
+            "ports' current SpX assignment."
         ),
     )
     device_id: DeviceReference = Field(

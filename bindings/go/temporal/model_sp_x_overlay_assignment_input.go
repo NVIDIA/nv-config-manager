@@ -24,7 +24,7 @@ type SpXOverlayAssignmentInput struct {
 	Device Device1 `json:"device"`
 	// Tag identifying the namespace used for allocation.
 	NamespaceTag *string `json:"namespace_tag,omitempty"`
-	// Identifier of the SpX overlay whose VRF will be assigned to the device and ports. Omit it to remove the selected ports' current SpX assignment.
+	// Identifier of the SpX overlay whose VRF will be assigned to the device and ports. Omit the overlay_id property or explicitly set it to null to remove the selected ports' current SpX assignment.
 	OverlayId NullableString `json:"overlay_id,omitempty"`
 	// Names of the device interfaces to assign to the overlay.
 	PortNames []string `json:"port_names"`
