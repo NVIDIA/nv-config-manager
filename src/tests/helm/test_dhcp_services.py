@@ -70,7 +70,10 @@ def _render(*set_args: str) -> str:
 
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        pytest.skip(f"helm template failed (environment issue): {result.stderr.strip()}")
+        # Both environment preconditions are checked above, so a non-zero exit
+        # here is a template regression -- the thing this file exists to catch.
+        # Skipping would let it through silently.
+        pytest.fail(f"helm template failed:\n{result.stderr.strip()}")
     return result.stdout
 
 

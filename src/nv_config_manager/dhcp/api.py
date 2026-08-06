@@ -639,7 +639,9 @@ def _assert_desired_config_applied(
 
     # Only remote (PostgreSQL) lease-db deployments have a config-applied proxy
     # signal in the running Kea config. Local/memfile deployments have no such
-    # marker, so there is nothing further to assert here.
+    # marker, so there is nothing further to assert here. Every chart-rendered
+    # INI hardcodes ``local = false``, so no deployed pod takes this branch; the
+    # hash comparison in the TODO above is what closes it for hand-written INIs.
     remote_lease_db = not app_config["dhcp.lease_db"].getboolean("local")
     if not remote_lease_db:
         return
