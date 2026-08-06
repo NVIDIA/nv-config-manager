@@ -462,6 +462,23 @@ test-rollback-env:
 
       echo "Rolling ${NVCM_PROMOTE_ENV} back to deploy-state @ ${NVCM_ROLLBACK_TO}"
       git show "${NVCM_ROLLBACK_TO}:${state_file}" > "$state_file"
+
+      # Idempotency guard, matching test-release-env and write_deploy_state.sh:
+      # if the branch already carries these exact deployment pins, stop rather
+      # than push a commit that differs only in the audit fields. Makes the job
+      # safe to re-run by hand, and safe to retry (see .test-promote-runner) in
+      # the narrow case where `git push` lands server-side but the job dies
+      # before recording it. Compared with the audit fields blanked, since this
+      # job rewrites them on every run.
+      strip_audit='.occupant = "" | .updatedAt = ""'
+      yq "$strip_audit" "$state_file" > "${CI_PROJECT_DIR}/rollback-new.yaml"
+      git show "HEAD:${state_file}" 2>/dev/null \
+        | yq "$strip_audit" > "${CI_PROJECT_DIR}/rollback-current.yaml" || true
+      if cmp -s "${CI_PROJECT_DIR}/rollback-current.yaml" "${CI_PROJECT_DIR}/rollback-new.yaml"; then
+        echo "✓ ${NVCM_ENV_BRANCH} already carries the deploy-state from ${NVCM_ROLLBACK_TO}; nothing to roll back."
+        exit 0
+      fi
+
       # Refresh audit fields only; the deployment pins are restored verbatim.
       occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
       updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
