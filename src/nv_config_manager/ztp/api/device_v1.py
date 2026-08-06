@@ -14,6 +14,7 @@
 # limitations under the License.
 """V1 Device API Endpoints."""
 
+import aiohttp
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
@@ -24,7 +25,11 @@ from nv_config_manager.common.config import get_storage_client, temporal_client
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.ztp.api.clients import get_nautobot_client
 from nv_config_manager.ztp.api.schemas import ChecksumResponse
-from nv_config_manager.ztp.api.storage_clients import get_object_storage_client, guarded_storage
+from nv_config_manager.ztp.api.storage_clients import (
+    StorageUnavailableError,
+    get_object_storage_client,
+    guarded_storage,
+)
 from nv_config_manager.ztp.api.streaming import create_object_storage_streaming_response
 from nv_config_manager.ztp.nautobot import NotFoundError
 from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
@@ -32,6 +37,24 @@ from nv_config_manager.ztp.storage import ObjectStorageNotFoundException
 logger = get_logger(__name__, category=LogCategory.ZTP_API)
 
 router = APIRouter(prefix="/device", tags=["device"], responses={404: {"description": "Not found"}})
+
+# HTTP statuses the Config Store client itself retries; if one still surfaces it
+# means the backend is transiently unhealthy, so treat it as retryable (503).
+_CONFIG_STORE_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _config_store_error_is_transient(exc: ConfigStoreException) -> bool:
+    """Return True if a ConfigStoreException stems from a transient backend blip.
+
+    The Config Store client wraps the underlying failure as the ``__cause__``:
+    a raw ``aiohttp.ClientError`` (connection reset/disconnect/timeout) is always
+    transient, while a ``ClientResponseError`` is transient only for retryable
+    5xx/429 statuses (a 4xx is a genuine client error and stays a 500).
+    """
+    cause = exc.__cause__
+    if isinstance(cause, aiohttp.ClientResponseError):
+        return cause.status in _CONFIG_STORE_RETRYABLE_STATUSES
+    return isinstance(cause, aiohttp.ClientError)
 
 
 async def _authorize_request(request: Request, device_uuid: str) -> None:
@@ -95,6 +118,12 @@ async def load_configuration(
     except (NotFoundError, ConfigStoreFileNotFound) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ConfigStoreException as exc:
+        # A transient Config Store blip (connection reset/disconnect, or a 5xx/429
+        # that outlived the client's own retries) should shed as a retryable 503,
+        # mirroring how Nautobot/S3 saturation is handled — not masquerade as a hard
+        # 500 that reads as "ZTP is broken". Genuine errors (e.g. a 4xx) stay 500.
+        if _config_store_error_is_transient(exc):
+            raise StorageUnavailableError(str(exc)) from exc
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

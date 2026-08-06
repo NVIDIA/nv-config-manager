@@ -17,6 +17,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import aiohttp
 import pytest
 from fastapi.testclient import TestClient
 
@@ -354,6 +355,57 @@ def test_device_v1_config_store_exceptions(mock_request_client, mock_device_data
             rsp = client.get(f"/v1/device/{uuid4()}/boot-script")
             assert rsp.json() == {"detail": "config store query error"}
             assert rsp.status_code == 500
+
+
+@patch("nv_config_manager.ztp.api.device_v1.Request.client")
+def test_device_v1_config_store_transient_error_returns_503(
+    mock_request_client, mock_device_data, client
+):
+    """A transient Config Store blip sheds as a retryable 503, not a hard 500.
+
+    The Config Store client re-wraps connection resets / retryable 5xx as a
+    generic ConfigStoreException with the original error as __cause__; those must
+    surface as 503 so a device retries, while a genuine 4xx stays a hard 500.
+    """
+    mock_request_client.host = "testclient"
+    mock_device_data["data"]["config_manager_device"]["device"]["interfaces"] = [
+        {"ip_addresses": [{"host": "testclient"}]}
+    ]
+
+    def _wrapped(cause: Exception | None) -> ConfigStoreException:
+        exc = ConfigStoreException("transient config store failure")
+        exc.__cause__ = cause
+        return exc
+
+    transient_causes = [
+        aiohttp.ClientConnectionError("connection reset"),
+        aiohttp.ClientResponseError(MagicMock(), (), status=503),
+    ]
+    permanent_causes: list[Exception | None] = [
+        aiohttp.ClientResponseError(MagicMock(), (), status=400),
+        None,
+    ]
+
+    with patch(
+        "nv_config_manager.ztp.nautobot.NautobotClient.graphql_query",
+        return_value=mock_device_data,
+    ):
+        for cause in transient_causes:
+            with patch(
+                "nv_config_manager.ztp.device.DeviceData.load_file",
+                side_effect=_wrapped(cause),
+            ):
+                rsp = client.get(f"/v1/device/{uuid4()}/config/startup.yaml")
+                assert rsp.status_code == 503
+                assert rsp.headers["retry-after"] == "5"
+
+        for cause in permanent_causes:
+            with patch(
+                "nv_config_manager.ztp.device.DeviceData.load_file",
+                side_effect=_wrapped(cause),
+            ):
+                rsp = client.get(f"/v1/device/{uuid4()}/config/startup.yaml")
+                assert rsp.status_code == 500
 
 
 @patch("nv_config_manager.ztp.api.device_v1.Request.client")
