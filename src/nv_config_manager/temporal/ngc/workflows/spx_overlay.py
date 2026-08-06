@@ -1269,7 +1269,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 ),
             )
         )
-        use_full_intended_config = bool(
+        use_full_intended_config = deployment_action_output.use_latest_render or bool(
             assign_output.unassigned_ports
             or assign_output.removed_vrf_ids
             or assign_output.overlay_assignments_removed

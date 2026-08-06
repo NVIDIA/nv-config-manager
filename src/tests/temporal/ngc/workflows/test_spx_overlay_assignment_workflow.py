@@ -989,6 +989,7 @@ async def test_spx_overlay_tenant_change_retries_deploy_when_already_assigned_bu
         assert stages["deploy"]["state"] == "COMPLETE"
         assert stages["deploy"]["input"]["tenant_config_commit_id"] is None
         assert stages["deploy"]["input"]["intended_config_commit_id"] is None
+        assert stages["deploy"]["input"]["use_full_intended_config"] is True
 
 
 @pytest.mark.asyncio
