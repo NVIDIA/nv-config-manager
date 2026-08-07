@@ -49,7 +49,8 @@ COPY nautobot_config.py /opt/nautobot/nautobot_config.py
 COPY nv_config_manager_jobs /opt/nautobot/jobs/nv_config_manager_jobs
 COPY nv_config_manager_auth /opt/nautobot/nv_config_manager_auth
 
-# Create venv and install dependencies (--no-editable ensures packages are in site-packages)
+# Create venv and install dependencies (--no-editable ensures packages are in site-packages).
+# Refresh local path packages so the shared BuildKit cache cannot reuse wheels built from older source.
 RUN uv venv /opt/nautobot/.venv
 RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
     set -eux; \
@@ -61,7 +62,9 @@ RUN --mount=type=cache,id=nvcm-uv-cache,target=/root/.cache/uv \
         export SETUPTOOLS_SCM_PRETEND_VERSION="$NAUTOBOT_NV_CONFIG_MANAGER_VERSION"; \
         export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_NAUTOBOT_NV_CONFIG_MANAGER="$NAUTOBOT_NV_CONFIG_MANAGER_VERSION"; \
     fi; \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --no-dev --no-editable \
+        --refresh-package nautobot-app-overlays \
+        --refresh-package nautobot-nv-config-manager
 
 RUN mkdir -p /opt/nautobot/static \
     /opt/nautobot/media \
