@@ -198,3 +198,36 @@ async def test_config_hash_get_failure_is_handled_without_reapply(mocker: Any) -
     set_config.assert_awaited_once_with(DESIRED_CONFIG, version=4)
     metric.labels.assert_called_once_with(ip_version="4")
     metric.labels.return_value.inc.assert_called_once()
+
+
+async def test_startup_hash_get_failure_does_not_abort_sync(mocker: Any) -> None:
+    """A config-hash-get failure at startup must not abort the sync loop.
+
+    config-set has already applied and persisted the desired config at that
+    point, so only the verification read failed -- the same failure the refresh
+    loop tolerates. Aborting would crash-loop the sidecar over a config that is
+    actually applied.
+    """
+    load_kea_config = AsyncMock(side_effect=[DESIRED_CONFIG, DESIRED_CONFIG])
+    set_config = AsyncMock(return_value="HASH_A")
+    # Startup verification fails; the later drift check succeeds.
+    get_config_hash = AsyncMock(
+        side_effect=[KeaException("Failed to get configuration hash: down"), "HASH_A"]
+    )
+    _patch_clients(
+        mocker,
+        load_kea_config=load_kea_config,
+        set_config=set_config,
+        get_config_hash=get_config_hash,
+    )
+    _patch_sleep_to_break(mocker)
+
+    # Reaching the loop's tail sleep proves startup was not aborted.
+    with pytest.raises(_StopLoop):
+        await cli._sync_kea_configuration_async(ip_version=4, refresh_interval=5, debug=False)
+
+    # Startup apply, plus a reapply once the unverified hash is re-checked.
+    assert set_config.await_args_list == [
+        call(DESIRED_CONFIG, version=4),
+        call(DESIRED_CONFIG, version=4),
+    ]

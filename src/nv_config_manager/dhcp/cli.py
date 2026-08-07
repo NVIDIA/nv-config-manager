@@ -223,7 +223,16 @@ async def _apply_and_verify_kea_config(
     returned to track for subsequent drift detection.
     """
     applied_hash = await kea_client.set_config(config, version=ip_version)
-    effective_hash = await kea_client.get_config_hash(version=ip_version)
+    try:
+        effective_hash = await kea_client.get_config_hash(version=ip_version)
+    except KeaException as exc:
+        # config-set already succeeded, so the desired config is applied and
+        # persisted -- only the verification read failed. The refresh loop
+        # tolerates this same failure, and aborting here would instead crash-loop
+        # the sidecar over a config that is actually applied. Returning None
+        # leaves the next drift check to reapply and re-verify.
+        logger.warning(f"Could not verify the applied KEA configuration hash: {exc}")
+        return None
     if applied_hash is not None and effective_hash != applied_hash:
         raise KeaException(
             f"KEA effective configuration hash ({effective_hash}) does not match "
