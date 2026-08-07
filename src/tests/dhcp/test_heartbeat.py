@@ -235,10 +235,11 @@ async def test_heartbeat_advances_while_waiting_for_initial_config(sync_env, moc
 
     mocker.patch.object(cli.asyncio, "sleep", new=sleep)
 
-    touches_at_first_apply = {}
+    at_first_apply = {}
 
     async def set_config(*_args, **_kwargs):
-        touches_at_first_apply["n"] = sync_env.touch.call_count
+        at_first_apply["touches"] = sync_env.touch.call_count
+        at_first_apply["records"] = sync_env.record.call_count
 
     sync_env.kea.set_config = AsyncMock(side_effect=set_config)
 
@@ -246,6 +247,8 @@ async def test_heartbeat_advances_while_waiting_for_initial_config(sync_env, moc
         await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
 
     # Pre-read seed plus one touch per poll, all before any config was applied.
-    assert touches_at_first_apply["n"] == 3
-    # Nothing was applied while waiting, so no successful reconciliation yet.
+    assert at_first_apply["touches"] == 3
+    # Waiting is loop progress, never a successful reconciliation.
+    assert at_first_apply["records"] == 0
+    # Both reconciliations happen only once the config appears.
     assert sync_env.record.call_count == 2
