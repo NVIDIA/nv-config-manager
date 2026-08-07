@@ -27,6 +27,7 @@ import { Form } from "@/components/ui/form";
 import { useToast } from "@/components/ui/use-toast";
 import {
   SPX_OVERLAY_ISOLATION_TYPE,
+  useDeviceInterfaces,
   useEnvData,
   useDevices,
   useOverlays,
@@ -38,9 +39,11 @@ import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayTenantChangeFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
-  overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
+  overlay_id: z.string().trim(),
   device: z.string().trim().min(1, { message: "Device is required" }),
-  port_names: z.string().trim().min(1, { message: "Port names are required" }),
+  port_names: z
+    .array(z.string())
+    .min(1, { message: "At least one port is required" }),
 });
 
 type SpXOverlayTenantChangeFormData = z.infer<typeof SpXOverlayTenantChangeFormSchema>;
@@ -52,7 +55,10 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   const querySite = searchParams?.get("site") ?? "";
   const queryOverlayId = searchParams?.get("overlay_id") ?? "";
   const queryDevice = searchParams?.get("device-id") ?? "";
-  const queryPortNames = searchParams?.get("port_names") ?? "";
+  const queryPortNames = (searchParams?.get("port_names") ?? "")
+    .split(",")
+    .map((portName) => portName.trim())
+    .filter(Boolean);
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
@@ -69,6 +75,8 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const site = form.watch("site");
+  const device = form.watch("device");
+  const selectedPortNames = form.watch("port_names");
   const filterParams: [string, string][] = site
     ? [
         ["site", site],
@@ -81,6 +89,12 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     isLoading: deviceIsLoading,
   } = useDevices({ site, filterParams });
   const {
+    interfaces: deviceInterfaces,
+    error: deviceInterfacesError,
+    hasLoaded: deviceInterfacesHaveLoaded,
+    isLoading: deviceInterfacesAreLoading,
+  } = useDeviceInterfaces(device);
+  const {
     overlays: spxOverlays,
     hasLoaded: spxOverlaysHaveLoaded,
     isLoading: spxOverlaysAreLoading,
@@ -91,6 +105,14 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   if (deviceError) console.error(`Failed to query devices: ${deviceError}`);
+  if (deviceInterfacesError) {
+    console.error(`Failed to query device interfaces: ${deviceInterfacesError}`);
+  }
+  const selectedPortNamesAreValid =
+    selectedPortNames.length > 0 &&
+    selectedPortNames.every((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
 
   useEffect(() => {
     if (!siteIsLoading && querySite) {
@@ -121,11 +143,25 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   }, [queryDevice, deviceData, form]);
 
   useEffect(() => {
-    if (site) {
-      form.setValue("device", ""); // Clear device when site changes
-      form.setValue("overlay_id", "");
+    if (!device || !deviceInterfacesHaveLoaded || deviceInterfacesAreLoading) return;
+
+    const currentPortNames = form.getValues("port_names");
+    const validPortNames = currentPortNames.filter((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
+    if (
+      validPortNames.length !== currentPortNames.length ||
+      validPortNames.some((portName, index) => portName !== currentPortNames[index])
+    ) {
+      form.setValue("port_names", validPortNames, { shouldValidate: true });
     }
-  }, [site, form]);
+  }, [
+    device,
+    deviceInterfaces,
+    deviceInterfacesAreLoading,
+    deviceInterfacesHaveLoaded,
+    form,
+  ]);
 
   useSyncSelectFromQuery({
     fieldName: "overlay_id",
@@ -137,17 +173,23 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
+    const validPortNames = data.port_names.filter((portName) =>
+      deviceInterfaces.some((option) => option.value === portName)
+    );
+    if (validPortNames.length !== data.port_names.length || validPortNames.length === 0) {
+      form.setError("port_names", {
+        type: "validate",
+        message: "Select at least one port available on the selected device",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
-    // Transform comma-separated port names to array
-    const portNamesArray = data.port_names
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
     const submissionData: SpXOverlayTenantChangeWorkflowInput = {
       site: data.site,
-      overlay_id: data.overlay_id,
+      overlay_id: data.overlay_id || null,
       device_id: data.device,
-      port_names: portNamesArray,
+      port_names: validPortNames,
     };
     await startWorkflow(
       "/v1/workflow/ngc/spx_overlay_tenant_change",
@@ -180,12 +222,17 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 isLoading={siteIsLoading}
                 isSubmitting={isSubmitting}
                 disabled={isSubmitting || deviceIsLoading}
+                handleChange={() => {
+                  form.setValue("device", "");
+                  form.setValue("overlay_id", "");
+                  form.setValue("port_names", []);
+                }}
               />
               <WorkflowFormField
                 type="select"
                 control={form.control}
                 name="overlay_id"
-                label="Overlay ID"
+                label="Overlay ID (optional — leave blank to remove)"
                 options={spxOverlays}
                 isLoading={spxOverlaysAreLoading}
                 isSubmitting={isSubmitting}
@@ -200,25 +247,29 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 isLoading={deviceIsLoading || siteIsLoading}
                 isSubmitting={isSubmitting}
                 disabled={!site || isSubmitting || deviceIsLoading}
+                handleChange={() => form.setValue("port_names", [])}
               />
               <WorkflowFormField
-                type="input"
+                type="select"
                 control={form.control}
                 name="port_names"
-                label="Port Names (comma-separated)"
-                placeholder="swp1, swp2, swp3"
+                label="Ports"
+                options={deviceInterfaces}
+                multiple={true}
+                searchable={true}
+                isLoading={deviceInterfacesAreLoading}
                 isSubmitting={isSubmitting}
-                disabled={!site || !form.watch("device") || isSubmitting}
+                disabled={!site || !device || isSubmitting}
               />
               <Button
                 type="submit"
                 disabled={
                   isSubmitting ||
                   !site ||
-                  !form.watch("overlay_id") ||
-                  !form.watch("device") ||
-                  !form.watch("port_names") ||
+                  !device ||
+                  !selectedPortNamesAreValid ||
                   deviceIsLoading ||
+                  deviceInterfacesAreLoading ||
                   spxOverlaysAreLoading ||
                   siteIsLoading
                 }
