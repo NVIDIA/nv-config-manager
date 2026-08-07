@@ -49,16 +49,28 @@ class WorkflowResultLog(BaseModel):
         )
 
 
+_PUBLISH_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
+
+
 class ArchiveMixin(BaseMixin):
-    """Mixin to send a workflow result to NATS for archival."""
+    """Mixin to publish a workflow result to NATS."""
 
     async def archive_results(self) -> None:
-        """Log the worklflow results."""
-        await workflow.execute_activity(
-            publish_nats,
-            PublishNatsInput(
-                message=WorkflowResultLog.from_workflow_info(workflow.info()).model_dump_json(),
-            ),
-            schedule_to_close_timeout=timedelta(minutes=1),
-            retry_policy=RetryPolicy(maximum_attempts=1),
-        )
+        """Publish the workflow result; never mask the run's own outcome."""
+        try:
+            await workflow.execute_activity(
+                publish_nats,
+                PublishNatsInput(
+                    message=WorkflowResultLog.from_workflow_info(workflow.info()).model_dump_json(),
+                ),
+                schedule_to_close_timeout=timedelta(minutes=1),
+                retry_policy=_PUBLISH_RETRY_POLICY,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # The run has already finished its work by the time results are
+            # published, so a broker problem must not turn it into a failure.
+            # Consumers treat these events as an optimisation over polling.
+            workflow.logger.warning(
+                "Failed to publish the result for %s; consumers will not see this run",
+                workflow.info().workflow_id,
+            )
