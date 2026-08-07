@@ -2737,6 +2737,9 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Bad Request"
+          },
           "422": {
             "content": {
               "application/json": {

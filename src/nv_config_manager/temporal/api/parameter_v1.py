@@ -492,7 +492,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
     ]
 
 
-@router.get("/device/{device_id}/interfaces")
+@router.get("/device/{device_id}/interfaces", responses={400: {"description": "Bad Request"}})
 async def get_device_interfaces(device_id: str) -> list[DeviceInterface]:
     """Return the interfaces belonging to a device."""
     client = NautobotClient()
