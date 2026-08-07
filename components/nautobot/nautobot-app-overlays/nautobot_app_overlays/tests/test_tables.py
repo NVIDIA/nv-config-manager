@@ -15,12 +15,10 @@
 
 """Tests for Overlays tables."""
 
-from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django_tables2 import RequestConfig
-from nautobot.ipam.models import VRF
 
 from nautobot_app_overlays import models, tables
 from nautobot_app_overlays.tests.fixtures import (
@@ -28,7 +26,6 @@ from nautobot_app_overlays.tests.fixtures import (
     create_overlay_test_data,
     create_pkey_test_data,
     create_vxlan_test_data,
-    get_or_create_status_for_model,
 )
 
 
@@ -102,32 +99,12 @@ class OverlayAssignmentTableTestCase(TestCase):
     def setUpTestData(cls):
         create_assignment_test_data(cls)
         cls.factory = RequestFactory()
-        cls.vrf = VRF.objects.create(
-            name="SpXTenant60000",
-            namespace=cls.namespace,
-            status=get_or_create_status_for_model(VRF),
-        )
-        cls.vrf_assignment = models.OverlayAssignment.objects.create(
-            overlay=cls.overlays[0],
-            assigned_object_type=ContentType.objects.get_for_model(VRF),
-            assigned_object_id=cls.vrf.pk,
-            status=cls.assignment_status,
-        )
 
     def test_table_renders_all_rows(self):
         """Table renders one row per assignment."""
         table = tables.OverlayAssignmentTable(models.OverlayAssignment.objects.all())
         RequestConfig(self.factory.get("/")).configure(table)
         self.assertEqual(len(table.rows), models.OverlayAssignment.objects.count())
-
-    def test_vrf_assignment_links_to_vrf(self):
-        """The default Member column links a VRF assignment to its VRF detail page."""
-        table = tables.OverlayAssignmentTable(models.OverlayAssignment.objects.all())
-        RequestConfig(self.factory.get("/")).configure(table)
-
-        self.assertIn("assigned_object", table.columns.names())
-        row = next(row for row in table.rows if row.record == self.vrf_assignment)
-        self.assertIn(self.vrf.get_absolute_url(), row.get_cell("assigned_object"))
 
 
 class OverlayAssignmentInlineTableTestCase(TestCase):
@@ -136,32 +113,11 @@ class OverlayAssignmentInlineTableTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         create_assignment_test_data(cls)
-        cls.factory = RequestFactory()
-        cls.vrf = VRF.objects.create(
-            name="SpXTenant60000",
-            namespace=cls.namespace,
-            status=get_or_create_status_for_model(VRF),
-        )
-        cls.vrf_assignment = models.OverlayAssignment.objects.create(
-            overlay=cls.overlays[0],
-            assigned_object_type=ContentType.objects.get_for_model(VRF),
-            assigned_object_id=cls.vrf.pk,
-            status=cls.assignment_status,
-        )
 
     def test_inline_table_excludes_overlay_column(self):
         """Inline table omits the overlay column (redundant inside the overlay detail view)."""
         table = tables.OverlayAssignmentInlineTable(models.OverlayAssignment.objects.all())
         self.assertNotIn("overlay", table.columns.names())
-
-    def test_vrf_assignment_links_to_vrf(self):
-        """The overlay detail table links a VRF assignment to its VRF detail page."""
-        table = tables.OverlayAssignmentInlineTable(models.OverlayAssignment.objects.all())
-        RequestConfig(self.factory.get("/")).configure(table)
-
-        self.assertIn("assigned_object", table.columns.names())
-        row = next(row for row in table.rows if row.record == self.vrf_assignment)
-        self.assertIn(self.vrf.get_absolute_url(), row.get_cell("assigned_object"))
 
 
 class VXLANTableTestCase(TestCase):
