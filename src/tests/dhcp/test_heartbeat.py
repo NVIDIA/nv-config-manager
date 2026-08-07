@@ -162,8 +162,8 @@ async def test_loop_advances_heartbeat_on_success(sync_env) -> None:
     with pytest.raises(_StopLoop):
         await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
 
-    # Seed touch + one loop-iteration touch.
-    assert sync_env.touch.call_count == 2
+    # Pre-read seed + post-apply seed + one loop-iteration touch.
+    assert sync_env.touch.call_count == 3
     # Successful reconciliation recorded for both the initial set and the iteration.
     assert sync_env.record.call_count == 2
 
@@ -176,8 +176,8 @@ async def test_loop_advances_heartbeat_after_recoverable_error(sync_env) -> None
     with pytest.raises(_StopLoop):
         await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
 
-    # Heartbeat still advanced after the failed attempt (seed + loop finally).
-    assert sync_env.touch.call_count == 2
+    # Heartbeat still advanced after the failed attempt (seeds + loop finally).
+    assert sync_env.touch.call_count == 3
     # But the failed iteration did NOT count as a successful reconciliation
     # (only the initial set did) -- the two are tracked separately.
     assert sync_env.record.call_count == 1
@@ -207,9 +207,45 @@ async def test_hung_dependency_is_bounded_and_heartbeat_advances(sync_env, mocke
 
     # The hung call was cancelled well within a second, not left to block.
     assert elapsed < 2.0
-    # Heartbeat advanced despite the hang (seed + loop finally).
-    assert sync_env.touch.call_count == 2
+    # Heartbeat advanced despite the hang (seeds + loop finally).
+    assert sync_env.touch.call_count == 3
     # The timeout was surfaced as a recoverable error.
     assert _error_count() == before + 1
     # A hung reconcile is not a success.
     assert sync_env.record.call_count == 1
+
+
+async def test_heartbeat_advances_while_waiting_for_initial_config(sync_env, mocker) -> None:
+    """A cold start with no config published yet must keep the heartbeat fresh.
+
+    Polling Redis for a config that has not been published is legitimate
+    progress, not a wedged loop. If the heartbeat stalled here, the exec
+    livenessProbe would restart-loop the sidecar once its grace period expired.
+    """
+    # No config for the first two reads, then it appears.
+    sync_env.redis.load_kea_config = AsyncMock(side_effect=[None, None, CONFIG, CONFIG])
+
+    sleeps = {"n": 0}
+
+    async def sleep(_seconds):
+        sleeps["n"] += 1
+        # Let both wait-loop polls run, then break out at the refresh sleep.
+        if sleeps["n"] > 2:
+            raise _StopLoop()
+
+    mocker.patch.object(cli.asyncio, "sleep", new=sleep)
+
+    touches_at_first_apply = {}
+
+    async def set_config(*_args, **_kwargs):
+        touches_at_first_apply["n"] = sync_env.touch.call_count
+
+    sync_env.kea.set_config = AsyncMock(side_effect=set_config)
+
+    with pytest.raises(_StopLoop):
+        await cli._sync_kea_configuration_async(4, 10, False, sync_env.hb)
+
+    # Pre-read seed plus one touch per poll, all before any config was applied.
+    assert touches_at_first_apply["n"] == 3
+    # Nothing was applied while waiting, so no successful reconciliation yet.
+    assert sync_env.record.call_count == 2

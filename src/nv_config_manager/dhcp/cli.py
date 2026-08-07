@@ -287,6 +287,12 @@ async def _sync_kea_configuration_async(
     redis_client = RedisClient.from_config(ini_config)
 
     try:
+        # Seed the heartbeat before the first Redis read and advance it on every
+        # poll below. Waiting for config to appear in Redis is legitimate
+        # progress, not a wedged loop, so the probe must not fail during it --
+        # otherwise a cold start with no published config restart-loops the
+        # sidecar once the probe's grace period expires.
+        touch_heartbeat(heartbeat_file)
         config = await _load_kea_config_with_timeout(redis_client, ip_version)
         while config is None:
             logger.info(
@@ -294,6 +300,7 @@ async def _sync_kea_configuration_async(
             )
             await asyncio.sleep(1)
             config = await _load_kea_config_with_timeout(redis_client, ip_version)
+            touch_heartbeat(heartbeat_file)
 
         # Inject Lease DB details after loading from Redis
         # so that secrets are not stored in the Redis cache
