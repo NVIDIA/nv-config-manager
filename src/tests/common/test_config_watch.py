@@ -24,6 +24,7 @@ from unittest.mock import patch
 
 import pytest
 
+from nv_config_manager.common import config_watch
 from nv_config_manager.common.config_watch import _watch, changed_keys
 from nv_config_manager.common.ini import file_digest
 
@@ -77,10 +78,21 @@ def _watch_while(
     """
     signals: list[tuple[int, int]] = []
     stop = threading.Event()
+    baseline_taken = threading.Event()
+    read_file = config_watch._read
 
-    with patch(
-        "nv_config_manager.common.config_watch.os.kill",
-        side_effect=lambda pid, sig: signals.append((pid, sig)),
+    def record_baseline(target: str) -> str:
+        """Report that the watch has finished reading the file it starts from."""
+        contents = read_file(target)
+        baseline_taken.set()
+        return contents
+
+    with (
+        patch(
+            "nv_config_manager.common.config_watch.os.kill",
+            side_effect=lambda pid, sig: signals.append((pid, sig)),
+        ),
+        patch("nv_config_manager.common.config_watch._read", side_effect=record_baseline),
     ):
         watcher = threading.Thread(
             target=_watch,
@@ -88,7 +100,10 @@ def _watch_while(
             daemon=True,
         )
         watcher.start()
-        time.sleep(POLL_INTERVAL * 2)
+
+        # Changing the file before the watch has read it would make the new
+        # contents its baseline, and the change would go unnoticed.
+        assert baseline_taken.wait(timeout=5.0)
         if change is not None:
             change()
 
