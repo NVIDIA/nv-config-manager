@@ -36,11 +36,23 @@ import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
+const normalizePortNames = (portNames: string): string[] =>
+  portNames
+    .split(",")
+    .map((portName) => portName.trim())
+    .filter(Boolean);
+
+const hasPortNames = (portNames: string): boolean =>
+  normalizePortNames(portNames).length > 0;
+
 const SpXOverlayTenantChangeFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
   overlay_id: z.string().trim(),
   device: z.string().trim().min(1, { message: "Device is required" }),
-  port_names: z.string().trim().min(1, { message: "Port names are required" }),
+  port_names: z
+    .string()
+    .trim()
+    .refine(hasPortNames, { message: "Port names are required" }),
 });
 
 type SpXOverlayTenantChangeFormData = z.infer<typeof SpXOverlayTenantChangeFormSchema>;
@@ -69,6 +81,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const site = form.watch("site");
+  const portNames = form.watch("port_names");
   const filterParams: [string, string][] = site
     ? [
         ["site", site],
@@ -139,10 +152,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
     setIsSubmitting(true);
     // Transform comma-separated port names to array
-    const portNamesArray = data.port_names
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
+    const portNamesArray = normalizePortNames(data.port_names);
     const submissionData: SpXOverlayTenantChangeWorkflowInput = {
       site: data.site,
       overlay_id: data.overlay_id || null,
@@ -216,7 +226,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                   isSubmitting ||
                   !site ||
                   !form.watch("device") ||
-                  !form.watch("port_names") ||
+                  !hasPortNames(portNames) ||
                   deviceIsLoading ||
                   spxOverlaysAreLoading ||
                   siteIsLoading

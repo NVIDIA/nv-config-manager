@@ -99,3 +99,18 @@ test("tenant change submits removals without a replacement overlay", async ({
     port_names: ["swp1", "swp2"],
   });
 });
+
+test("tenant change rejects delimiter-only port names", async ({ page }) => {
+  const device = DEVICES_LIST.PDX01[0];
+  await page.goto(
+    "/workflows/spxoverlaytenantchangeworkflow/form" +
+      `?site=${SITES_LIST.pdx01}` +
+      `&device-id=${device.id}` +
+      "&port_names=%2C"
+  );
+
+  await expect(
+    page.getByRole("button", { name: device.name })
+  ).toBeVisible({ timeout: TEST_TIMEOUT });
+  await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
+});
