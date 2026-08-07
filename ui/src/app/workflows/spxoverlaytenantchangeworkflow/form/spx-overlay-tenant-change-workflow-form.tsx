@@ -38,7 +38,7 @@ import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
 const SpXOverlayTenantChangeFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
-  overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
+  overlay_id: z.string().trim(),
   device: z.string().trim().min(1, { message: "Device is required" }),
   port_names: z.string().trim().min(1, { message: "Port names are required" }),
 });
@@ -145,7 +145,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       .filter((p) => p.length > 0);
     const submissionData: SpXOverlayTenantChangeWorkflowInput = {
       site: data.site,
-      overlay_id: data.overlay_id,
+      overlay_id: data.overlay_id || null,
       device_id: data.device,
       port_names: portNamesArray,
     };
@@ -185,7 +185,7 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 type="select"
                 control={form.control}
                 name="overlay_id"
-                label="Overlay ID"
+                label="Overlay ID (optional — leave blank to remove)"
                 options={spxOverlays}
                 isLoading={spxOverlaysAreLoading}
                 isSubmitting={isSubmitting}
@@ -215,7 +215,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 disabled={
                   isSubmitting ||
                   !site ||
-                  !form.watch("overlay_id") ||
                   !form.watch("device") ||
                   !form.watch("port_names") ||
                   deviceIsLoading ||
