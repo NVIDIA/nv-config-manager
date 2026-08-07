@@ -116,13 +116,6 @@ export const SPX_OVERLAY_LIST_API_RESPONSE = Object.values(SPX_OVERLAY_LIST).map
   })
 );
 
-export const DEVICE_INTERFACES_LIST_API_RESPONSE = [
-  { id: "interface-swp1", name: "swp1" },
-  { id: "interface-swp2", name: "swp2" },
-  { id: "interface-swp3", name: "swp3" },
-  { id: "interface-swp4", name: "swp4" },
-];
-
 export const NAMESPACE_TAGS_LIST_API_RESPONSE = [
   {
     id: "spectrumx",

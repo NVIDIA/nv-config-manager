@@ -718,14 +718,6 @@ async function setupDocsMocks(page: Page): Promise<void> {
     await fulfillJson(route, filterDevices(url));
   });
 
-  await page.route("**/v1/parameter/device/*/interfaces", async (route) => {
-    await fulfillJson(route, [
-      { id: "interface-swp1", name: "swp1" },
-      { id: "interface-swp2", name: "swp2" },
-      { id: "interface-swp3", name: "swp3" },
-    ]);
-  });
-
   await page.route("**/v1/parameter/device/*/password_users", async (route) => {
     await fulfillJson(route, [
       { description: "Cumulus Linux demo user", name: "cumulus" },
@@ -937,7 +929,7 @@ function filterDevices(url: URL): Device[] {
   let devices = [...(DOC_DEVICES_BY_SITE[site] || [])];
 
   for (const key of new Set(url.searchParams.keys())) {
-    if (key === "site" || key === "managed_only") {
+    if (key === "site") {
       continue;
     }
     const values = url.searchParams.getAll(key);

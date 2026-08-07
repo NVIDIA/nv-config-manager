@@ -133,7 +133,7 @@ export interface SpXOverlayDeletionWorkflowInput {
 }
 
 export type SpXOverlayTenantChangeWorkflowInput = {
-  overlay_id?: string | null;
+  overlay_id: string;
   device_id: string;
   port_names: string[];
   site: string;

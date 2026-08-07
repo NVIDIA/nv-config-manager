@@ -27,7 +27,6 @@ import {
   TENANT_LIST_API_RESPONSE,
   NAMESPACE_TAGS_LIST_API_RESPONSE,
   SPX_OVERLAY_LIST_API_RESPONSE,
-  DEVICE_INTERFACES_LIST_API_RESPONSE,
   DEVICE_TYPES_LIST_API_RESPONSE,
   FORBIDDEN_WORKFLOW_ID,
   FORBIDDEN_SITE_ID,
@@ -103,7 +102,6 @@ export async function setupApiMocks(page: Page) {
   await mockOverlaysEndpoint(page);
   await mockDeviceTypesEndpoint(page);
   await mockDevicesEndpoint(page);
-  await mockDeviceInterfacesEndpoint(page);
   await mockPasswordUsersEndpoint(page);
 
   // Workflow listing endpoints
@@ -1283,15 +1281,6 @@ export async function mockDevicesEndpoint(page: Page) {
     await route.fulfill({
       status: 200,
       json: devices,
-    });
-  });
-}
-
-export async function mockDeviceInterfacesEndpoint(page: Page) {
-  await page.route(`**/v1/parameter/device/*/interfaces`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      json: DEVICE_INTERFACES_LIST_API_RESPONSE,
     });
   });
 }

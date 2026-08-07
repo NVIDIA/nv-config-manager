@@ -17,10 +17,7 @@
 import { delay, http, HttpResponse } from "msw";
 import { sanitizeUrl } from "@/lib/utils";
 import { mockApiURL as apiURL } from "@/config/mockApiUrl";
-import {
-  DEVICE_INTERFACES_LIST_API_RESPONSE,
-  DEVICES_LIST,
-} from "@/mocks/data";
+import { DEVICES_LIST } from "@/mocks/data";
 
 export const useDevicesHandlers = [
   http.get(
@@ -59,16 +56,6 @@ export const useDevicesHandlers = [
       await delay(500);
 
       return HttpResponse.json(devices, { status: 200 });
-    }
-  ),
-  http.get(
-    sanitizeUrl(`${apiURL}/v1/parameter/device/:deviceId/interfaces`),
-    async () => {
-      await delay(300);
-
-      return HttpResponse.json(DEVICE_INTERFACES_LIST_API_RESPONSE, {
-        status: 200,
-      });
     }
   ),
 ];
