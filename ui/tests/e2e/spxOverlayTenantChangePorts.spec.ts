@@ -133,3 +133,23 @@ test("rejects URL port selections that are not on the device", async ({ page }) 
   await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
   await expect(page.getByText("not-a-device-port")).toHaveCount(0);
 });
+
+test("rejects delimiter-only URL port selections", async ({ page }) => {
+  const device = DEVICES_LIST.PDX01[0];
+  const interfaceResponse = page.waitForResponse((response) =>
+    response.url().includes(`/v1/parameter/device/${device.id}/interfaces`)
+  );
+  await page.goto(
+    "/workflows/spxoverlaytenantchangeworkflow/form" +
+      `?site=${SITES_LIST.pdx01}` +
+      `&overlay_id=${SPX_OVERLAY_LIST.primary}` +
+      `&device-id=${device.id}` +
+      "&port_names=%2C"
+  );
+  await interfaceResponse;
+
+  await expect(
+    page.getByRole("button", { name: device.name })
+  ).toBeVisible({ timeout: TEST_TIMEOUT });
+  await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
+});

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -37,13 +37,22 @@ import { WorkflowFormField } from "@/components/forms/formfield";
 import { getErrorMessage, startWorkflow } from "@/lib/utils";
 import { SpXOverlayTenantChangeWorkflowInput } from "@/types/data-table.types";
 
+const normalizePortNames = (portNames: string | string[]): string[] =>
+  (Array.isArray(portNames) ? portNames : [portNames])
+    .flatMap((portName) => portName.split(","))
+    .map((portName) => portName.trim())
+    .filter(Boolean);
+
+const hasPortNames = (portNames: string[]): boolean =>
+  normalizePortNames(portNames).length > 0;
+
 const SpXOverlayTenantChangeFormSchema = z.object({
   site: z.string().trim().min(1, { message: "Site is required" }),
   overlay_id: z.string().trim().min(1, { message: "Overlay ID is required" }),
   device: z.string().trim().min(1, { message: "Device is required" }),
   port_names: z
     .array(z.string())
-    .min(1, { message: "At least one port is required" }),
+    .refine(hasPortNames, { message: "At least one port is required" }),
 });
 
 type SpXOverlayTenantChangeFormData = z.infer<typeof SpXOverlayTenantChangeFormSchema>;
@@ -55,10 +64,11 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   const querySite = searchParams?.get("site") ?? "";
   const queryOverlayId = searchParams?.get("overlay_id") ?? "";
   const queryDevice = searchParams?.get("device-id") ?? "";
-  const queryPortNames = (searchParams?.get("port_names") ?? "")
-    .split(",")
-    .map((portName) => portName.trim())
-    .filter(Boolean);
+  const queryPortNamesParam = searchParams?.get("port_names") ?? "";
+  const queryPortNames = useMemo(
+    () => normalizePortNames(queryPortNamesParam),
+    [queryPortNamesParam]
+  );
   const {
     data: { siteData: sites },
     isLoading: { siteIsLoading },
@@ -70,9 +80,10 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
       site: querySite,
       overlay_id: queryOverlayId,
       device: queryDevice,
-      port_names: queryPortNames,
+      port_names: [],
     },
   });
+  const shouldPopulateQueryPorts = useRef(false);
 
   const site = form.watch("site");
   const device = form.watch("device");
@@ -105,9 +116,10 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   if (deviceError) console.error(`Failed to query devices: ${deviceError}`);
+  const normalizedSelectedPortNames = normalizePortNames(selectedPortNames);
   const selectedPortNamesAreValid =
-    selectedPortNames.length > 0 &&
-    selectedPortNames.every((portName) =>
+    hasPortNames(selectedPortNames) &&
+    normalizedSelectedPortNames.every((portName) =>
       deviceInterfaces.some((option) => option.value === portName)
     );
 
@@ -140,12 +152,21 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   }, [queryDevice, deviceData, form]);
 
   useEffect(() => {
+    form.setValue("port_names", []);
+    shouldPopulateQueryPorts.current = Boolean(device && device === queryDevice);
+  }, [device, form, queryDevice, queryPortNames]);
+
+  useEffect(() => {
     if (!device || !deviceInterfacesHaveLoaded || deviceInterfacesAreLoading) return;
 
     const currentPortNames = form.getValues("port_names");
-    const validPortNames = currentPortNames.filter((portName) =>
-      deviceInterfaces.some((option) => option.value === portName)
+    const requestedPortNames = shouldPopulateQueryPorts.current
+      ? queryPortNames
+      : currentPortNames;
+    const validPortNames = normalizePortNames(requestedPortNames).filter(
+      (portName) => deviceInterfaces.some((option) => option.value === portName)
     );
+    shouldPopulateQueryPorts.current = false;
     if (
       validPortNames.length !== currentPortNames.length ||
       validPortNames.some((portName, index) => portName !== currentPortNames[index])
@@ -158,6 +179,8 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
     deviceInterfacesAreLoading,
     deviceInterfacesHaveLoaded,
     form,
+    queryDevice,
+    queryPortNames,
   ]);
 
   useSyncSelectFromQuery({
@@ -170,10 +193,14 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   const onSubmit = async (data: SpXOverlayTenantChangeFormData): Promise<void> => {
-    const validPortNames = data.port_names.filter((portName) =>
+    const normalizedPortNames = normalizePortNames(data.port_names);
+    const validPortNames = normalizedPortNames.filter((portName) =>
       deviceInterfaces.some((option) => option.value === portName)
     );
-    if (validPortNames.length !== data.port_names.length || validPortNames.length === 0) {
+    if (
+      validPortNames.length !== normalizedPortNames.length ||
+      validPortNames.length === 0
+    ) {
       form.setError("port_names", {
         type: "validate",
         message: "Select at least one port available on the selected device",
