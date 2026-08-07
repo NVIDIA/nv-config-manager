@@ -86,6 +86,34 @@ test("loads device and port selections from URL parameters", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Submit" })).toBeEnabled();
 });
 
+test("shows an error when device interfaces fail to load", async ({ page }) => {
+  await page.route("**/v1/parameter/device/*/interfaces", async (route) => {
+    await route.fulfill({
+      status: 500,
+      json: { error: "Failed to load device interfaces" },
+    });
+  });
+  await page.goto("/workflows/spxoverlaytenantchangeworkflow/form");
+
+  await page.getByRole("button", { name: "Site" }).click();
+  await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
+
+  const device = DEVICES_LIST.PDX01[0];
+  const interfaceResponse = page.waitForResponse((response) =>
+    response.url().includes(`/v1/parameter/device/${device.id}/interfaces`)
+  );
+  await page.getByRole("button", { name: "Device" }).click();
+  await page.getByRole("dialog").getByText(device.name).click();
+  await interfaceResponse;
+
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Unable to load interfaces for the selected device. Try again.",
+    })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit" })).toBeDisabled();
+});
+
 test("rejects URL port selections that are not on the device", async ({ page }) => {
   const device = DEVICES_LIST.PDX01[0];
   const interfaceResponse = page.waitForResponse((response) =>

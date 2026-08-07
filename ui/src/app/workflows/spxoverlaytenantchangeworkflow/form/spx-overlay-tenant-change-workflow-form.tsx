@@ -105,9 +105,6 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
   });
 
   if (deviceError) console.error(`Failed to query devices: ${deviceError}`);
-  if (deviceInterfacesError) {
-    console.error(`Failed to query device interfaces: ${deviceInterfacesError}`);
-  }
   const selectedPortNamesAreValid =
     selectedPortNames.length > 0 &&
     selectedPortNames.every((portName) =>
@@ -249,18 +246,25 @@ export const SpXOverlayTenantChangeWorkflowForm = () => {
                 disabled={!site || isSubmitting || deviceIsLoading}
                 handleChange={() => form.setValue("port_names", [])}
               />
-              <WorkflowFormField
-                type="select"
-                control={form.control}
-                name="port_names"
-                label="Ports"
-                options={deviceInterfaces}
-                multiple={true}
-                searchable={true}
-                isLoading={deviceInterfacesAreLoading}
-                isSubmitting={isSubmitting}
-                disabled={!site || !device || isSubmitting}
-              />
+              <div className="space-y-2">
+                <WorkflowFormField
+                  type="select"
+                  control={form.control}
+                  name="port_names"
+                  label="Ports"
+                  options={deviceInterfaces}
+                  multiple={true}
+                  searchable={true}
+                  isLoading={deviceInterfacesAreLoading}
+                  isSubmitting={isSubmitting}
+                  disabled={!site || !device || isSubmitting}
+                />
+                {deviceInterfacesError && (
+                  <p role="alert" className="text-sm font-medium text-destructive">
+                    Unable to load interfaces for the selected device. Try again.
+                  </p>
+                )}
+              </div>
               <Button
                 type="submit"
                 disabled={
