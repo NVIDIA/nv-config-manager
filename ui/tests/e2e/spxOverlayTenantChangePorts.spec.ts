@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import { expect } from "@playwright/test";
-import { DEVICES_LIST, SITES_LIST } from "@/mocks/data";
+import { DEVICES_LIST, SITES_LIST, SPX_OVERLAY_LIST } from "@/mocks/data";
 import { test, TEST_TIMEOUT } from "./shared/utils";
 
 test("queries the selected device ports and supports multiple selections", async ({
@@ -25,6 +25,11 @@ test("queries the selected device ports and supports multiple selections", async
 
   await page.getByRole("button", { name: "Site" }).click();
   await page.getByRole("dialog").getByText(SITES_LIST.pdx01).click();
+  await page.getByRole("button", { name: "Overlay ID" }).click();
+  await page
+    .getByRole("dialog")
+    .getByText(SPX_OVERLAY_LIST.primary)
+    .click();
 
   const firstDevice = DEVICES_LIST.PDX01[0];
   const interfaceResponse = page.waitForResponse((response) =>
@@ -67,6 +72,7 @@ test("loads device and port selections from URL parameters", async ({ page }) =>
   await page.goto(
     "/workflows/spxoverlaytenantchangeworkflow/form" +
       `?site=${SITES_LIST.pdx01}` +
+      `&overlay_id=${SPX_OVERLAY_LIST.primary}` +
       `&device-id=${device.id}` +
       "&port_names=swp1%2Cswp2"
   );
