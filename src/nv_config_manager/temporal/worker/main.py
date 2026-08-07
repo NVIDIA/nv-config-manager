@@ -23,6 +23,7 @@ from temporalio.client import Client
 from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.worker import Worker
 
+from nv_config_manager.common.config_watch import restart_on_config_change
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.common.activities import REGISTERED_COMMON_ACTIVITIES
@@ -54,6 +55,7 @@ def _enabled_env_flag(name: str) -> bool:
 
 async def main() -> None:
     """Run the temporal worker."""
+    restart_on_config_change()
     runtime = setup_telemetry("nv-config-manager-temporal-worker")
 
     client = await Client.connect(

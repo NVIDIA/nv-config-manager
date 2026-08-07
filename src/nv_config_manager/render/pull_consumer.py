@@ -46,6 +46,7 @@ from nv_config_manager.common.config import (
     nats_nautobot_change_config,
     nats_render_change_config,
 )
+from nv_config_manager.common.config_watch import restart_on_config_change
 from nv_config_manager.common.nats_admin import (
     CONSUMER_ACK_WAIT_SECONDS,
     CONSUMER_MAX_DELIVER,
@@ -585,6 +586,8 @@ def main() -> None:
     """Entry point for the pull consumer."""
     # Start Prometheus Server
     start_http_server(8000)
+
+    restart_on_config_change()
 
     consumer: PullConsumer
     consumer_name = os.getenv("NATS_CONSUMER")

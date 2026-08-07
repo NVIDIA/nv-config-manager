@@ -23,16 +23,20 @@ from typing import Any
 from nats.aio.msg import Msg
 
 from nv_config_manager.common.config import load_config, nats_archive_config
+from nv_config_manager.common.config_watch import restart_on_config_change
 from nv_config_manager.common.log import configure_logging
 from nv_config_manager.temporal.api.workflow_v1 import WorkflowDetailResponse, get_client
 from nv_config_manager.temporal.client.nats import NatsConsumer
 from nv_config_manager.temporal.telemetry import setup_telemetry
 
-config = load_config()
+# Backend selection gates the imports below, so unlike the settings read per
+# message it can only be decided once, at import.
+_startup_config = load_config()
 
 ARCHIVE_BACKEND = (
     "nvdataflow"
-    if "temporal.nvdataflow" in config and config["temporal.nvdataflow"].get("project")
+    if "temporal.nvdataflow" in _startup_config
+    and _startup_config["temporal.nvdataflow"].get("project")
     else "elasticsearch"
 )
 if ARCHIVE_BACKEND == "nvdataflow":
@@ -86,6 +90,7 @@ async def handle_archive_msg(msg: Msg) -> None:
 
 async def _archive_nvdataflow(workflow_details: Any) -> None:
     """Archive workflow details to nvdataflow."""
+    config = load_config()
     compressed = gzip.compress(json.dumps(workflow_details).encode("utf-8"))
     encoded = base64.b64encode(compressed).decode("utf-8")
 
@@ -131,6 +136,7 @@ async def _archive_nvdataflow(workflow_details: Any) -> None:
 
 def _archive_elasticsearch(workflow_details: Any) -> None:
     """Archive workflow details to Elasticsearch."""
+    config = load_config()
     # Add temporal server so we can track which environment sourced the workflow
     workflow_details["config_manager_temporal_server"] = config["temporal"]["api_url"]
 
@@ -206,6 +212,7 @@ def main() -> None:
     )
     configure_logging(service="temporal-archive")
     setup_telemetry("nv-config-manager-temporal-archive")
+    restart_on_config_change()
 
     stream, subject = nats_archive_config()
     consumer = NatsConsumer(
