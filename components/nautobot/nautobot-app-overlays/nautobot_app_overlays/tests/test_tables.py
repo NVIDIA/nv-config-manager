@@ -125,7 +125,7 @@ class OverlayAssignmentTableTestCase(TestCase):
         table = tables.OverlayAssignmentTable(models.OverlayAssignment.objects.all())
         RequestConfig(self.factory.get("/")).configure(table)
 
-        self.assertIn("assigned_object", table.columns.names())
+        self.assertTrue(table.columns["assigned_object"].visible)
         row = next(row for row in table.rows if row.record == self.vrf_assignment)
         self.assertIn(self.vrf.get_absolute_url(), row.get_cell("assigned_object"))
 
@@ -159,7 +159,7 @@ class OverlayAssignmentInlineTableTestCase(TestCase):
         table = tables.OverlayAssignmentInlineTable(models.OverlayAssignment.objects.all())
         RequestConfig(self.factory.get("/")).configure(table)
 
-        self.assertIn("assigned_object", table.columns.names())
+        self.assertTrue(table.columns["assigned_object"].visible)
         row = next(row for row in table.rows if row.record == self.vrf_assignment)
         self.assertIn(self.vrf.get_absolute_url(), row.get_cell("assigned_object"))
 
