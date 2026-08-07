@@ -36,13 +36,6 @@ class Device(BaseModel):
     platform: str | None = None
 
 
-class DeviceInterface(BaseModel):
-    """Device interface data for dropdown population."""
-
-    id: str
-    name: str
-
-
 class Location(BaseModel):
     """Site data for dropdown population."""
 
@@ -490,33 +483,6 @@ async def get_devices(  # pylint: disable=R0913,R0914
         )
         for device in devices
     ]
-
-
-@router.get("/device/{device_id}/interfaces")
-async def get_device_interfaces(device_id: str) -> list[DeviceInterface]:
-    """Return the interfaces belonging to a device."""
-    client = NautobotClient()
-    query = """
-        query ($device_id: [String]) {
-            interfaces(device_id: $device_id) {
-                id
-                name
-            }
-        }
-    """
-
-    try:
-        async with client:
-            data = await client.graphql_query(query, {"device_id": [device_id]})
-    except ApplicationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-    interfaces = [
-        DeviceInterface(id=interface["id"], name=interface["name"])
-        for interface in data["data"]["interfaces"]
-        if interface["name"]
-    ]
-    return sorted(interfaces, key=lambda interface: interface.name.casefold())
 
 
 class CommandEntry(BaseModel):

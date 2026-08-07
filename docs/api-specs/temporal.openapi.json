@@ -219,25 +219,6 @@
         "title": "DeviceCableValidationInput",
         "type": "object"
       },
-      "DeviceInterface": {
-        "description": "Device interface data for dropdown population.",
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
-        ],
-        "title": "DeviceInterface",
-        "type": "object"
-      },
       "DevicePasswordRotationInput": {
         "description": "Device Password Rotation Workflow Input Definition.",
         "properties": {
@@ -2722,58 +2703,6 @@
           }
         ],
         "summary": "Get Device ID by Name",
-        "tags": [
-          "parameters"
-        ]
-      }
-    },
-    "/v1/parameter/device/{device_id}/interfaces": {
-      "get": {
-        "description": "Return the interfaces belonging to a device.",
-        "operationId": "get_device_interfaces_v1_parameter_device__device_id__interfaces_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "device_id",
-            "required": true,
-            "schema": {
-              "title": "Device Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DeviceInterface"
-                  },
-                  "title": "Response Get Device Interfaces V1 Parameter Device  Device Id  Interfaces Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Get Device Interfaces",
         "tags": [
           "parameters"
         ]
