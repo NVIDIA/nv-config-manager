@@ -20,7 +20,7 @@ import ipaddress
 import os
 import random
 import time as _time
-from typing import Any
+from typing import Any, cast
 
 import macaddress
 import netaddr
@@ -726,7 +726,8 @@ async def generate_config(
     hooks_path = _extract_hooks_path(kea_config or {}, version)
 
     site_dhcp_options_data = await dcim_client.get_dhcp_site_options()
-    site_dhcp_options = site_dhcp_options_data.get(f"Dhcp{version}", {}).get("option-def", [])
+    family_options = cast(dict[str, Any], site_dhcp_options_data.get(f"Dhcp{version}", {}))
+    site_dhcp_options = family_options.get("option-def", [])
     dhcp_key = f"Dhcp{version}"
     dhcp_config = {
         dhcp_key: {

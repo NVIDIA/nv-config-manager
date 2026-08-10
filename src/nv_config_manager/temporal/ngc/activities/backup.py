@@ -109,6 +109,7 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
             or (existing_backup.deployed_commit_id or None) != deployed_commit_id
         )
         if not config_store_changed and not deployed_commit_changed:
+            assert existing_backup is not None
             # Check if it was updated by this workflow,
             # if so this may be a retry that occurred despite the update succeeding
             if existing_backup.workflow_id == activity_input.workflow_id:
@@ -118,11 +119,11 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
         # Updating only the deployed commit metadata does not represent a new Config Store
         # backup. Preserve the workflow that wrote the existing backup so an activity retry
         # cannot incorrectly report this metadata-only update as a new backup.
-        workflow_id = (
-            activity_input.workflow_id
-            if config_store_changed
-            else existing_backup.workflow_id or activity_input.workflow_id
-        )
+        if config_store_changed:
+            workflow_id = activity_input.workflow_id
+        else:
+            assert existing_backup is not None
+            workflow_id = existing_backup.workflow_id or activity_input.workflow_id
 
         await client.record_configuration_backup(
             ConfigurationBackupIntent(

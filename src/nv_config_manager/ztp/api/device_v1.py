@@ -162,9 +162,9 @@ async def mark_provisioned(device_uuid: str, request: Request) -> str:
         await client.mark_ztp_device_provisioned(device_uuid)
     # Trigger a backup workflow
     try:
-        client = temporal_client()
-        async with client:
-            await client.invoke_backup_workflow(device_uuid)
+        workflow_client = temporal_client()
+        async with workflow_client:
+            await workflow_client.invoke_backup_workflow(device_uuid)
     except Exception as e:
         logger.error("Error invoking backup workflow: %s", e)
     return "OK"

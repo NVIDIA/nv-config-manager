@@ -364,9 +364,14 @@ async def update_dpu_data(
     """Update DPU Data."""
     client = create_dcim_workflow_client()
     async with client:
-        host_devices = await client.find_host_devices_by_mac(activity_input.server.mac)
+        server_mac = activity_input.server.mac
+        if server_mac is None:
+            raise ApplicationError("Server MAC address is required", non_retryable=True)
+        host_devices = await client.find_host_devices_by_mac(server_mac)
         if not host_devices:
-            raise ApplicationError(f"Server {activity_input.server} not found in the configured DCIM")
+            raise ApplicationError(
+                f"Server {activity_input.server} not found in the configured DCIM"
+            )
         if len(host_devices) > 1:
             raise ApplicationError(
                 "Multiple devices in the configured DCIM for "
@@ -414,15 +419,21 @@ async def update_dpu_data(
             if len(device_interfaces) != len(dpu_interfaces):
                 raise ApplicationError("Must have same number of device ports and DPU ports")
 
+            interface_macs: dict[str, str] = {}
+            for device_interface, dpu_interface in zip(
+                device_interfaces, dpu_interfaces, strict=False
+            ):
+                if dpu_interface.mac is None:
+                    raise ApplicationError(
+                        f"MAC address is missing for DPU port {dpu_interface.name}",
+                        non_retryable=True,
+                    )
+                interface_macs[device_interface.id] = dpu_interface.mac
+
             dpu_data = await client.update_dpu_device_inventory(
                 device_id=device.id,
                 serial=dpu.serial,
-                interface_macs={
-                    device_interface.id: dpu_interface.mac
-                    for device_interface, dpu_interface in zip(
-                        device_interfaces, dpu_interfaces, strict=False
-                    )
-                },
+                interface_macs=interface_macs,
             )
             result.append(dpu_data)
 
