@@ -70,7 +70,8 @@ dcim:
   # the image therefore carries every dependency required by the provider.
   providerPackages:
     enabled: false
-    installerImage: python:3.13-alpine
+    # Match the glibc-based NVCM runtime so compiled provider wheels remain compatible.
+    installerImage: python:3.13-bookworm
     images: []
 
 # =============================================================================

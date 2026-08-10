@@ -1102,7 +1102,7 @@ wheels must be present under /plugin-wheels.
 {{- define "nv-config-manager.installDCIMProviderPackages" -}}
 {{- if .Values.dcim.providerPackages.enabled }}
 - name: install-dcim-provider-packages
-  image: {{ .Values.dcim.providerPackages.installerImage | default "python:3.13-alpine" }}
+  image: {{ .Values.dcim.providerPackages.installerImage | default "python:3.13-bookworm" }}
   imagePullPolicy: IfNotPresent
   command: ["/bin/sh", "-c"]
   args:
