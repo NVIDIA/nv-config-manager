@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from configparser import ConfigParser
+from unittest.mock import AsyncMock
 
 import pytest
 from nv_config_manager_dcim import DCIMInvalidDataError, DCIMProviderConfigurationError
@@ -75,6 +76,35 @@ def test_service_adapter_creates_the_selected_sdk_provider() -> None:
     assert (
         client.get_device_ui_url("device-1") == "https://public-dcim.example/dcim/devices/device-1/"
     )
+
+
+def test_nautobot_provider_owns_identifier_shape_validation() -> None:
+    """The Nautobot provider accepts UUID IDs without imposing that shape on other providers."""
+    client = NautobotDCIMClient("https://dcim.example", "token")
+
+    assert client.is_valid_device_id("910b85f8-e83c-48ad-9bbd-12b15e97a2d4") is True
+    assert client.is_valid_location_id("b6f4972a-c6ab-4be1-96ac-72f4efc4f328") is True
+    assert client.is_valid_device_id("42") is False
+    assert client.is_valid_location_id("site-1") is False
+
+
+@pytest.mark.asyncio
+async def test_nautobot_location_metadata_uses_direct_id_lookup() -> None:
+    """Location validation fetches one indexed record rather than listing locations."""
+    location_id = "b6f4972a-c6ab-4be1-96ac-72f4efc4f328"
+    client = NautobotDCIMClient("https://dcim.example", "token")
+    client.graphql_query = AsyncMock(
+        return_value={"data": {"location": {"id": location_id, "name": "SJC01"}}}
+    )
+
+    location = await client.get_location_metadata(location_id)
+
+    assert location is not None
+    assert location.id == location_id
+    assert location.name == "SJC01"
+    query, variables = client.graphql_query.await_args.args
+    assert "query GetLocationById" in query
+    assert variables == {"id": location_id}
 
 
 def test_provider_specific_settings_override_generic_dcim_values() -> None:

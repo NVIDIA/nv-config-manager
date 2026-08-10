@@ -20,6 +20,7 @@ import logging
 import re
 from collections.abc import Callable, Mapping
 from typing import Any, Self
+from uuid import UUID
 
 from nv_config_manager_dcim.api import (
     DCIMClient,
@@ -89,6 +90,7 @@ _INTENDED_INTERFACE_NEIGHBORS_QUERY = load_graphql_query(
     "provider/events.graphql", "GetIntendedInterfaceNeighbors"
 )
 _PARAMETER_LOCATIONS_QUERY = load_graphql_query("provider/parameters.graphql", "ListLocations")
+_LOCATION_BY_ID_QUERY = load_graphql_query("provider/parameters.graphql", "GetLocationById")
 _PARAMETER_TENANTS_QUERY = load_graphql_query("provider/parameters.graphql", "ListTenants")
 _PARAMETER_ROLES_QUERY = load_graphql_query("provider/parameters.graphql", "ListRoles")
 _PARAMETER_MANAGED_TENANTS_QUERY = load_graphql_query(
@@ -208,6 +210,36 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
             verify=connection_config["verify"],
             public_url=str(connection_config["public_url"]) or None,
         )
+
+    @staticmethod
+    def is_valid_device_id(value: str) -> bool:
+        """Return whether a device identifier has Nautobot's UUID shape."""
+        try:
+            UUID(value)
+        except (ValueError, TypeError, AttributeError):
+            return False
+        return True
+
+    @staticmethod
+    def is_valid_location_id(value: str) -> bool:
+        """Return whether a location identifier has Nautobot's UUID shape."""
+        try:
+            UUID(value)
+        except (ValueError, TypeError, AttributeError):
+            return False
+        return True
+
+    async def get_location_metadata(self, location_id: str) -> DCIMSelection | None:
+        """Return normalized metadata for one location UUID."""
+        result = await self.graphql_query(_LOCATION_BY_ID_QUERY, {"id": location_id})
+        if result.get("errors"):
+            message = result["errors"][0].get("message", "Invalid location query")
+            raise DCIMInvalidDataError(str(message))
+        location = (result.get("data") or {}).get("location")
+        if location is None:
+            return None
+        selections = self._parameter_selections([location], "location")
+        return selections[0]
 
     async def get_device_metadata(self, device_id: str) -> DeviceMetadata | None:
         """Return normalized metadata for a Nautobot device UUID."""

@@ -15,12 +15,14 @@
 """Tests for API-only workflow reference validation and enrichment."""
 
 from typing import Annotated
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
+from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
 from pydantic import BaseModel
 
+from nv_config_manager.dcim import DCIMSelection, DeviceMetadata
 from nv_config_manager.temporal.api.workflow_submission import resolve_workflow_references
 from nv_config_manager.temporal.common.search_attributes import (
     DEVICE_ID_SEARCH_ATTRIBUTE,
@@ -87,12 +89,53 @@ def _client() -> MagicMock:
     client.__aenter__.return_value = client
     client.get = AsyncMock()
     client.get_devices = AsyncMock()
+    client.list_locations = AsyncMock()
+
+    def is_valid_id(value: str) -> bool:
+        try:
+            UUID(value)
+        except ValueError:
+            return False
+        return True
+
+    def get_device_metadata(device_id: str) -> DeviceMetadata | None:
+        for device in client.get_devices.return_value:
+            if device["id"] != device_id:
+                continue
+            location = device.get("location")
+            while location and (location.get("location_type") or {}).get("name") != "Site":
+                location = location.get("parent")
+            platform = device.get("platform") or {}
+            role = device.get("role") or {}
+            return DeviceMetadata(
+                device_id=device_id,
+                name=device["name"],
+                site=location.get("name", "") if location else "",
+                platform=platform.get("name"),
+                role=role.get("name"),
+            )
+        return None
+
+    def get_location_metadata(location_id: str) -> DCIMSelection | None:
+        return next(
+            (
+                DCIMSelection.model_validate(location)
+                for location in client.get.return_value["results"]
+                if location["id"] == location_id
+            ),
+            None,
+        )
+
+    client.is_valid_device_id = MagicMock(side_effect=is_valid_id)
+    client.is_valid_location_id = MagicMock(side_effect=is_valid_id)
+    client.get_location_metadata = AsyncMock(side_effect=get_location_metadata)
+    client.get_device_metadata = AsyncMock(side_effect=get_device_metadata)
     return client
 
 
 @pytest.mark.asyncio
-async def test_device_references_are_batched_and_enriched_from_same_query() -> None:
-    """A single Nautobot response must provide validation and search metadata."""
+async def test_device_references_are_deduplicated_and_enriched_from_metadata() -> None:
+    """Each unique ID uses one provider metadata lookup for existence and enrichment."""
     client = _client()
     client.get_devices.return_value = [
         {
@@ -116,15 +159,15 @@ async def test_device_references_are_batched_and_enriched_from_same_query() -> N
     )
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
 
-    client.get_devices.assert_awaited_once_with(
-        ANY,
-        device_ids=[DEVICE_ID, OTHER_DEVICE_ID],
-    )
+    assert client.get_device_metadata.await_args_list == [
+        call(DEVICE_ID),
+        call(OTHER_DEVICE_ID),
+    ]
     assert attributes == {
         DEVICE_ID_SEARCH_ATTRIBUTE: [DEVICE_ID],
         DEVICE_NAME_SEARCH_ATTRIBUTE: ["LEAF01"],
@@ -147,12 +190,12 @@ async def test_uuid_v5_device_reference_is_accepted() -> None:
     body = DeviceCollectionInput(primary_device=DEVICE_ID_V5, related_devices=[])
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
 
-    client.get_devices.assert_awaited_once_with(ANY, device_ids=[DEVICE_ID_V5])
+    client.get_device_metadata.assert_awaited_once_with(DEVICE_ID_V5)
     assert attributes[DEVICE_ID_SEARCH_ATTRIBUTE] == [DEVICE_ID_V5]
     assert attributes[DEVICE_NAME_SEARCH_ATTRIBUTE] == ["UFM01"]
 
@@ -185,7 +228,7 @@ async def test_explicit_location_takes_search_attribute_precedence() -> None:
     body = LocationAndDeviceInput(location_scope=LOCATION_ID, target_device=DEVICE_ID)
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
@@ -211,13 +254,14 @@ async def test_optional_location_references_are_resolved(body: BaseModel) -> Non
     }
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
 
     assert attributes[SITE_SEARCH_ATTRIBUTE] == ["Data Hall A"]
-    client.get.assert_awaited_once_with("dcim/locations/", params={"id": LOCATION_ID})
+    client.get_location_metadata.assert_awaited_once_with(LOCATION_ID)
+    client.list_locations.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -235,7 +279,7 @@ async def test_optional_device_reference_is_resolved() -> None:
     ]
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(PortLLDPInfoInput(device_id=DEVICE_ID))
@@ -248,7 +292,10 @@ async def test_optional_device_reference_is_resolved() -> None:
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        (DeviceCollectionInput(primary_device="LEAF01", related_devices=[]), "valid UUID"),
+        (
+            DeviceCollectionInput(primary_device="LEAF01", related_devices=[]),
+            "Invalid device identifier",
+        ),
         (LocationAndDeviceInput(location_scope=" ", target_device=DEVICE_ID), "must not be empty"),
     ],
 )
@@ -264,7 +311,7 @@ async def test_invalid_reference_shape_is_rejected_only_by_api_resolution(
 
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
             return_value=client,
         ),
         pytest.raises(HTTPException, match=message) as exc_info,
@@ -277,7 +324,9 @@ async def test_invalid_reference_shape_is_rejected_only_by_api_resolution(
 @pytest.mark.asyncio
 async def test_field_names_without_reference_metadata_are_ignored() -> None:
     """Conventional names alone must not trigger validation or Nautobot queries."""
-    with patch("nv_config_manager.temporal.api.workflow_submission.NautobotClient") as client:
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client"
+    ) as client:
         attributes = await resolve_workflow_references(ConventionOnlyInput(device_id="not-a-uuid"))
 
     assert attributes == {}
@@ -311,7 +360,7 @@ async def test_api_workflow_inputs_reject_preloaded_device_objects(body: BaseMod
 
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.NautobotClient",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
             return_value=client,
         ),
         pytest.raises(HTTPException, match="Preloaded device objects are not accepted") as exc_info,
@@ -319,7 +368,7 @@ async def test_api_workflow_inputs_reject_preloaded_device_objects(body: BaseMod
         await resolve_workflow_references(body)
 
     assert exc_info.value.status_code == 422
-    client.get_devices.assert_not_awaited()
+    client.get_device_metadata.assert_not_awaited()
 
 
 def test_preloaded_device_objects_remain_valid_for_temporal_invocations() -> None:

@@ -2,6 +2,10 @@ query ListLocations($location_types: [String]) {
   locations(location_type: $location_types) { id name }
 }
 
+query GetLocationById($id: ID!) {
+  location(id: $id) { id name }
+}
+
 query ListTenants {
   tenants { id name }
 }

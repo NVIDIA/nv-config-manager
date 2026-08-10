@@ -73,6 +73,14 @@ image configuration. The package must be installed in every service image
 that creates a DCIM client, so its entry point is visible to Python package
 discovery. See the [external provider configuration sample](../install/configuration-samples.mdx#external-dcim-provider).
 
+The NVCM chart owns its NATS deployment and JetStream setup independently of
+the selected DCIM. Set `externalServices.nats.local=true` to use the bundled
+NATS resources while leaving `nautobot.enabled=false`. An external provider
+team only needs to deploy its DCIM application and event publisher; it does
+not need to package or maintain a second NATS chart. Set
+`externalServices.nats.local=false` only when the installation supplies a
+separately managed NATS service.
+
 ## Implement the factory and client
 
 The provider factory has two required methods: `validate_settings()` and
@@ -114,6 +122,14 @@ methods take and return SDK types, never native resource objects. Add a new
 Pydantic model to `nv-config-manager-dcim` when an operation needs a concept
 the SDK does not yet represent; do not leak a backend client object or a raw
 provider response across the service boundary.
+
+Each provider owns its identifier format. Implement `is_valid_device_id()` and
+`is_valid_location_id()` as local shape checks (for example, UUIDs in Nautobot
+or integer strings in NetBox). Workflow reference validation then uses the
+direct `get_device_metadata()` and `get_location_metadata()` operations as both
+the existence check and the source of search attributes. These operations must
+perform indexed single-record lookups; do not implement them by listing all
+devices or locations and searching in application memory.
 
 The SDK validates provider metadata during discovery. It rejects duplicate
 entry-point names, a metadata-name mismatch, and providers that do not support
