@@ -186,7 +186,7 @@ class InfinibandMlnxOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin):
         )
         self.define_stage(
             name="get_device_info",
-            description="Get device information from Nautobot.",
+            description="Get device information from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )

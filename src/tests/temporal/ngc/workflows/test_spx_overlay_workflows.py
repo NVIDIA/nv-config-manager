@@ -415,7 +415,7 @@ async def test_spx_overlay_deletion_workflow(
                 "approvers": [],
                 "child_workflows": [],
                 "depends_on": [],
-                "description": "Validate and delete Nautobot VRFs tied to the VPC.",
+                "description": "Validate and delete DCIM VRFs tied to the VPC.",
                 "execution_time": 0.0,
                 "input": {
                     "namespace_tag": "mock_tag",
@@ -470,7 +470,7 @@ async def test_spx_overlay_deletion_workflow(
                 "approvers": [],
                 "child_workflows": [],
                 "depends_on": [],
-                "description": "Validate and delete Nautobot VRFs tied to the VPC.",
+                "description": "Validate and delete DCIM VRFs tied to the VPC.",
                 "execution_time": 0.0,
                 "input": {
                     "namespace_tag": "mock_tag",
@@ -542,7 +542,7 @@ async def test_spx_overlay_deletion_workflow(
                 "approvers": [],
                 "child_workflows": [],
                 "depends_on": [],
-                "description": "Validate and delete Nautobot VRFs tied to the VPC.",
+                "description": "Validate and delete DCIM VRFs tied to the VPC.",
                 "execution_time": 0.0,
                 "input": {
                     "namespace_tag": "mock_tag",

@@ -70,7 +70,7 @@ class IBPKeyMemberDeleteInput(BaseModel):
     host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
     pkey: str = Field(description="Partition key whose members will be removed.")
     interfaces: list[InterfaceRef] = Field(
-        default=[], description="Nautobot interfaces to resolve to InfiniBand port GUIDs."
+        default=[], description="DCIM interfaces to resolve to InfiniBand port GUIDs."
     )
     guids: list[str] = Field(
         default=[], description="InfiniBand port GUIDs to remove directly from the partition."
@@ -118,13 +118,13 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         StageMixin.__init__(self)
         self.define_stage(
             name="resolve_context",
-            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            description="Resolve site, overlay, and canonical pkey from the DCIM",
             requires_approval=False,
             depends_on=[],
         )
         self.define_stage(
             name="resolve_guids",
-            description="Resolve IB GUIDs for interfaces from Nautobot",
+            description="Resolve IB GUIDs for interfaces from the DCIM",
             requires_approval=False,
             depends_on=["resolve_context"],
         )
@@ -142,13 +142,13 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
         self.define_stage(
             name="remove_assignments",
-            description="Delete OverlayAssignment records in Nautobot",
+            description="Delete OverlayAssignment records in the DCIM",
             requires_approval=False,
             depends_on=["verify_removed"],
         )
         self.define_stage(
             name="cleanup_partition",
-            description="Delete the Nautobot PKey/Overlay if the partition is now empty",
+            description="Delete the DCIM PKey/Overlay if the partition is now empty",
             requires_approval=False,
             depends_on=["remove_assignments"],
         )

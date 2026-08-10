@@ -82,16 +82,18 @@ def mock_configs():
     ufm_cfg = _create_config({"ufm": {"ufm_api_user": "admin", "ufm_api_token_r1": "password"}})
     nb_cfg = _create_config(
         {
-            "nautobot": {
+            "dcim": {
+                "provider": "nautobot-2x",
                 "server": NB_URL,
                 "token": "test-token",
                 "verify": "false",
-            }
+            },
+            "nats": {},
         }
     )
     with (
         patch("nv_config_manager.temporal.client.ufm.load_config", return_value=ufm_cfg),
-        patch("nv_config_manager_dcim_nautobot_2x.workflow.load_config", return_value=nb_cfg),
+        patch("nv_config_manager.common.config.load_config", return_value=nb_cfg),
     ):
         yield
 
@@ -136,6 +138,7 @@ def _stub_nautobot_resolve_site(
                     {
                         "id": "dev-1",
                         "name": "ufm.example.com",
+                        "role": {"name": "UFM"},
                         "primary_ip4": {"host": "10.0.0.1"},
                         "location": {
                             "id": site_id,

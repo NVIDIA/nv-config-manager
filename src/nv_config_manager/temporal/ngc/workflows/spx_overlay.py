@@ -299,7 +299,7 @@ class SpXOverlayDeletionWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin
         StageMixin.__init__(self)
         self.define_stage(
             name="delete_spx_overlay",
-            description="Validate and delete Nautobot VRFs tied to the VPC.",
+            description="Validate and delete DCIM VRFs tied to the VPC.",
             requires_approval=False,
             depends_on=[],
         )
@@ -475,7 +475,7 @@ class SpXOverlayAssignmentWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
         StageMixin.__init__(self)
         self.define_stage(
             name="get_device_and_vrf",
-            description="Get device and VRF information from Nautobot.",
+            description="Get device and VRF information from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
@@ -824,7 +824,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         StageMixin.__init__(self)
         self.define_stage(
             name="get_device",
-            description="Get device information from Nautobot",
+            description="Get device information from the DCIM",
             requires_approval=False,
             depends_on=[],
         )
@@ -1020,7 +1020,7 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
         if stage_input.assignment_changed:
             return self.DetermineDeploymentActionStageOutput(
                 deploy_required=True,
-                display="Nautobot assignment changed; tenant render and deploy are required.",
+                display="DCIM assignment changed; tenant render and deploy are required.",
             )
 
         has_pending_deployment = await workflow.execute_activity(
@@ -1034,14 +1034,14 @@ class SpXOverlayTenantChangeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
                 deploy_required=True,
                 use_latest_render=True,
                 display=(
-                    "Nautobot assignment was already complete, but the device has a pending "
+                    "DCIM assignment was already complete, but the device has a pending "
                     "deployment; deploying the latest rendered tenant configuration."
                 ),
             )
 
         return self.DetermineDeploymentActionStageOutput(
             deploy_required=False,
-            display="Nautobot assignment is already complete and no deployment is pending.",
+            display="DCIM assignment is already complete and no deployment is pending.",
         )
 
     class RenderStageInput(StageInput):

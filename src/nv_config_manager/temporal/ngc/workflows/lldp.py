@@ -78,7 +78,7 @@ class PortLLDPInfoWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         StageMixin.__init__(self)
         self.define_stage(
             name="get_switch_port",
-            description="Load the switch port by MAC address from Nautobot",
+            description="Load the switch port by MAC address from the DCIM",
             requires_approval=False,
             depends_on=[],
         )

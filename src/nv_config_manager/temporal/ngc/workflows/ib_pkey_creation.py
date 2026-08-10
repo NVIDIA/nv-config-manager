@@ -123,7 +123,7 @@ class IBPKeyCreationWorkflow(
         StageMixin.__init__(self)
         self.define_stage(
             name="resolve_context",
-            description="Resolve Site from host via Nautobot (skipped when site is provided)",
+            description="Resolve Site from host via the DCIM (skipped when site is provided)",
             requires_approval=False,
             depends_on=[],
         )
@@ -147,7 +147,7 @@ class IBPKeyCreationWorkflow(
         )
         self.define_stage(
             name="record_nautobot",
-            description="Record PKey in Nautobot",
+            description="Record PKey in the DCIM",
             requires_approval=False,
             depends_on=["verify_pkey"],
         )

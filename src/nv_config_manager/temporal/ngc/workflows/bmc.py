@@ -121,7 +121,7 @@ class RedfishProvisioningWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
         super().__init__()
         self.define_stage(
             name="get_bmc_switches",
-            description="Get BMC devices from nautobot",
+            description="Get BMC devices from the DCIM",
             requires_approval=False,
             depends_on=[],
         )
@@ -187,7 +187,7 @@ class RedfishProvisioningWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
         )
         self.define_stage(
             name="write_to_nautobot",
-            description="Update nautobot with discovered host data",
+            description="Update the DCIM with discovered host data",
             requires_approval=False,
             depends_on=["update_dpu_mapping"],
         )

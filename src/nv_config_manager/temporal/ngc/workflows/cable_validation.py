@@ -496,13 +496,13 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
         )
         self.define_stage(
             name="validate_device_hostname",
-            description="Ensure device hostnames match nautobot",
+            description="Ensure device hostnames match the DCIM",
             requires_approval=False,
             depends_on=["get_device_data"],
         )
         self.define_stage(
             name="get_device_intended_neighbors",
-            description="Get the list of intended connected interfaces from nautobot",
+            description="Get the list of intended connected interfaces from the DCIM",
             requires_approval=False,
             depends_on=["validate_device_hostname"],
         )

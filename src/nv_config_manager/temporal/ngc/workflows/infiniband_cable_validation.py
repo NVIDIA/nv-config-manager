@@ -103,7 +103,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
         StageMixin.__init__(self)
         self.define_stage(
             name="get_ufm_device",
-            description="Get UFM device information from Nautobot.",
+            description="Get UFM device information from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
@@ -115,19 +115,19 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
         )
         self.define_stage(
             name="get_switch_data",
-            description="Get switch information from Nautobot.",
+            description="Get switch information from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
         self.define_stage(
             name="get_intended_neighbors",
-            description="Get intended neighbor information from Nautobot.",
+            description="Get intended neighbor information from the DCIM.",
             requires_approval=False,
             depends_on=["get_switch_data"],
         )
         self.define_stage(
             name="compare_states",
-            description="Compare live state with desired state from Nautobot.",
+            description="Compare live state with desired state from the DCIM.",
             requires_approval=False,
             depends_on=[
                 "get_ib_ports_from_ufm",
@@ -273,7 +273,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
         return InfinibandCableValidationWorkflow.GetSwitchDataStageOutput(
             switch_data=switch_data,
             switch_id_to_hostname=switch_id_to_hostname,
-            display="Nautobot data retrieved successfully.",
+            display="DCIM data retrieved successfully.",
         )
 
     @stage_executor("get_intended_neighbors")

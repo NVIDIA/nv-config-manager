@@ -38,6 +38,7 @@ POLL_INTERVAL_SECONDS = 5
 WORKFLOW_TERMINAL_STATES = {"COMPLETED", "FAILED", "TERMINATED", "CANCELED", "TIMED_OUT"}
 WORKFLOW_FAILURE_STATES = WORKFLOW_TERMINAL_STATES - {"COMPLETED"}
 TEMPORAL_REQUEST_TIMEOUT_SECONDS = 15
+TRANSIENT_GATEWAY_STATUS_CODES = {502, 503, 504}
 
 
 class TestTemporalAPI:
@@ -128,6 +129,20 @@ class TestTemporalAPI:
         while time.monotonic() < deadline:
             try:
                 response = temporal_client.get(url, timeout=TEMPORAL_REQUEST_TIMEOUT_SECONDS)
+                if response.status_code in TRANSIENT_GATEWAY_STATUS_CODES:
+                    last_error = requests.HTTPError(
+                        f"transient gateway response: {response.status_code}",
+                        response=response,
+                    )
+                    print(
+                        f"  - Backup workflow {workflow_id[:8]}... "
+                        f"poll transient error: {last_error}"
+                    )
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+                    continue
                 response.raise_for_status()
                 detail = response.json()
                 last_status = detail.get("status", "UNKNOWN")
@@ -167,18 +182,27 @@ class TestTemporalAPI:
         while time.monotonic() < deadline:
             attempt += 1
             try:
-                return temporal_client.get(
+                response = temporal_client.get(
                     url,
                     params=params,
                     timeout=TEMPORAL_REQUEST_TIMEOUT_SECONDS,
                 )
+                if response.status_code not in TRANSIENT_GATEWAY_STATUS_CODES:
+                    return response
+
+                last_error = requests.HTTPError(
+                    f"transient gateway response: {response.status_code}",
+                    response=response,
+                )
+                print(f"  - GET {url} transient error on attempt {attempt}: {last_error}")
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_error = exc
                 print(f"  - GET {url} transient error on attempt {attempt}: {exc}")
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
 
         pytest.fail(
             f"GET {url} did not respond within {retry_seconds} seconds. "

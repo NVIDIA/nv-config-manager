@@ -131,7 +131,7 @@ class IBPKeyMemberUpdateInput(BaseModel):
     host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
     pkey: str = Field(description="Partition key whose membership will be replaced.")
     interfaces: list[InterfaceRef] = Field(
-        default=[], description="Nautobot interfaces to resolve to InfiniBand port GUIDs."
+        default=[], description="DCIM interfaces to resolve to InfiniBand port GUIDs."
     )
     guids: list[str] = Field(
         default=[], description="InfiniBand port GUIDs that should belong to the partition."
@@ -200,19 +200,19 @@ class IBPKeyMemberUpdateWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         StageMixin.__init__(self)
         self.define_stage(
             name="resolve_context",
-            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            description="Resolve site, overlay, and canonical pkey from the DCIM",
             requires_approval=False,
             depends_on=[],
         )
         self.define_stage(
             name="resolve_desired",
-            description="Resolve desired interfaces to IB GUIDs from Nautobot",
+            description="Resolve desired interfaces to IB GUIDs from the DCIM",
             requires_approval=False,
             depends_on=["resolve_context"],
         )
         self.define_stage(
             name="query_current",
-            description="Fetch current OverlayAssignments from Nautobot and compute diff",
+            description="Fetch current OverlayAssignments from the DCIM and compute diff",
             requires_approval=False,
             depends_on=["resolve_desired"],
         )
@@ -225,7 +225,7 @@ class IBPKeyMemberUpdateWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
         self.define_stage(
             name="update_nautobot",
-            description="Sync OverlayAssignment records in Nautobot",
+            description="Sync OverlayAssignment records in the DCIM",
             requires_approval=False,
             depends_on=["validate_diff"],
         )

@@ -692,6 +692,7 @@ def test_vni_mappings(public_tor_data: dict) -> None:
 
     with pytest.raises(FilterException, match="VLAN 999 not found"):
         vni_mappings(public_tor_data, "999")
+    assert vni_mappings(public_tor_data, "999", fail_if_missing=False) == ""
 
 
 def test_mapping_filters_keep_device_name_safe_when_data_is_missing() -> None:

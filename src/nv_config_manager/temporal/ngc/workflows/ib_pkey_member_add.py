@@ -69,7 +69,7 @@ class IBPKeyMemberAddInput(BaseModel):
     host: str = Field(description="Hostname of the UFM server managing the InfiniBand fabric.")
     pkey: str = Field(description="Partition key whose membership will be expanded.")
     interfaces: list[InterfaceRef] = Field(
-        default=[], description="Nautobot interfaces to resolve to InfiniBand port GUIDs."
+        default=[], description="DCIM interfaces to resolve to InfiniBand port GUIDs."
     )
     guids: list[str] = Field(
         default=[], description="InfiniBand port GUIDs to add directly to the partition."
@@ -133,13 +133,13 @@ class IBPKeyMemberAddWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixi
         StageMixin.__init__(self)
         self.define_stage(
             name="resolve_context",
-            description="Resolve site, overlay, and canonical pkey from Nautobot",
+            description="Resolve site, overlay, and canonical pkey from the DCIM",
             requires_approval=False,
             depends_on=[],
         )
         self.define_stage(
             name="resolve_guids",
-            description="Resolve IB GUIDs for interfaces from Nautobot",
+            description="Resolve IB GUIDs for interfaces from the DCIM",
             requires_approval=False,
             depends_on=["resolve_context"],
         )
@@ -157,7 +157,7 @@ class IBPKeyMemberAddWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageMixi
         )
         self.define_stage(
             name="record_assignments",
-            description="Record OverlayAssignment entries in Nautobot",
+            description="Record OverlayAssignment entries in the DCIM",
             requires_approval=False,
             depends_on=["verify_members"],
         )

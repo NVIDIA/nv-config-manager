@@ -89,9 +89,7 @@ _PREFLIGHT_RETRY = RetryPolicy(maximum_attempts=1)  # fail fast before touching 
 
 
 class DiagnosticsWorkflowInput(BaseModel):
-    device_ids: DeviceReferences = Field(
-        description="Nautobot identifiers of the devices to diagnose."
-    )
+    device_ids: DeviceReferences = Field(description="DCIM identifiers of the devices to diagnose.")
     commands: list[str] = Field(
         description="Diagnostic command catalog names to run on each device."
     )
@@ -308,7 +306,7 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         )
         self.define_stage(
             name="resolve_devices",
-            description="Fetch NetworkDeviceData for each requested device ID from Nautobot",
+            description="Fetch NetworkDeviceData for each requested device ID from the DCIM",
             requires_approval=False,
             depends_on=["validate_ticket"],
         )

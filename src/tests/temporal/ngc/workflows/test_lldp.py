@@ -126,7 +126,7 @@ async def test_execute_workflow(
                 "approvers": [],
                 "child_workflows": [],
                 "depends_on": [],
-                "description": "Load the switch port by MAC address from Nautobot",
+                "description": "Load the switch port by MAC address from the DCIM",
                 "execution_time": 0.0,
                 "input": {
                     "device_id": None,
@@ -258,7 +258,7 @@ async def test_execute_workflow(
                 "approvers": [],
                 "child_workflows": [],
                 "depends_on": [],
-                "description": "Load the switch port by MAC address from Nautobot",
+                "description": "Load the switch port by MAC address from the DCIM",
                 "execution_time": 0.0,
                 "input": {
                     "device_id": "mock_device_id",

@@ -134,7 +134,7 @@ class ConnectedHostMetadataWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
         )
         self.define_stage(
             name="get_connected_host_data",
-            description="Get the host data from Nautobot",
+            description="Get the host data from the DCIM",
             requires_approval=False,
             depends_on=["get_device_mac_table", "get_device_neighbors"],
         )

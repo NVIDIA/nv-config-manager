@@ -70,7 +70,7 @@ class IBPortGuidDiscoveryInput(BaseModel):
         description="Identifiers of the InfiniBand switches whose interfaces will be synchronized."
     )
     dry_run: bool = Field(
-        default=True, description="Whether to report changes without updating Nautobot."
+        default=True, description="Whether to report changes without updating the DCIM."
     )
 
 
@@ -91,7 +91,9 @@ class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
     """Sync UFM-discovered IB port GUIDs onto matching Nautobot interfaces."""
 
     workflow_name = "InfiniBand Port GUID Discovery"
-    workflow_description = "Discover InfiniBand port GUIDs from UFM and sync them onto the matching Nautobot interfaces."
+    workflow_description = (
+        "Discover InfiniBand port GUIDs from UFM and sync them onto the matching DCIM interfaces."
+    )
     workflow_input_class = IBPortGuidDiscoveryInput
     workflow_api_endpoint = "/ngc/ib_port_guid_discovery"
     workflow_namespace = "ngc"
@@ -101,13 +103,13 @@ class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
         super().__init__()
         self.define_stage(
             name="resolve_ufm",
-            description="Resolve UFM hostname and site from Nautobot.",
+            description="Resolve UFM hostname and site from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
         self.define_stage(
             name="discover",
-            description="Fetch UFM ports and Nautobot topology and compute mappings.",
+            description="Fetch UFM ports and DCIM topology and compute mappings.",
             requires_approval=False,
             depends_on=["resolve_ufm"],
         )

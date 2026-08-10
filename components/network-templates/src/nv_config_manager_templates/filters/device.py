@@ -702,8 +702,8 @@ def l3vni_mappings(value: DeviceRenderData, vrf_name: Any) -> str:
     )
 
 
-def vni_mappings(value: DeviceRenderData, vlan_id: Any) -> str:
-    """Return the VNI value for a VLAN from overlay plugin VXLAN data."""
+def vni_mappings(value: DeviceRenderData, vlan_id: Any, fail_if_missing: bool = True) -> str:
+    """Return the VNI value for a VLAN from overlay data, optionally allowing no mapping."""
     device_name = value.identity.name
     try:
         vlan_key = int(vlan_id)
@@ -720,6 +720,9 @@ def vni_mappings(value: DeviceRenderData, vlan_id: Any) -> str:
                     f"'device.overlays.l2_vnis[vlan={vlan_id}].vni'."
                 )
             return str(vxlan.vni)
+
+    if not fail_if_missing:
+        return ""
 
     raise FilterException(
         f"VLAN {vlan_id} not found in overlay VXLAN data for device {device_name}"

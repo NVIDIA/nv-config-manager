@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
 
@@ -29,7 +31,7 @@ from pydantic import BaseModel, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import DCIMError, create_dcim_workflow_client
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
@@ -38,6 +40,20 @@ DEFAULT_MEMBERSHIP_TYPE = "full"
 _VALID_MEMBERSHIP_TYPES = frozenset({"full", "limited"})
 
 _PKEY_PATTERN = re.compile(r"^0[xX][0-9a-fA-F]{1,4}$")
+
+
+@asynccontextmanager
+async def _dcim_workflow_client() -> AsyncIterator[Any]:
+    """Yield the configured client and translate provider errors for Temporal."""
+    client = create_dcim_workflow_client()
+    try:
+        async with client:
+            yield client
+    except DCIMError as error:
+        raise ApplicationError(
+            str(error),
+            non_retryable=bool(getattr(error, "non_retryable", False)),
+        ) from error
 
 
 def normalize_membership_type(membership_type: object) -> str:
@@ -94,8 +110,7 @@ async def create_partition_in_nautobot(
     """Create an Overlay and InfiniBandPKey record in the configured DCIM."""
     partition_name = input.partition_name or f"ib-pkey-{input.pkey}"
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         partition = await client.ensure_ib_pkey_partition(
             input.pkey,
             partition_name,
@@ -221,8 +236,7 @@ async def record_ib_pkey_in_nautobot(
     input: RecordIBPKeyInNautobotInput,
 ) -> RecordIBPKeyInNautobotOutput:
     """Record an InfiniBandPKey in the configured DCIM."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         partition = await client.ensure_orphan_ib_pkey(input.pkey)
 
     return RecordIBPKeyInNautobotOutput(
@@ -276,8 +290,7 @@ async def resolve_interface_guids(
     """Resolve DCIM interface records to their IB GUIDs."""
     resolved: list[ResolvedInterface] = []
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         records = await client.get_ib_interface_records(
             [(reference.device, reference.interface) for reference in input.interfaces]
         )
@@ -424,8 +437,7 @@ async def resolve_guids_to_interfaces(
             if key:
                 membership_by_guid[key] = membership
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         records = await client.find_ib_interfaces_by_guids(deduped)
 
     interfaces = [
@@ -468,8 +480,7 @@ async def record_pkey_assignments(
 ) -> RecordPKeyAssignmentsOutput:
     """Create OverlayAssignment records in the DCIM for each resolved interface."""
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         assignment_ids = await client.ensure_ib_pkey_assignments(
             input.overlay_id,
             [
@@ -494,8 +505,7 @@ async def remove_pkey_assignments(
 ) -> RemovePKeyAssignmentsOutput:
     """Delete OverlayAssignment records for the given overlay + interface IDs."""
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         removed, not_assigned = await client.remove_ib_pkey_assignments(
             input.overlay_id, input.interface_ids
         )
@@ -555,8 +565,7 @@ async def cleanup_empty_pkey_partition(
     never tracked do not get orphaned as a live partition with no DCIM record.
     If the overlay was auto-created and has no other PKeys, it is also deleted.
     """
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         cleanup = await client.cleanup_ib_pkey_partition(
             input.overlay_id,
             input.overlay_name,
@@ -590,8 +599,7 @@ async def fetch_pkey_assignments(
     input: FetchPKeyAssignmentsInput,
 ) -> FetchPKeyAssignmentsOutput:
     """Fetch current OverlayAssignment records for a PKey overlay from the DCIM."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         provider_assignments = await client.get_ib_pkey_assignments(input.overlay_id)
     assignments = [
         CurrentAssignment(
@@ -621,8 +629,7 @@ async def sync_pkey_assignments(
 ) -> SyncPKeyAssignmentsOutput:
     """Reconcile DCIM OverlayAssignment records to match the desired member list."""
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         added, removed, unchanged = await client.sync_ib_pkey_assignments(
             input.overlay_id,
             [
@@ -820,17 +827,15 @@ def _normalize_pkey(value: str) -> str:
 
 async def canonicalize_ufm_host(host: str) -> str:
     """Resolve a UFM host (device name or IPv4) to one identifier."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         return await client.canonicalize_ib_host(host)
 
 
 async def canonicalize_ufm_host_for_site(host: str, site_reference: str | None) -> str:
     """Resolve an API-supplied UFM host and verify its optional Site reference."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         host_site = await client.resolve_ib_host_site(host)
-        canonical_host = await client.canonicalize_ib_host(host)
+    canonical_host = host_site.device_primary_ip or host_site.device_name
 
     normalized_reference = site_reference
     if site_reference is not None:
@@ -936,8 +941,7 @@ async def resolve_ib_site_for_host(
 ) -> ResolveIBSiteForHostOutput:
     """Resolve the Site for a UFM host. Allows site specific UFM credentials."""
 
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         host_site = await client.resolve_ib_host_site(input.host)
 
     log.info(
@@ -962,8 +966,7 @@ async def resolve_ib_context(
     input: ResolveIBContextInput,
 ) -> ResolveIBContextOutput:
     """Resolve UFM device, location, overlay, and PKey records from (host, pkey)."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         context = await client.resolve_ib_pkey_context(input.host, input.pkey)
 
     log.info(
@@ -994,8 +997,7 @@ async def resolve_ib_context_for_add(
     input: ResolveIBContextInput,
 ) -> ResolveIBContextOutput:
     """Resolve UFM/site/overlay/pkey for member-add with lazy Overlay creation."""
-    client = create_dcim_workflow_client()
-    async with client:
+    async with _dcim_workflow_client() as client:
         context = await client.resolve_ib_pkey_context(
             input.host, input.pkey, create_overlay_for_orphan=True
         )

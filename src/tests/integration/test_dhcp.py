@@ -897,7 +897,7 @@ class TestDHCPAPI:
         finally:
             _set_kea_dhcp4_config(config_manager_namespace, dhcp_pod, original_dhcp4)
 
-    # GraphQL query to get all ZTP-enabled devices with their interfaces and serial
+    # GraphQL query to get all ZTP-enabled devices and explicitly reserved addresses
     ZTP_DEVICES_QUERY = """
     query {
         config_manager_devices(ztp_enabled: true) {
@@ -919,6 +919,13 @@ class TestDHCPAPI:
                 }
             }
         }
+        reserved_ips: ip_addresses(tags: ["dhcp-reserve"]) {
+            interfaces {
+                device {
+                    id
+                }
+            }
+        }
     }
     """
 
@@ -933,10 +940,10 @@ class TestDHCPAPI:
         nautobot_url: str,
         nautobot_client: requests.Session,
     ) -> None:
-        """Test that every ZTP-enabled device has a DHCP reservation.
+        """Test that every explicitly reserved ZTP device has a DHCP reservation.
 
         This test verifies that:
-        1. All devices with ztp_enabled=true in Nautobot
+        1. Devices with ztp_enabled=true and an IP tagged dhcp-reserve in Nautobot
         2. Have a corresponding DHCP reservation in the KEA config
         3. The reservation matches by MAC address (hw-address) or serial (client-id)
         """
@@ -959,6 +966,13 @@ class TestDHCPAPI:
 
         if not devices:
             pytest.skip("No ZTP-enabled devices found in Nautobot")
+
+        reserved_device_ids = {
+            interface["device"]["id"]
+            for reserved_ip in gql_data.get("data", {}).get("reserved_ips", [])
+            for interface in reserved_ip.get("interfaces", [])
+            if interface.get("device")
+        }
 
         # Get DHCP config
         dhcp_response = dhcp_client.get(
@@ -999,7 +1013,7 @@ class TestDHCPAPI:
         matched_devices: list[str] = []
         no_identifier: list[str] = []
 
-        smn_devices: list[str] = []
+        pool_backed_devices: list[str] = []
 
         for managed_device in devices:
             device = managed_device.get("device", {})
@@ -1008,9 +1022,9 @@ class TestDHCPAPI:
             device_role = device.get("role", {}).get("name", "")
             interfaces = device.get("interfaces", [])
 
-            # SMN devices use DHCP pools on /31 uplinks, not reservations
-            if device_role in self.SMN_ROLES:
-                smn_devices.append(device_name)
+            # Devices without a dhcp-reserve address intentionally bootstrap from pools.
+            if device_role in self.SMN_ROLES or device.get("id") not in reserved_device_ids:
+                pool_backed_devices.append(device_name)
                 continue
 
             # Find management interface MAC (prefer mgmt_only, fallback to any)
@@ -1058,7 +1072,7 @@ class TestDHCPAPI:
                 identifier = f"MAC: {device_mac}" if device_mac else f"serial: {device_serial}"
                 missing_reservations.append(f"{device_name} ({identifier})")
 
-        print(f"\nSMN devices (use pools, not reservations): {len(smn_devices)}")
+        print(f"\nDevices using pools, not reservations: {len(pool_backed_devices)}")
         print(f"Devices with DHCP reservations: {len(matched_devices)}")
         print(f"Devices missing DHCP reservations: {len(missing_reservations)}")
         if no_identifier:
@@ -1076,9 +1090,12 @@ class TestDHCPAPI:
                 f"DHCP reservations: {missing_reservations[:5]}"
             )
 
-        print(f"✅ All {len(matched_devices)} non-SMN ZTP devices have DHCP reservations")
-        if smn_devices:
-            print(f"✅ {len(smn_devices)} SMN devices use DHCP pools (not reservations)")
+        print(f"✅ All {len(matched_devices)} reserved ZTP devices have DHCP reservations")
+        if pool_backed_devices:
+            print(
+                f"✅ {len(pool_backed_devices)} ZTP devices intentionally use DHCP pools "
+                "(not reservations)"
+            )
 
     @pytest.mark.timeout(120)
     def test_smn_devices_have_dhcp_pools(

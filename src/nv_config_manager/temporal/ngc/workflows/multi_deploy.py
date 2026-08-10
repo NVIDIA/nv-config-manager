@@ -593,7 +593,7 @@ class MultiDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         StageMixin.__init__(self)
         self.define_stage(
             name="discover_devices",
-            description="Discover devices by role from Nautobot.",
+            description="Discover devices by role from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
