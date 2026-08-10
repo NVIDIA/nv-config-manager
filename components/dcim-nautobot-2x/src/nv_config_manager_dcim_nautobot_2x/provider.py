@@ -213,21 +213,19 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     @staticmethod
     def is_valid_device_id(value: str) -> bool:
-        """Return whether a device identifier has Nautobot's UUID shape."""
+        """Return whether a device identifier is a canonical Nautobot UUID."""
         try:
-            UUID(value)
+            return str(UUID(value)) == value
         except (ValueError, TypeError, AttributeError):
             return False
-        return True
 
     @staticmethod
     def is_valid_location_id(value: str) -> bool:
-        """Return whether a location identifier has Nautobot's UUID shape."""
+        """Return whether a location identifier is a canonical Nautobot UUID."""
         try:
-            UUID(value)
+            return str(UUID(value)) == value
         except (ValueError, TypeError, AttributeError):
             return False
-        return True
 
     async def get_location_metadata(self, location_id: str) -> DCIMSelection | None:
         """Return normalized metadata for one location UUID."""
@@ -243,19 +241,15 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def get_device_metadata(self, device_id: str) -> DeviceMetadata | None:
         """Return normalized metadata for a Nautobot device UUID."""
-        try:
-            result = await self.graphql_query(
-                load_graphql_query("provider/devices.graphql", "GetDeviceMetadata"),
-                {"id": device_id},
-            )
-            device_data = result.get("data", {}).get("device")
-            if not device_data:
-                logger.warning("Device %s not found in Nautobot", device_id)
-                return None
-            return _metadata_from_nautobot_graphql(device_data)
-        except Exception as exc:  # noqa: BLE001 - preserve current cache degradation behavior
-            logger.error("Failed to get device %s: %s", device_id, exc)
+        result = await self.graphql_query(
+            load_graphql_query("provider/devices.graphql", "GetDeviceMetadata"),
+            {"id": device_id},
+        )
+        device_data = result.get("data", {}).get("device")
+        if not device_data:
+            logger.warning("Device %s not found in Nautobot", device_id)
             return None
+        return _metadata_from_nautobot_graphql(device_data)
 
     async def get_intended_interface_neighbors(
         self, device_id: str

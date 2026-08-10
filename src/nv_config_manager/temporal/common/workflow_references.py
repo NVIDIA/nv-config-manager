@@ -19,6 +19,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Any
 
+from pydantic import Field
+
+MAX_DEVICE_REFERENCES = 1000
+"""Maximum number of device IDs accepted in one workflow submission."""
+
 
 class WorkflowReferenceKind(StrEnum):
     """External resource kinds resolved before workflow submission."""
@@ -77,6 +82,7 @@ OptionalDeviceReference = Annotated[
 ]
 DeviceReferences = Annotated[
     list[str],
+    Field(max_length=MAX_DEVICE_REFERENCES),
     DEVICE_REFERENCES,
 ]
 LocationReference = Annotated[

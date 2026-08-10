@@ -21,7 +21,7 @@ from typing import Any, cast
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from nv_config_manager.dcim import DCIMClient, create_dcim_parameter_client
+from nv_config_manager.dcim import DCIMClient, DeviceMetadata, create_dcim_parameter_client
 from nv_config_manager.temporal.common.search_attributes import (
     DEVICE_ID_SEARCH_ATTRIBUTE,
     DEVICE_NAME_SEARCH_ATTRIBUTE,
@@ -33,6 +33,8 @@ from nv_config_manager.temporal.common.workflow_references import (
     WorkflowReference,
     WorkflowReferenceKind,
 )
+
+DEVICE_REFERENCE_LOOKUP_CONCURRENCY = 20
 
 
 def _reference_metadata(body: BaseModel) -> Iterable[tuple[WorkflowReference, Any]]:
@@ -81,9 +83,14 @@ async def _resolve_devices(
     if not unique_ids:
         return {}
 
-    devices = await asyncio.gather(
-        *(client.get_device_metadata(device_id) for device_id in unique_ids)
-    )
+    lookup_slots = asyncio.Semaphore(DEVICE_REFERENCE_LOOKUP_CONCURRENCY)
+
+    async def get_device_metadata(device_id: str) -> DeviceMetadata | None:
+        """Bound concurrent provider lookups for collection references."""
+        async with lookup_slots:
+            return await client.get_device_metadata(device_id)
+
+    devices = await asyncio.gather(*(get_device_metadata(device_id) for device_id in unique_ids))
     devices_by_id = {device.device_id: device for device in devices if device is not None}
     missing_ids = [device_id for device_id in unique_ids if device_id not in devices_by_id]
     if missing_ids:

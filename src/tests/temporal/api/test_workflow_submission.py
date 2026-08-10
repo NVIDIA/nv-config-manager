@@ -14,13 +14,14 @@
 # limitations under the License.
 """Tests for API-only workflow reference validation and enrichment."""
 
+import asyncio
 from typing import Annotated
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from nv_config_manager.dcim import DCIMSelection, DeviceMetadata
 from nv_config_manager.temporal.api.workflow_submission import resolve_workflow_references
@@ -31,6 +32,7 @@ from nv_config_manager.temporal.common.search_attributes import (
 )
 from nv_config_manager.temporal.common.workflow_references import (
     DEVICE_REFERENCE,
+    MAX_DEVICE_REFERENCES,
     DeviceReference,
     DeviceReferences,
     LocationReference,
@@ -172,6 +174,44 @@ async def test_device_references_are_deduplicated_and_enriched_from_metadata() -
         DEVICE_ID_SEARCH_ATTRIBUTE: [DEVICE_ID],
         DEVICE_NAME_SEARCH_ATTRIBUTE: ["LEAF01"],
     }
+
+
+@pytest.mark.asyncio
+async def test_device_reference_lookups_have_bounded_concurrency() -> None:
+    """Large valid collections cannot fan out without a concurrency limit."""
+    client = _client()
+    device_ids = [f"00000000-0000-0000-0000-{index:012x}" for index in range(25)]
+    active = 0
+    peak = 0
+
+    async def get_device_metadata(device_id: str) -> DeviceMetadata:
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0)
+        active -= 1
+        return DeviceMetadata(device_id=device_id, name=device_id, site="")
+
+    client.is_valid_device_id = MagicMock(return_value=True)
+    client.get_device_metadata = AsyncMock(side_effect=get_device_metadata)
+    body = DeviceCollectionInput(primary_device=device_ids[0], related_devices=device_ids)
+
+    with patch(
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        return_value=client,
+    ):
+        await resolve_workflow_references(body)
+
+    assert peak == 20
+
+
+def test_device_reference_collections_have_a_size_limit() -> None:
+    """Reject submissions that would require an excessive number of DCIM lookups."""
+    with pytest.raises(ValidationError, match="at most 1000 items"):
+        DeviceCollectionInput(
+            primary_device=DEVICE_ID,
+            related_devices=[DEVICE_ID] * (MAX_DEVICE_REFERENCES + 1),
+        )
 
 
 @pytest.mark.asyncio
