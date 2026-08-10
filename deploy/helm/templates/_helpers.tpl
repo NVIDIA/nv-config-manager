@@ -258,7 +258,7 @@ Get the Redis host based on whether local deployment is enabled
 Get the NATS server URL based on whether local deployment is enabled
 */}}
 {{- define "nv-config-manager.natsServer" -}}
-{{- if or .Values.externalServices.nats.local .Values.nautobot.enabled -}}
+{{- if or .Values.externalServices.nats.local .Values.nautobotNats.enabled -}}
 {{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") -}}
 nats://{{ $natsName }}:4222
 {{- else -}}
@@ -274,12 +274,10 @@ Nautobot common labels
 app.kubernetes.io/component: nautobot
 {{- end -}}
 
-{{/*
-Nautobot NATS common labels
-*/}}
+{{/* Bundled NATS common labels. The historical helper name is retained for compatibility. */}}
 {{- define "nv-config-manager.nautobot-nats.labels" -}}
 {{ include "nv-config-manager.labels" . }}
-app.kubernetes.io/component: nautobot-nats
+app.kubernetes.io/component: nats
 {{- end -}}
 
 {{/*

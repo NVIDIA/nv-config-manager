@@ -499,7 +499,8 @@ class DCIMConfig(BaseModel):
 class ServicesConfig(BaseModel):
     """Toggle individual NVIDIA Config Manager services on/off.
 
-    When ``nautobot`` is True a local Nautobot + NATS + Redis stack is deployed.
+    NATS is deployed as core infrastructure independently of this selection.
+    When ``nautobot`` is True a local Nautobot stack is deployed.
     Set it to False and provide ``external_nautobot_url`` to use an existing
     Nautobot server (e.g. a shared staging/prod instance).
     """

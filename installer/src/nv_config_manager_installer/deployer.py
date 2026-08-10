@@ -2222,6 +2222,10 @@ class Deployer:
                 },
             )
 
+        nats_pw = s.get("nats_password", "")
+        for nats_name in ("nats-sys", "nats-nv-config-manager", "nats-nautobot"):
+            self._apply_secret(step, nats_name, {"password": nats_pw})
+
         if self.config.services.nautobot:
             self._apply_secret(
                 step,
@@ -2234,10 +2238,6 @@ class Deployer:
             self._apply_secret(
                 step, "nautobot-django-secret", {"secret_key": s.get("django_secret_key", "")}
             )
-
-            nats_pw = s.get("nats_password", "")
-            for nats_name in ("nats-sys", "nats-nv-config-manager", "nats-nautobot"):
-                self._apply_secret(step, nats_name, {"password": nats_pw})
 
         if self.config.services.temporal:
             svc_user = self.config.secrets.config_manager_service_username or "nv-config-manager"

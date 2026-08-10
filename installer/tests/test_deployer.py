@@ -1559,6 +1559,7 @@ class TestK8sClientIntegration:
         assert token_call.args[2]["access-token"]
         secret_names = [call.args[0] for call in mock_k8s.apply_secret.call_args_list]
         assert "nautobot-admin" not in secret_names
+        assert {"nats-sys", "nats-nv-config-manager", "nats-nautobot"}.issubset(secret_names)
 
     @patch("nv_config_manager_installer.deployer._run_logged")
     @patch("nv_config_manager_installer.deployer._run")

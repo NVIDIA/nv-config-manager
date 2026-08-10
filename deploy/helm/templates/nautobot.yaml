@@ -6,22 +6,22 @@
 {{- $natsSecretName := include "nv-config-manager.natsSecretName" . }}
 {{- $redisName := include "nv-config-manager.componentName" (dict "root" . "component" "redis") }}
 # =============================================================================
-# Local Nautobot Stack Deployment
+# Bundled NATS and Nautobot Deployments
 # =============================================================================
-# This template deploys a local Nautobot instance within the nv-config-manager namespace
-# for environments that bundle Nautobot with NVIDIA Config Manager.
-# Includes: Nautobot Server, Celery Workers, Redis, NATS, PostgreSQL (via CNPG)
+# NATS is core NVIDIA Config Manager infrastructure and can be deployed without
+# Nautobot. The Nautobot resources below remain independently optional.
 #
 # NOTE: Secrets (nautobot-admin, nautobot-django-secret, nats-*) are created
 # by the installer before Helm install when using vault.method=kubernetes.
 # =============================================================================
 
-{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
-
 # =============================================================================
-# NATS for Nautobot
+# NATS
 # =============================================================================
-{{- if or .Values.nautobotNats.enabled .Values.nautobot.enabled }}
+{{- if or .Values.nautobotNats.enabled .Values.externalServices.nats.local }}
+{{- if ne .Values.externalServices.nats.authMethod "password" }}
+{{- fail "externalServices.nats.authMethod must be password when bundled NATS is enabled" }}
+{{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -360,6 +360,8 @@ spec:
           secretName: {{ $natsName }}-box-contexts
 {{- end }}
 {{- end }}
+
+{{- if and .Values.nautobot.enabled .Values.externalServices.nautobot.local }}
 
 # =============================================================================
 # Nautobot ConfigMaps

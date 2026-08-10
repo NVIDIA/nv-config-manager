@@ -180,6 +180,7 @@ global:
       repository: docker.io/natsio/nats-box
       tag: "0.14.3"
     # prometheus-nats-exporter sidecar (optional; nautobotNats.metrics.enabled).
+    # The historical values prefix does not imply that Nautobot must be enabled.
     # Polls the NATS monitoring endpoint and exposes nats_* Prometheus metrics.
     natsExporter:
       repository: docker.io/natsio/prometheus-nats-exporter
@@ -2902,10 +2903,12 @@ nautobot:
     # where the jobs volume can attach.
     nodeSelector: {}
 # =============================================================================
-# Local NATS (when externalServices.nats.local=true or nautobot.enabled=true)
+# Bundled NATS (independent of the selected DCIM provider)
 # =============================================================================
 nautobotNats:
-  enabled: false # Auto-enabled when nautobot.enabled=true
+  # Historical value prefix retained for compatibility. Enable this directly,
+  # or set externalServices.nats.local=true, to deploy NATS from this chart.
+  enabled: false
   # JetStream configuration
   jetstream:
     enabled: true

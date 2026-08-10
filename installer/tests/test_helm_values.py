@@ -292,8 +292,8 @@ class TestGenerateHelmValues:
 
         assert values["nautobot"]["enabled"] is False
         assert "admin" not in values["nautobot"]
-        assert values["nautobotNats"]["enabled"] is False
-        assert "server" not in values["externalServices"].get("nats", {})
+        assert values["nautobotNats"]["enabled"] is True
+        assert values["externalServices"]["nats"]["local"] is True
 
     def test_cnpg_per_database_clusters(self):
         values = _gen(_make_config())
@@ -804,7 +804,7 @@ class TestGenerateHelmValues:
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is False
         assert ext["nautobot"]["server"] == "https://nb.prod.example.com"
-        assert "server" not in ext.get("nats", {})
+        assert ext["nats"]["local"] is True
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert values["mcp"]["enabled"] is True
@@ -854,6 +854,8 @@ class TestGenerateHelmValues:
             },
         }
         assert values["externalServices"]["nautobot"] == {"local": False}
+        assert values["externalServices"]["nats"]["local"] is True
+        assert values["nautobotNats"]["enabled"] is True
         assert values["nautobot"]["enabled"] is False
         assert values["mcp"]["enabled"] is True
 

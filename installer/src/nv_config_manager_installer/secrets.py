@@ -268,6 +268,7 @@ def build_openbao_secret_data(
             }
     else:
         groups["dcim"] = {"token": value("dcim", "token") or _generate_token(40)}
+        groups["nats"] = {"password": value("nats", "password") or _generate_nats_config_password()}
     for database, user_key, password_key in _DB_GROUPS:
         groups["postgres"][user_key] = value("postgres", user_key) or database
         groups["postgres"][password_key] = value("postgres", password_key) or (
