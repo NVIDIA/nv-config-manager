@@ -134,6 +134,13 @@ class VXLANTableTestCase(TestCase):
         RequestConfig(self.factory.get("/")).configure(table)
         self.assertEqual(len(table.rows), models.VXLAN.objects.count())
 
+    def test_spectrum_x_inline_table_includes_vrf_routing_columns(self):
+        """Spectrum-X VXLAN table exposes the linked VRF's RD and RTs."""
+        table = tables.SpectrumXVXLANInlineTable(models.VXLAN.objects.all())
+        self.assertIn("route_distinguisher", table.columns.names())
+        self.assertIn("import_targets", table.columns.names())
+        self.assertIn("export_targets", table.columns.names())
+
 
 class InfiniBandPKeyTableTestCase(TestCase):
     """Tests for InfiniBandPKeyTable."""

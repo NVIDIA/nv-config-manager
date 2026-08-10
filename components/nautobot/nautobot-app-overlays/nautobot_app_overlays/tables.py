@@ -88,6 +88,29 @@ EXPORT_RT_TEMPLATE = """
 {% for rt in record.export_targets.all %}{{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}{% empty %}{{ None|placeholder }}{% endfor %}
 """
 
+VRF_RD_TEMPLATE = """
+{% load helpers %}
+{% if record.vrf %}{{ record.vrf.rd|placeholder }}{% else %}{{ None|placeholder }}{% endif %}
+"""
+
+VRF_IMPORT_RT_TEMPLATE = """
+{% load helpers %}
+{% if record.vrf %}
+    {% for rt in record.vrf.import_targets.all %}{{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}{% empty %}{{ None|placeholder }}{% endfor %}
+{% else %}
+    {{ None|placeholder }}
+{% endif %}
+"""
+
+VRF_EXPORT_RT_TEMPLATE = """
+{% load helpers %}
+{% if record.vrf %}
+    {% for rt in record.vrf.export_targets.all %}{{ rt|hyperlinked_object }}{% if not forloop.last %}, {% endif %}{% empty %}{{ None|placeholder }}{% endfor %}
+{% else %}
+    {{ None|placeholder }}
+{% endif %}
+"""
+
 VXLAN_VNI_TEMPLATE = """
 {% load helpers %}
 {% if record.assigned_object_type.model == 'vxlan' %}
@@ -435,6 +458,49 @@ class VXLANAssignmentInlineTable(BaseTable):
             "status",
             "actions",
         ]
+
+
+class SpectrumXVXLANInlineTable(BaseTable):
+    """L3 VXLAN and VRF routing details shown on a Spectrum-X overlay."""
+
+    pk = ToggleColumn()
+    name = tables.LinkColumn(verbose_name="VXLAN")
+    vnid = tables.Column(verbose_name="VNI")
+    vrf = tables.Column(linkify=True)
+    route_distinguisher = tables.TemplateColumn(
+        template_code=VRF_RD_TEMPLATE,
+        verbose_name="RD",
+        orderable=False,
+    )
+    import_targets = tables.TemplateColumn(
+        template_code=VRF_IMPORT_RT_TEMPLATE,
+        verbose_name="Import RTs (VRF)",
+        orderable=False,
+    )
+    export_targets = tables.TemplateColumn(
+        template_code=VRF_EXPORT_RT_TEMPLATE,
+        verbose_name="Export RTs (VRF)",
+        orderable=False,
+    )
+    status = tables.Column()
+    actions = ButtonsColumn(models.VXLAN)
+
+    class Meta(BaseTable.Meta):
+        """Meta class."""
+
+        model = models.VXLAN
+        fields = [
+            "pk",
+            "name",
+            "vnid",
+            "vrf",
+            "route_distinguisher",
+            "import_targets",
+            "export_targets",
+            "status",
+            "actions",
+        ]
+        default_columns = fields
 
 
 class VXLANTable(StatusTableMixin, BaseTable):

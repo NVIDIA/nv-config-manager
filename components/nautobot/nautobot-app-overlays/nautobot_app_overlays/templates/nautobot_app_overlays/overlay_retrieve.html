@@ -63,6 +63,18 @@
 </div>
 {% endif %}
 
+{# Spectrum-X L3 VXLANs and their linked VRF route targets #}
+{% if vxlans_table %}
+<div class="panel panel-default">
+    <div class="panel-heading">
+        <strong>L3 VXLANs and Route Targets</strong>
+    </div>
+    <div class="panel-body">
+        {% render_table vxlans_table %}
+    </div>
+</div>
+{% endif %}
+
 {# InfiniBand PKeys panel #}
 {% if pkeys_table %}
 <div class="panel panel-default">
