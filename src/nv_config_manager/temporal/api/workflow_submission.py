@@ -127,7 +127,7 @@ async def _resolve_location(client: DCIMClient, value: str) -> str:
     location = await client.get_location_metadata(value)
     if location is None:
         raise HTTPException(status_code=422, detail=f"Unknown location: {value}")
-    return cast(str, location.name)
+    return location.name
 
 
 async def resolve_workflow_references(body: BaseModel) -> dict[str, list[Any]]:

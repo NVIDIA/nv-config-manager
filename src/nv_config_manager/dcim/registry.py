@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable, Mapping
 from configparser import ConfigParser
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 from nv_config_manager_dcim import (
     DCIMChangeEvent,
@@ -110,12 +110,12 @@ def create_dcim_client(config: ConfigParser | None = None) -> DCIMClient:
 
 def create_dcim_workflow_client(config: ConfigParser | None = None) -> DCIMClient:
     """Return a service-managed client compatible with legacy workflow callers."""
-    return _ManagedDCIMClient(create_dcim_client(config))  # type: ignore[return-value]
+    return cast(DCIMClient, _ManagedDCIMClient(create_dcim_client(config)))
 
 
 def create_dcim_parameter_client(config: ConfigParser | None = None) -> DCIMClient:
     """Return a service-managed client compatible with legacy API callers."""
-    return _ManagedDCIMClient(create_dcim_client(config))  # type: ignore[return-value]
+    return cast(DCIMClient, _ManagedDCIMClient(create_dcim_client(config)))
 
 
 def create_nautobot_mcp_client(
