@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import netaddr
-
 from pydantic import BaseModel
 from temporalio import activity
 from temporalio.exceptions import ApplicationError

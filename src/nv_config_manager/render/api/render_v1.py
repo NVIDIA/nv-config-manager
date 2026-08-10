@@ -147,7 +147,9 @@ async def render_all(
     # Queue renders for all devices using optimized batch processing
     timestamp = datetime.now(UTC).isoformat()
 
-    queued_count, failed_devices = await queue_render_batch(device_uuids, commit_message, user, timestamp)
+    queued_count, failed_devices = await queue_render_batch(
+        device_uuids, commit_message, user, timestamp
+    )
 
     response.status_code = 202
     return BulkRenderResponse(

@@ -46,6 +46,7 @@ def _as_application_error(error: DCIMError) -> ApplicationError:
     """Translate provider-neutral errors at the Temporal service boundary."""
     return ApplicationError(str(error), non_retryable=bool(getattr(error, "non_retryable", False)))
 
+
 def _vni_from_rd(route_distinguisher: str) -> int:
     """Derive the VNI from a route distinguisher of the form ``*:<vni>``."""
     parts = route_distinguisher.split(":")
@@ -131,21 +132,23 @@ async def get_network_devices(
     """Get network devices for a specific site."""
     client = create_dcim_workflow_client()
     async with client:
-        devices = await client.get_network_devices(DeviceInventoryFilter(
-            site=activity_input.site,
-            roles=activity_input.roles,
-            statuses=activity_input.status,
-            tenant=activity_input.tenant,
-            device_type_ids=activity_input.device_type_ids,
-            mac_addresses=activity_input.mac_addresses,
-            device_ids=activity_input.device_ids,
-            render_enabled=activity_input.render_enabled,
-            deploy_enabled=activity_input.deploy_enabled,
-            backup_enabled=activity_input.backup_enabled,
-            ztp_enabled=activity_input.ztp_enabled,
-            managed_only=activity_input.managed_only,
-            platforms=activity_input.platforms,
-        ))
+        devices = await client.get_network_devices(
+            DeviceInventoryFilter(
+                site=activity_input.site,
+                roles=activity_input.roles,
+                statuses=activity_input.status,
+                tenant=activity_input.tenant,
+                device_type_ids=activity_input.device_type_ids,
+                mac_addresses=activity_input.mac_addresses,
+                device_ids=activity_input.device_ids,
+                render_enabled=activity_input.render_enabled,
+                deploy_enabled=activity_input.deploy_enabled,
+                backup_enabled=activity_input.backup_enabled,
+                ztp_enabled=activity_input.ztp_enabled,
+                managed_only=activity_input.managed_only,
+                platforms=activity_input.platforms,
+            )
+        )
     return GetNetworkDevicesOutput(devices=devices)
 
 
@@ -173,14 +176,16 @@ async def get_host_devices(
     """Get host devices."""
     client = create_dcim_workflow_client()
     async with client:
-        devices = await client.get_host_devices(DeviceInventoryFilter(
-            site=activity_input.site,
-            roles=activity_input.roles,
-            statuses=activity_input.status,
-            tenant=activity_input.tenant,
-            device_type_ids=activity_input.device_type_ids,
-            mac_addresses=activity_input.mac_addresses,
-        ))
+        devices = await client.get_host_devices(
+            DeviceInventoryFilter(
+                site=activity_input.site,
+                roles=activity_input.roles,
+                statuses=activity_input.status,
+                tenant=activity_input.tenant,
+                device_type_ids=activity_input.device_type_ids,
+                mac_addresses=activity_input.mac_addresses,
+            )
+        )
     return GetHostDevicesOutput(devices=devices)
 
 
@@ -272,8 +277,7 @@ async def get_available_route_distinguishers(
     namespace_ids = [namespace.namespace_id for namespace in namespaces]
     if not namespace_ids:
         raise ApplicationError(
-            f"No namespaces for site {activity_input.site} and "
-            f"tag {activity_input.namespace_tag}."
+            f"No namespaces for site {activity_input.site} and tag {activity_input.namespace_tag}."
         )
     logger.info("Found namespaces: %s", namespace_ids)
 
@@ -288,7 +292,9 @@ async def get_available_route_distinguishers(
         int(rd.split(":")[1]) for rd in route_distinguishers if re.match(r"\*:\d+", rd)
     }
 
-    available_numbers = set(range(activity_input.rd_min, activity_input.rd_max + 1)) - assigned_numbers
+    available_numbers = (
+        set(range(activity_input.rd_min, activity_input.rd_max + 1)) - assigned_numbers
+    )
     if not available_numbers:
         raise ApplicationError(f"Namespaces {namespace_ids} out of space for new RDs")
     route_distinguisher = f"*:{min(available_numbers)}"

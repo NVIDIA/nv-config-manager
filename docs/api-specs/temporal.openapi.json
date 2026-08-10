@@ -276,10 +276,11 @@
             "type": "array"
           },
           "device_ids": {
-            "description": "Nautobot identifiers of the devices to diagnose.",
+            "description": "DCIM identifiers of the devices to diagnose.",
             "items": {
               "type": "string"
             },
+            "maxItems": 1000,
             "title": "Device Ids",
             "type": "array"
           },
@@ -446,7 +447,7 @@
           },
           "interfaces": {
             "default": [],
-            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
+            "description": "DCIM interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -497,7 +498,7 @@
           },
           "interfaces": {
             "default": [],
-            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
+            "description": "DCIM interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -545,7 +546,7 @@
           },
           "interfaces": {
             "default": [],
-            "description": "Nautobot interfaces to resolve to InfiniBand port GUIDs.",
+            "description": "DCIM interfaces to resolve to InfiniBand port GUIDs.",
             "items": {
               "$ref": "#/components/schemas/InterfaceRef"
             },
@@ -582,7 +583,7 @@
         "properties": {
           "dry_run": {
             "default": true,
-            "description": "Whether to report changes without updating Nautobot.",
+            "description": "Whether to report changes without updating the DCIM.",
             "title": "Dry Run",
             "type": "boolean"
           },
@@ -591,6 +592,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 1000,
             "title": "Switch Device Ids",
             "type": "array"
           },
@@ -615,6 +617,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 1000,
             "title": "Switch Device Ids",
             "type": "array"
           },
@@ -4277,7 +4280,7 @@
     },
     "/v1/workflow/ngc/ib_port_guid_discovery": {
       "post": {
-        "description": "Discover InfiniBand port GUIDs from UFM and sync them onto the matching Nautobot interfaces.",
+        "description": "Discover InfiniBand port GUIDs from UFM and sync them onto the matching DCIM interfaces.",
         "operationId": "ibportguiddiscoveryworkflow_endpoint_v1_workflow_ngc_ib_port_guid_discovery_post",
         "requestBody": {
           "content": {

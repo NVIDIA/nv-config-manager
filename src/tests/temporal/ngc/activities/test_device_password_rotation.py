@@ -204,10 +204,13 @@ class TestGetPasswordMappings:
 
         input_data = GetPasswordMappingsInput(device=device, username="cumulus")
 
-        with patch(
-            "nv_config_manager.temporal.ngc.activities.device_password_rotation.create_dcim_workflow_client",
-            return_value=_password_mapping_client(set()),
-        ), pytest.raises(ApplicationError) as exc_info:
+        with (
+            patch(
+                "nv_config_manager.temporal.ngc.activities.device_password_rotation.create_dcim_workflow_client",
+                return_value=_password_mapping_client(set()),
+            ),
+            pytest.raises(ApplicationError) as exc_info,
+        ):
             asyncio.run(get_password_mappings(input_data))
         assert "No password mappings found" in str(exc_info.value)
 

@@ -828,14 +828,14 @@ def _normalize_pkey(value: str) -> str:
 async def canonicalize_ufm_host(host: str) -> str:
     """Resolve a UFM host (device name or IPv4) to one identifier."""
     async with _dcim_workflow_client() as client:
-        return await client.canonicalize_ib_host(host)
+        return str(await client.canonicalize_ib_host(host))
 
 
 async def canonicalize_ufm_host_for_site(host: str, site_reference: str | None) -> str:
     """Resolve an API-supplied UFM host and verify its optional Site reference."""
     async with _dcim_workflow_client() as client:
         host_site = await client.resolve_ib_host_site(host)
-    canonical_host = host_site.device_primary_ip or host_site.device_name
+    canonical_host = str(host_site.device_primary_ip or host_site.device_name)
 
     normalized_reference = site_reference
     if site_reference is not None:

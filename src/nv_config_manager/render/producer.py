@@ -28,6 +28,7 @@ logger = get_logger(__name__, category=LogCategory.RENDER)
 DEFAULT_TEMPLATE_UPDATE_CONCURRENCY = 8
 DEFAULT_TEMPLATE_UPDATE_LOCK_TIMEOUT = 120
 
+
 async def load_stale_renders(desired_version: TemplateVersion | str) -> list[str]:
     """Return device IDs where the provider records an old template version."""
     desired_template_version = TemplateVersion.parse(desired_version)

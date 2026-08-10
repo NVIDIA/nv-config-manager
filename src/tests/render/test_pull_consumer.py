@@ -24,6 +24,7 @@ from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 from nats.js.errors import NotFoundError
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
+from nv_config_manager.render.events.util import DeviceNotEnabledError
 from nv_config_manager.render.pull_consumer import (
     CONSUMER_ACK_PENDING,
     CONSUMER_PENDING,
@@ -266,9 +267,14 @@ async def test_pull_nautobot_consumer_message_handler_success(mock_dispatcher, c
     mock_msg.data = json.dumps({"test": "data"}).encode()
     mock_msg.ack = AsyncMock()
 
-    await consumer.message_handler(mock_msg)
+    normalized_event = MagicMock()
+    with patch(
+        "nv_config_manager.render.pull_consumer.normalize_dcim_event",
+        return_value=normalized_event,
+    ):
+        await consumer.message_handler(mock_msg)
 
-    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_dispatcher.dcim_event_dispatch.assert_awaited_once_with(normalized_event)
     mock_msg.ack.assert_called_once()
 
 
@@ -276,21 +282,22 @@ async def test_pull_nautobot_consumer_message_handler_success(mock_dispatcher, c
 async def test_pull_nautobot_consumer_device_not_enabled_error(mock_dispatcher, custom_ini):
     """Test PullNautobotConsumer handles DeviceNotEnabledError."""
     custom_ini(TEST_NATS_CONFIG)
-    from nv_config_manager.render.events.util import DeviceNotEnabledError
-
     consumer = PullNautobotConsumer()
     mock_msg = AsyncMock(spec=Msg)
     mock_msg.data = json.dumps({"test": "data"}).encode()
     mock_msg.ack = AsyncMock()
 
     # Make dispatcher raise DeviceNotEnabledError
-    mock_dispatcher.nautobot_event_dispatch.side_effect = DeviceNotEnabledError(
-        "Device not enabled"
-    )
+    mock_dispatcher.dcim_event_dispatch.side_effect = DeviceNotEnabledError("Device not enabled")
 
-    await consumer.message_handler(mock_msg)
+    normalized_event = MagicMock()
+    with patch(
+        "nv_config_manager.render.pull_consumer.normalize_dcim_event",
+        return_value=normalized_event,
+    ):
+        await consumer.message_handler(mock_msg)
 
-    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_dispatcher.dcim_event_dispatch.assert_awaited_once_with(normalized_event)
     mock_msg.ack.assert_called_once()
 
 
@@ -304,11 +311,16 @@ async def test_pull_nautobot_consumer_exception_handling(mock_dispatcher, custom
     mock_msg.nak = AsyncMock()
 
     # Make dispatcher raise a general exception
-    mock_dispatcher.nautobot_event_dispatch.side_effect = Exception("Processing error")
+    mock_dispatcher.dcim_event_dispatch.side_effect = Exception("Processing error")
 
-    await consumer.message_handler(mock_msg)
+    normalized_event = MagicMock()
+    with patch(
+        "nv_config_manager.render.pull_consumer.normalize_dcim_event",
+        return_value=normalized_event,
+    ):
+        await consumer.message_handler(mock_msg)
 
-    mock_dispatcher.nautobot_event_dispatch.assert_called_once_with({"test": "data"})
+    mock_dispatcher.dcim_event_dispatch.assert_awaited_once_with(normalized_event)
     mock_msg.nak.assert_called_once()
 
 

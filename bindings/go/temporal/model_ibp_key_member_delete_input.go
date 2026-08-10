@@ -25,7 +25,7 @@ type IBPKeyMemberDeleteInput struct {
 	Guids []string `json:"guids,omitempty"`
 	// Hostname of the UFM server managing the InfiniBand fabric.
 	Host string `json:"host"`
-	// Nautobot interfaces to resolve to InfiniBand port GUIDs.
+	// DCIM interfaces to resolve to InfiniBand port GUIDs.
 	Interfaces []InterfaceRef `json:"interfaces,omitempty"`
 	// Partition key whose members will be removed.
 	Pkey string `json:"pkey"`

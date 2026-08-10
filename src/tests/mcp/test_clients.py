@@ -79,6 +79,7 @@ class FakeDCIMClient:
         """Return the request metadata needed by the test."""
         return {"path": path, "params": params}
 
+
 @pytest.fixture
 def settings() -> MCPSettings:
     return MCPSettings(
