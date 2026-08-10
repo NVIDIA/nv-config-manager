@@ -42,15 +42,30 @@
     allow_failure: true
   - when: never
 
+# Runner selection + retry policy shared by every job in this file.
+#
+# These jobs run on the general `dca` pool, not `dgxc-corp-restricted`. The
+# restricted pool exists to sandbox the *untrusted* PR build (pr-build.yml);
+# promote runs trusted code from the protected default branch and legitimately
+# holds protected variables, so it belongs on the same pool as the other
+# default-branch jobs (build.yml, deploy.yml, release.yml).
+.test-promote-runner: &test-promote-runner
+  tags:
+    - dca
+    - linux/amd64
+    - docker
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
 # -----------------------------------------------------------------------------
 # 1) Resolve PR HEAD; reuse or trigger the no-secrets build pipeline; wait.
 # -----------------------------------------------------------------------------
 test-promote-build:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-promote-rules
@@ -75,10 +90,7 @@ test-promote-build:
 # -----------------------------------------------------------------------------
 test-promote-push-images:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   image: $NVCM_CI_IMAGE_DOCKER
   services:
     - name: $NVCM_CI_IMAGE_DOCKER_DIND
@@ -117,10 +129,7 @@ test-promote-push-images:
 # -----------------------------------------------------------------------------
 test-promote-chart:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   image:
     name: $NVCM_CI_IMAGE_UBUNTU
     entrypoint: ['']
@@ -355,10 +364,7 @@ test-promote-chart:
 # -----------------------------------------------------------------------------
 test-promote-deploy-state:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-promote-rules
   needs:
@@ -397,10 +403,7 @@ test-promote-deploy-state:
 # -----------------------------------------------------------------------------
 test-rollback-env:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-env-ops-rules
   needs: []
@@ -459,6 +462,23 @@ test-rollback-env:
 
       echo "Rolling ${NVCM_PROMOTE_ENV} back to deploy-state @ ${NVCM_ROLLBACK_TO}"
       git show "${NVCM_ROLLBACK_TO}:${state_file}" > "$state_file"
+
+      # Idempotency guard, matching test-release-env and write_deploy_state.sh:
+      # if the branch already carries these exact deployment pins, stop rather
+      # than push a commit that differs only in the audit fields. Makes the job
+      # safe to re-run by hand, and safe to retry (see .test-promote-runner) in
+      # the narrow case where `git push` lands server-side but the job dies
+      # before recording it. Compared with the audit fields blanked, since this
+      # job rewrites them on every run.
+      strip_audit='.occupant = "" | .updatedAt = ""'
+      yq "$strip_audit" "$state_file" > "${CI_PROJECT_DIR}/rollback-new.yaml"
+      git show "HEAD:${state_file}" 2>/dev/null \
+        | yq "$strip_audit" > "${CI_PROJECT_DIR}/rollback-current.yaml" || true
+      if cmp -s "${CI_PROJECT_DIR}/rollback-current.yaml" "${CI_PROJECT_DIR}/rollback-new.yaml"; then
+        echo "✓ ${NVCM_ENV_BRANCH} already carries the deploy-state from ${NVCM_ROLLBACK_TO}; nothing to roll back."
+        exit 0
+      fi
+
       # Refresh audit fields only; the deployment pins are restored verbatim.
       occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
       updated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -480,10 +500,7 @@ test-rollback-env:
 # -----------------------------------------------------------------------------
 test-release-env:
   stage: deploy
-  tags:
-    - dgxc-corp-restricted
-    - docker
-    - linux/amd64
+  <<: *test-promote-runner
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-env-ops-rules
   needs: []
