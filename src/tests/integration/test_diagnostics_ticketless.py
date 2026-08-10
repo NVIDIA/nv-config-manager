@@ -67,8 +67,8 @@ def _poll_to_terminal(
 ) -> dict[str, Any]:
     """Poll until the workflow reaches a terminal state.
 
-    kubectl port-forward silently drops keep-alive connections between polls.
-    ConnectionError is treated as a transient failure — logged and retried.
+    kubectl port-forward and the local gateway can drop keep-alive connections
+    between polls. Connection errors and gateway 503s are transient failures.
     """
     url = f"{temporal_api_url}{WORKFLOW_DETAIL_ENDPOINT.format(workflow_id=workflow_id)}"
     deadline = time.monotonic() + timeout
@@ -85,6 +85,10 @@ def _poll_to_terminal(
         except requests.exceptions.ConnectionError as exc:
             # Port-forward dropped the connection between polls — retry on next tick.
             print(f"  [poll] connection dropped (retrying): {exc}")
+        except requests.exceptions.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 503:
+                raise
+            print("  [poll] gateway upstream connection reset (retrying)")
         time.sleep(interval)
     pytest.fail(
         f"Workflow {workflow_id} did not reach a terminal state within {timeout}s. "
