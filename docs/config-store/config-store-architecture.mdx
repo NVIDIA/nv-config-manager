@@ -125,7 +125,7 @@ The `config_files` table stores all versioned configuration content:
 ```sql
 config_files:
 - id (UUID, primary key)
-- device_uuid (UUID, indexed)
+- device_uuid (text, indexed; provider-owned device identifier)
 - filename (text)
 - file_type (enum: intended|backup, indexed)
 - version (integer)

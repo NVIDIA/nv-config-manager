@@ -53,6 +53,7 @@ def mock_dcim_client():
     )
     client.get_device_metadata = AsyncMock(return_value=metadata)
     client.get_managed_device_metadata = AsyncMock(return_value=[])
+    client.is_valid_device_id = MagicMock(return_value=True)
     client.get_device_ui_url = MagicMock(
         side_effect=lambda device_id: f"https://nautobot.example.com/dcim/devices/{device_id}/"
     )
@@ -66,7 +67,7 @@ async def test_refresh_device_uses_provider_device_link(mock_redis, mock_dcim_cl
         redis_client=mock_redis,
         dcim_client=mock_dcim_client,
     )
-    device_uuid = uuid4()
+    device_uuid = str(uuid4())
 
     result = await service.refresh_device(device_uuid)
 
@@ -83,7 +84,7 @@ async def test_refresh_device_does_not_rewrite_provider_device_link(mock_redis, 
         redis_client=mock_redis,
         dcim_client=mock_dcim_client,
     )
-    device_uuid = uuid4()
+    device_uuid = str(uuid4())
 
     result = await service.refresh_device(device_uuid)
 
@@ -131,7 +132,7 @@ cache_ttl = 3600
 @pytest.mark.asyncio
 async def test_refresh_all_devices_updates_active_set(mock_redis, mock_dcim_client):
     """refresh_all_devices replaces the active device set in Redis."""
-    uid1, uid2 = str(uuid4()), str(uuid4())
+    uid1, uid2 = "42", str(uuid4())
     device1 = DeviceMetadata(device_id=uid1, name="dev1", site="S1")
     device2 = DeviceMetadata(device_id=uid2, name="dev2", site="S2")
     mock_dcim_client.get_managed_device_metadata = AsyncMock(return_value=[device1, device2])
@@ -165,7 +166,7 @@ async def test_is_device_active(mock_redis):
         redis_client=mock_redis,
         dcim_client=MagicMock(),
     )
-    device_uuid = uuid4()
+    device_uuid = str(uuid4())
 
     result = await service.is_device_active(device_uuid)
 
@@ -186,15 +187,15 @@ async def test_is_device_active_returns_true_on_error(mock_redis):
         dcim_client=MagicMock(),
     )
 
-    result = await service.is_device_active(uuid4())
+    result = await service.is_device_active(str(uuid4()))
     assert result is True
 
 
 @pytest.mark.asyncio
 async def test_get_active_device_uuids(mock_redis):
     """get_active_device_uuids returns the set from Redis."""
-    uid1 = uuid4()
-    uid2 = uuid4()
+    uid1 = str(uuid4())
+    uid2 = str(uuid4())
     mock_redis.redis = MagicMock()
     mock_redis.redis.smembers = AsyncMock(return_value={str(uid1).encode(), str(uid2).encode()})
 
@@ -218,7 +219,7 @@ async def test_delete_device_removes_from_active_set(mock_redis, mock_dcim_clien
         redis_client=mock_redis,
         dcim_client=mock_dcim_client,
     )
-    device_uuid = uuid4()
+    device_uuid = str(uuid4())
 
     await service.delete_device(device_uuid)
 

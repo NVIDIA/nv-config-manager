@@ -68,7 +68,7 @@ class ConfigResponse(BaseModel):
     """Response with full config data."""
 
     id: UUID = Field(..., description="Config file ID")
-    device_uuid: UUID = Field(..., description="Device UUID")
+    device_uuid: str = Field(..., description="DCIM provider device identifier")
     filename: str = Field(..., description="File name")
     file_type: FileType = Field(..., description="Config file type (intended or backup)")
     version: int = Field(..., description="Version number")
@@ -85,7 +85,7 @@ class ConfigResponse(BaseModel):
 class ConfigVersionsResponse(BaseModel):
     """Response with list of versions."""
 
-    device_uuid: UUID = Field(..., description="Device UUID")
+    device_uuid: str = Field(..., description="DCIM provider device identifier")
     filename: str = Field(..., description="File name")
     versions: list[ConfigVersionResponse] = Field(..., description="List of versions")
     device: DeviceMetadata | None = Field(
@@ -126,7 +126,7 @@ class BatchConfigResponse(BaseModel):
 class DiffResponse(BaseModel):
     """Response with diff between two versions."""
 
-    device_uuid: UUID = Field(..., description="Device UUID")
+    device_uuid: str = Field(..., description="DCIM provider device identifier")
     filename: str = Field(..., description="File name")
     from_version: int = Field(..., description="Source version")
     to_version: int = Field(..., description="Target version")
@@ -134,4 +134,6 @@ class DiffResponse(BaseModel):
     old_content: str = Field(..., description="Content of source version")
     new_content: str = Field(..., description="Content of target version")
     diff_stats: dict[str, int] = Field(..., description="Statistics about the diff")
-    device: DeviceMetadata | None = Field(None, description="Device metadata from Nautobot")
+    device: DeviceMetadata | None = Field(
+        None, description="Device metadata from the selected DCIM provider"
+    )

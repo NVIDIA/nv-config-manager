@@ -14,8 +14,6 @@
 # limitations under the License.
 """Device metadata enrichment utilities."""
 
-from uuid import UUID
-
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.config_store.api.schemas import DeviceMetadata
 from nv_config_manager.config_store.core.device_cache_redis import DeviceCacheService
@@ -24,13 +22,13 @@ logger = get_logger(__name__, category=LogCategory.CONFIG_STORE)
 
 
 async def enrich_with_device_metadata(
-    device_uuid: UUID,
+    device_uuid: str,
     cache_service: DeviceCacheService | None,
 ) -> DeviceMetadata | None:
     """Enrich response with device metadata from Redis cache.
 
     Args:
-        device_uuid: Device UUID
+        device_uuid: DCIM provider device identifier
         cache_service: Device cache service (if available)
 
     Returns:
