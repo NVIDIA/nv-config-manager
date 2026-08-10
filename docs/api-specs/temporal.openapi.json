@@ -662,7 +662,7 @@
         "type": "object"
       },
       "InterfaceRef": {
-        "description": "A device/interface name pair used to look up an interface in Nautobot.\n\n``membership`` is an optional per-port override (\"full\"/\"limited\"); when unset\nthe caller's workflow-level default is applied.",
+        "description": "A device/interface name pair used to look up an interface in the DCIM.\n\n``membership`` is an optional per-port override (\"full\"/\"limited\"); when unset\nthe caller's workflow-level default is applied.",
         "properties": {
           "device": {
             "title": "Device",
@@ -798,24 +798,12 @@
         "type": "object"
       },
       "NetworkDeviceData": {
-        "description": "Network device data.",
+        "description": "Normalized network-device inventory and configuration intent.",
         "properties": {
           "backup_enabled": {
             "default": false,
             "title": "Backup Enabled",
             "type": "boolean"
-          },
-          "config_context": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Config Context"
           },
           "deploy_enabled": {
             "default": false,
@@ -829,6 +817,18 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "intent": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent"
           },
           "name": {
             "title": "Name",
@@ -933,7 +933,7 @@
         "type": "object"
       },
       "Platform": {
-        "description": "Network device platform types.",
+        "description": "Network device platform types understood by the workflow services.",
         "enum": [
           "arista-eos",
           "cumulus-linux",
@@ -2701,7 +2701,7 @@
     },
     "/v1/parameter/device/{device_id}/password_users": {
       "get": {
-        "description": "Get available password users from device config context password_mappings.\n\nArgs:\n    device_id: The UUID of the device.\n\nReturns:\n    List of password users with their secret names from password_mappings.",
+        "description": "Get available password users and their secret names for a device.\n\nArgs:\n    device_id: The UUID of the device.\n\nReturns:\n    List of password users with their provider-normalized secret names.",
         "operationId": "get_device_password_users_v1_parameter_device__device_id__password_users_get",
         "parameters": [
           {
@@ -2753,7 +2753,7 @@
     },
     "/v1/parameter/device/{device_id}/secret_types": {
       "get": {
-        "description": "Get available secret types from device config context.\n\nArgs: device_id: The UUID of the device.\n\nReturns:\n    List of secret types plus versions from config context.",
+        "description": "Get available secret types from the configured DCIM provider.\n\nArgs: device_id: The UUID of the device.\n\nReturns:\n    List of secret types plus versions from config context.",
         "operationId": "get_device_users_with_versions_v1_parameter_device__device_id__secret_types_get",
         "parameters": [
           {
@@ -2805,7 +2805,7 @@
     },
     "/v1/parameter/device/{device_id}/secrets": {
       "get": {
-        "description": "Return a list of secrets available in device config context.\n\nArgs:\n    device_id: The UUID of the device to fetch secrets from\n\nReturns:\n    List of secrets found in the device's config context",
+        "description": "Return a list of secrets available for a device.\n\nArgs:\n    device_id: The UUID of the device to fetch secrets from\n\nReturns:\n    List of secrets returned by the configured DCIM provider",
         "operationId": "get_device_secrets_v1_parameter_device__device_id__secrets_get",
         "parameters": [
           {
@@ -2981,7 +2981,7 @@
     },
     "/v1/parameter/namespace-tag": {
       "get": {
-        "description": "Return a list of tags used by Nautobot namespaces.",
+        "description": "Return the configured DCIM provider's namespace tag choices.",
         "operationId": "get_namespace_tags_v1_parameter_namespace_tag_get",
         "parameters": [
           {
