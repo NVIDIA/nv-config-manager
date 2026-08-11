@@ -182,6 +182,9 @@ def get_public_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[s
             # Cast to WorkflowMetadataMixin type for mypy
             metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
 
+            if metadata_workflow.get_workflow_api_endpoint() is None:
+                continue
+
             if metadata_workflow.has_complete_metadata():
                 input_class = metadata_workflow.get_workflow_input_class()
                 workflow_roles = (
