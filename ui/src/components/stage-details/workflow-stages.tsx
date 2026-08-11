@@ -206,7 +206,7 @@ export const WorkflowClientComponent: React.FC<
   const [terminateOutcome, setTerminateOutcome] = useState<
     "success" | "failed" | null
   >(null);
-  const [isReviewed, setIsReviewed] = useState<boolean>(false);
+  const [reviewedStageName, setReviewedStageName] = useState<string | null>(null);
   const { toast } = useToast();
 
   const canShowTerminate = true;
@@ -233,6 +233,7 @@ export const WorkflowClientComponent: React.FC<
 
   useEffect(() => {
     setTerminateOutcome(null);
+    setReviewedStageName(null);
   }, [workflow.id]);
 
   async function handleRetry() {
@@ -263,7 +264,7 @@ export const WorkflowClientComponent: React.FC<
         title: "Approval: Success",
         description: "Approving Stage",
       });
-      setIsReviewed(true);
+      setReviewedStageName(stageName);
     } catch (error) {
       console.error(error);
       toast({
@@ -284,7 +285,7 @@ export const WorkflowClientComponent: React.FC<
         title: "Rejection: Success",
         description: "Rejecting Stage.",
       });
-      setIsReviewed(true);
+      setReviewedStageName(stageName);
     } catch (error) {
       console.error(error);
       toast({
@@ -325,13 +326,14 @@ export const WorkflowClientComponent: React.FC<
   const handleStageFooterButtons = (
     state: StateHistory["state"]
   ): React.ReactNode => {
+    const isCurrentStageReviewed = reviewedStageName === stage?.name;
     if (state == "PENDING_APPROVAL") {
       return (
         <div className="space-x-4">
           <Button
             className="w-32"
             variant="approval"
-            disabled={isLoading || isReviewed}
+            disabled={isLoading || isCurrentStageReviewed}
             onClick={() => handleApprove()}
           >
             {isLoading ? <LoadingSpinner /> : "Approve"}
@@ -339,7 +341,7 @@ export const WorkflowClientComponent: React.FC<
           <Button
             className="w-32"
             variant="destructive"
-            disabled={isLoading || isReviewed}
+            disabled={isLoading || isCurrentStageReviewed}
             onClick={() => handleReject()}
           >
             {isLoading ? <LoadingSpinner /> : "Reject"}

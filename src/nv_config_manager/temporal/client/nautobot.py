@@ -20,6 +20,7 @@ device queries, workflow integration, and NVIDIA Config Manager plugin interacti
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -75,6 +76,104 @@ class NautobotClient(BaseNautobotClient):
             nautobot_url=config["nautobot"]["server"],
             token=config["nautobot"]["token"],
             verify=parse_verify_param(config["nautobot"]),
+        )
+
+    async def get_next_common_lag_name(
+        self,
+        local_device_id: str,
+        remote_device_id: str,
+        requested_name: str | None = None,
+        start_sequence: int = 100,
+    ) -> str:
+        """Return a requested free LAG or the first common free ``aeN``."""
+        names_by_device: list[set[str]] = []
+        for device_id in (local_device_id, remote_device_id):
+            interfaces = await self.get_all("dcim/interfaces/", params={"device": device_id})
+            names_by_device.append({str(interface["name"]).casefold() for interface in interfaces})
+        used = names_by_device[0] | names_by_device[1]
+        if requested_name:
+            normalized = requested_name.casefold()
+            if normalized in used:
+                raise ApplicationError(
+                    f"Requested LAG {requested_name} is already used on an endpoint",
+                    non_retryable=True,
+                )
+            return normalized
+
+        sequence = start_sequence
+        while f"ae{sequence}" in used:
+            sequence += 1
+        return f"ae{sequence}"
+
+    async def get_next_available_prefix(
+        self,
+        role_name: str,
+        prefix_length: int,
+        namespace_name: str = "Global",
+    ) -> tuple[str, str]:
+        """Return the next child prefix and its role-tagged container pool."""
+        roles = await self.get_all("extras/roles/", params={"name": role_name})
+        if len(roles) != 1:
+            raise ApplicationError(
+                f"Expected exactly one Nautobot role named {role_name!r}; found {len(roles)}",
+                non_retryable=True,
+            )
+        namespaces = await self.get_all("ipam/namespaces/", params={"name": namespace_name})
+        if len(namespaces) != 1:
+            raise ApplicationError(
+                f"Expected exactly one Nautobot namespace named {namespace_name!r}",
+                non_retryable=True,
+            )
+
+        namespace_id = str(namespaces[0]["id"])
+        pools = await self.get_all(
+            "ipam/prefixes/",
+            params={
+                "namespace": namespace_id,
+                "role": roles[0]["id"],
+                "type": "container",
+            },
+        )
+        requested_version = 4 if prefix_length <= 32 else 6
+        pool_networks = sorted(
+            (
+                ipaddress.ip_network(str(pool["prefix"]))
+                for pool in pools
+                if ipaddress.ip_network(str(pool["prefix"])).version == requested_version
+                and ipaddress.ip_network(str(pool["prefix"])).prefixlen < prefix_length
+            ),
+            key=lambda network: int(network.network_address),
+        )
+        for pool in pool_networks:
+            children = await self.get_all(
+                "ipam/prefixes/",
+                params={"namespace": namespace_id, "within": str(pool)},
+            )
+            occupied = sorted(
+                (
+                    ipaddress.ip_network(str(child["prefix"]))
+                    for child in children
+                    if ipaddress.ip_network(str(child["prefix"])).version == pool.version
+                ),
+                key=lambda network: int(network.network_address),
+            )
+            step = 1 << (pool.max_prefixlen - prefix_length)
+            candidate_start = int(pool.network_address)
+            pool_end = int(pool.broadcast_address)
+            for network in occupied:
+                conflict_start = int(network.network_address)
+                conflict_end = int(network.broadcast_address)
+                if candidate_start + step - 1 < conflict_start:
+                    break
+                if candidate_start <= conflict_end:
+                    candidate_start = ((conflict_end + 1 + step - 1) // step) * step
+            if candidate_start + step - 1 <= pool_end:
+                address = ipaddress.ip_address(candidate_start)
+                return str(ipaddress.ip_network(f"{address}/{prefix_length}")), str(pool)
+
+        raise ApplicationError(
+            f"No available /{prefix_length} exists in role {role_name!r} container pools",
+            non_retryable=True,
         )
 
     async def graphql_query(

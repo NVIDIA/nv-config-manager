@@ -26,6 +26,7 @@ import ssl
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from copy import deepcopy
 from io import BytesIO, StringIO
@@ -38,6 +39,10 @@ import pyeapi
 import pyeapi.eapilib
 import requests
 import urllib3
+from ncclient import manager as netconf_manager  # type: ignore[import-untyped]
+from ncclient.manager import Manager  # type: ignore[import-untyped]
+from ncclient.operations.errors import NCClientError  # type: ignore[import-untyped]
+from ncclient.transport.errors import AuthenticationError, SSHError  # type: ignore[import-untyped]
 from netmiko import ConnectHandler  # type: ignore[import-untyped]
 from netmiko.base_connection import BaseConnection  # type: ignore[import-untyped]
 from netmiko.exceptions import NetmikoAuthenticationException  # type: ignore[import-untyped]
@@ -725,6 +730,8 @@ class NetworkConnection:
             connection = NVOSConnection(device_data.host, site=device_data.site)
         elif device_data.platform == Platform.MLNX_OS:
             connection = MellanoxConnection(device_data.host, site=device_data.site)
+        elif device_data.platform == Platform.JUNIPER_JUNOS:
+            connection = JunosConnection(device_data.host, site=device_data.site)
         else:
             raise NotImplementedError(f"No handler implemented for platform {device_data.platform}")
         return connection
@@ -746,7 +753,6 @@ class MockNetworkConnection(NetworkConnection):
 
     def get_running_configuration(self) -> str:
         """Load the running configuration for a given device."""
-        # TODO: set up some more realistic mock data
         return "Mock Network Config"
 
     def get_mac_table(self) -> DeviceMacTable:
@@ -763,7 +769,6 @@ class MockNetworkConnection(NetworkConnection):
 
     def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
         """Load the candidate configuration and return the diff."""
-        # TODO: set up some more realistic mock data
         return "Mock Network Diff"
 
     def get_hostname(self) -> str:
@@ -893,6 +898,112 @@ class MockNetworkConnection(NetworkConnection):
             b"[mock tech-support bundle]",
             "Mock cl-support output\nSaved cl_support output to /var/support/mock_bundle.txz.",
         )
+
+
+class JunosConnection(NetworkConnection):
+    """Juniper Junos candidate configuration client using NETCONF."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 830,
+        username: str | None = None,
+        password: str | None = None,
+        site: str | None = None,
+    ) -> None:
+        """Open a Junos-aware NETCONF session."""
+        super().__init__(host, port, username, password, site)
+        self._manager = self._connect()
+
+    def _connect(self) -> Manager:
+        """Connect with the configured password rotation."""
+
+        def connect_with_password(password: str) -> Manager:
+            return netconf_manager.connect(
+                host=self._host,
+                port=self._port,
+                username=self._username,
+                password=password,
+                hostkey_verify=False,
+                allow_agent=False,
+                look_for_keys=False,
+                device_params={"name": "junos"},
+                timeout=60,
+            )
+
+        return self._try_passwords_with_callback(
+            connect_with_password,
+            (AuthenticationError, SSHError, NCClientError),
+        )
+
+    @staticmethod
+    def _configuration_output(reply_xml: str) -> str:
+        """Extract Junos's text comparison payload from an RPC reply."""
+        root = ET.fromstring(reply_xml)
+        for element in root.iter():
+            if element.tag.rsplit("}", 1)[-1] == "configuration-output":
+                return "".join(element.itertext()).strip()
+        return ""
+
+    def _load_candidate(self, new_configuration: str, partial: bool) -> None:
+        """Load and validate rendered text into the candidate datastore."""
+        self._manager.discard_changes()
+        self._manager.load_configuration(
+            action="merge" if partial else "override",
+            format="text",
+            config=new_configuration,
+        )
+        self._manager.validate(source="candidate")
+
+    def _candidate_diff(self) -> str:
+        """Return Junos ``show | compare`` output for the loaded candidate."""
+        reply = self._manager.compare_configuration(format="text")
+        return self._configuration_output(reply.xml)
+
+    def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
+        """Load the rendered configuration over NETCONF and return its Junos diff."""
+        try:
+            with self._manager.locked(target="candidate"):
+                self._load_candidate(new_configuration, partial)
+                diff = self._candidate_diff()
+                self._manager.discard_changes()
+                return diff
+        except NCClientError as exc:
+            raise NetworkDeviceException("Failed to perform Junos candidate diff.") from exc
+
+    def commit_candidate_config(
+        self,
+        new_configuration: str,
+        approved_diff: str,
+        partial: bool = False,
+        *,
+        commit_confirm: bool = True,
+    ) -> None:
+        """Recheck the approved Junos diff and commit through NETCONF."""
+        try:
+            with self._manager.locked(target="candidate"):
+                self._load_candidate(new_configuration, partial)
+                if self._candidate_diff() != approved_diff:
+                    self._manager.discard_changes()
+                    raise DiffChangedException("Diff has changed since approval, aborting.")
+                if commit_confirm:
+                    self._manager.commit(
+                        confirmed=True,
+                        timeout=COMMIT_CONFIRM_ROLLBACK_SECONDS,
+                    )
+                    self._manager.commit()
+                else:
+                    self._manager.commit()
+        except DiffChangedException:
+            raise
+        except NCClientError as exc:
+            raise NetworkDeviceException("Failed to commit Junos candidate configuration.") from exc
+
+    def __del__(self) -> None:
+        """Close the NETCONF session when the connection object is released."""
+        manager = getattr(self, "_manager", None)
+        if manager is not None:
+            manager.close_session()
 
 
 class AristaConnection(NetworkConnection):

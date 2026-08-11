@@ -1381,6 +1381,30 @@ class TestWorkflowRBAC:
         assert backup["read_roles"] == ["viewer"]
         assert backup["execute_roles"] == ["ops"]
 
+    def test_explicit_plugin_workflow_override_is_preserved(self):
+        """Branch-local plugin workflows can declare RBAC before joining the release list."""
+        config = _make_config(
+            rbac=RBACConfig(
+                workflow_overrides=[
+                    WorkflowRBACOverride(
+                        name="BBLocalPluginWorkflow",
+                        read_roles=["all"],
+                        execute_roles=["all"],
+                    ),
+                ],
+            ),
+        )
+
+        values = _gen(config)
+
+        plugin = next(
+            workflow
+            for workflow in values["rbac"]["workflows"]
+            if workflow["name"] == "BBLocalPluginWorkflow"
+        )
+        assert plugin["read_roles"] == ["all"]
+        assert plugin["execute_roles"] == ["all"]
+
     def test_workflow_order_matches_known_workflows(self):
         """Generated workflow entries preserve the values-rbac-open.yaml order."""
         values = _gen(_make_config())

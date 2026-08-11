@@ -22,6 +22,8 @@ import { FORBIDDEN_WORKFLOW_ID } from "@/mocks/data/formData";
 import { createGenericWorkflow } from "@/mocks/data/workflows/genericWorkflow";
 
 export const workflowTypes = [
+  "BBDrainInterfaceWorkflow",
+  "BBInternalBackboneBringupWorkflow",
   "BackupWorkflow",
   "SiteBackupWorkflow",
   "ConnectedHostMetadataWorkflow",
@@ -55,6 +57,8 @@ export const workflowTypes = [
 ];
 
 const workflowDisplayNames: Record<string, string> = {
+  BBDrainInterfaceWorkflow: "BB Sandbox: Drain Interface",
+  BBInternalBackboneBringupWorkflow: "BB Sandbox: Internal Backbone Bringup",
   BackupWorkflow: "Configuration Backup",
   SiteBackupWorkflow: "Site Configuration Backup",
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
@@ -85,6 +89,8 @@ const workflowDisplayNames: Record<string, string> = {
 };
 
 const workflowEndpoints: Record<string, string> = {
+  BBDrainInterfaceWorkflow: "/bb_sandbox/drain_interface",
+  BBInternalBackboneBringupWorkflow: "/bb_sandbox/internal_backbone_bringup",
   BackupWorkflow: "/ngc/backup",
   SiteBackupWorkflow: "/ngc/site_backup",
   ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
@@ -134,7 +140,7 @@ export const workflowMetadata = {
     display_name: workflowDisplayNames[workflowType] ?? workflowType,
     description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
     endpoint: getWorkflowEndpoint(workflowType),
-    namespace: "ngc",
+    namespace: workflowType.startsWith("BB") ? "bb_sandbox" : "ngc",
     cli_name: workflowType.toLowerCase(),
     input_class: `${workflowType}Input`,
     read_roles: ["all"],

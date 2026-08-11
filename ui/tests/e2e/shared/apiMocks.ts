@@ -93,6 +93,7 @@ export async function setupApiMocks(page: Page) {
   await mockSwitchOsUpgradeEndpoint(page);
   await mockCumulusHardwareValidationEndpoint(page);
   await mockMultiDeployEndpoint(page);
+  await mockBBSandboxEndpoints(page);
 
   // Data fetching endpoints
   await mockSitesEndpoint(page);
@@ -1296,6 +1297,60 @@ export async function mockDeviceInterfacesEndpoint(page: Page) {
   });
 }
 
+export async function mockBBSandboxEndpoints(page: Page) {
+  const devices = [
+    { id: "bb-device-1", name: "SJC0C-BBR-01" },
+    { id: "bb-device-2", name: "SJC0C-BBR-02" },
+  ];
+  await page.route("**/v1/parameter/bb-sandbox/devices", async (route) => {
+    await route.fulfill({ status: 200, json: devices });
+  });
+  await page.route("**/v1/parameter/bb-sandbox/circuits", async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: [{ id: "circuit-1", cid: "BB-CIRCUIT-001", status: "Planned" }],
+    });
+  });
+  await page.route(
+    "**/v1/parameter/bb-sandbox/devices/*/interfaces?*",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [
+          { id: "port-1", name: "et-0/0/0", type: "100gbase-x-qsfp28", status: "Planned" },
+          { id: "port-2", name: "et-0/0/1", type: "100gbase-x-qsfp28", status: "Planned" },
+        ],
+      });
+    },
+  );
+  await page.route("**/v1/parameter/bb-sandbox/next-lag?*", async (route) => {
+    await route.fulfill({ status: 200, json: { lag_name: "ae103" } });
+  });
+  await page.route("**/v1/parameter/bb-sandbox/next-prefix?*", async (route) => {
+    const prefixLength = new URL(route.request().url()).searchParams.get("prefix_length");
+    const ipv6 = prefixLength === "127";
+    await route.fulfill({
+      status: 200,
+      json: {
+        role: "BB-P2P",
+        prefix: ipv6 ? "2001:db8::2/127" : "192.0.2.2/31",
+        prefix_length: ipv6 ? 127 : 31,
+        parent_prefix: ipv6 ? "2001:db8::/120" : "192.0.2.0/24",
+      },
+    });
+  });
+  for (const endpoint of [
+    "/v1/workflow/bb_sandbox/drain_interface",
+    "/v1/workflow/bb_sandbox/internal_backbone_bringup",
+  ]) {
+    await page.route(`**${endpoint}`, async (route) => {
+      const body = JSON.parse((await route.request().postData()) || "{}");
+      const id = `bb-sandbox-${Date.now()}`;
+      await route.fulfill({ status: 201, json: { id, submitted_data: body } });
+    });
+  }
+}
+
 export async function mockPasswordUsersEndpoint(page: Page) {
   await page.route(`**/v1/parameter/device/*/password_users`, async (route) => {
     const url = route.request().url();
@@ -1328,6 +1383,8 @@ export async function mockPasswordUsersEndpoint(page: Page) {
 // Workflow listing endpoints
 export async function mockWorkflowTypesEndpoint(page: Page) {
   const workflowTypes = [
+    "BBDrainInterfaceWorkflow",
+    "BBInternalBackboneBringupWorkflow",
     "BackupWorkflow",
     "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
@@ -1366,6 +1423,8 @@ export async function mockWorkflowTypesEndpoint(page: Page) {
 
 export async function mockWorkflowMetadataEndpoint(page: Page) {
   const workflowTypes = [
+    "BBDrainInterfaceWorkflow",
+    "BBInternalBackboneBringupWorkflow",
     "BackupWorkflow",
     "SiteBackupWorkflow",
     "ConnectedHostMetadataWorkflow",
@@ -1394,6 +1453,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     "IBPortGuidDiscoveryWorkflow",
   ];
   const workflowDisplayNames: Record<string, string> = {
+    BBDrainInterfaceWorkflow: "BB Sandbox: Drain Interface",
+    BBInternalBackboneBringupWorkflow: "BB Sandbox: Internal Backbone Bringup",
     BackupWorkflow: "Configuration Backup",
     SiteBackupWorkflow: "Site Configuration Backup",
     ConnectedHostMetadataWorkflow: "Connected Host Metadata",
@@ -1419,6 +1480,8 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
     IBPortGuidDiscoveryWorkflow: "InfiniBand Port GUID Discovery",
   };
   const workflowEndpoints: Record<string, string> = {
+    BBDrainInterfaceWorkflow: "/bb_sandbox/drain_interface",
+    BBInternalBackboneBringupWorkflow: "/bb_sandbox/internal_backbone_bringup",
     BackupWorkflow: "/ngc/backup",
     SiteBackupWorkflow: "/ngc/site_backup",
     ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
@@ -1461,7 +1524,7 @@ export async function mockWorkflowMetadataEndpoint(page: Page) {
       display_name: workflowDisplayNames[workflowType] ?? workflowType,
       description: `${workflowDisplayNames[workflowType] ?? workflowType} workflow`,
       endpoint: getWorkflowEndpoint(workflowType),
-      namespace: "ngc",
+      namespace: workflowType.startsWith("BB") ? "bb_sandbox" : "ngc",
       cli_name: workflowType.toLowerCase(),
       input_class: `${workflowType}Input`,
       read_roles: ["all"],

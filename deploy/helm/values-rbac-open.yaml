@@ -169,3 +169,14 @@ rbac:
         - all
       execute_roles:
         - all
+    # Branch-local Backbone sandbox workflows
+    - name: BBDrainInterfaceWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
+    - name: BBInternalBackboneBringupWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all

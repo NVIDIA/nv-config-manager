@@ -35,6 +35,18 @@ export const siteConfig = {
   ],
   workflows: [
     {
+      title: "BB Sandbox: Drain Interface",
+      workflowName: "BBDrainInterfaceWorkflow",
+      slug: "bbdraininterfaceworkflow",
+      enabled: true,
+    },
+    {
+      title: "BB Sandbox: Internal Backbone Bringup",
+      workflowName: "BBInternalBackboneBringupWorkflow",
+      slug: "bbinternalbackbonebringupworkflow",
+      enabled: true,
+    },
+    {
       title: "Configuration Backup",
       workflowName: "BackupWorkflow",
       slug: "backupworkflow",

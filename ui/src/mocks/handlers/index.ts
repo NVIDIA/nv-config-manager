@@ -34,6 +34,7 @@ import { switchOsUpgradeHandlers } from "./switchOsUpgradeHandlers";
 import { cumulusHardwareValidationHandlers } from "./cumulusHardwareValidationHandler";
 import { multiDeployHandlers } from "./multiDeployHandlers";
 import { ibPkeyCreationHandlers } from "./ibPkeyCreationHandlers";
+import { bbSandboxHandlers } from "./bbSandboxHandlers";
 
 export * from "./healthcheckHandlers";
 export * from "./workflowHandlers";
@@ -55,6 +56,7 @@ export * from "./switchOsUpgradeHandlers";
 export * from "./cumulusHardwareValidationHandler";
 export * from "./multiDeployHandlers";
 export * from "./ibPkeyCreationHandlers";
+export * from "./bbSandboxHandlers";
 
 export const handlers = [
   ...healthCheckHandlers,
@@ -77,4 +79,5 @@ export const handlers = [
   ...cumulusHardwareValidationHandlers,
   ...multiDeployHandlers,
   ...ibPkeyCreationHandlers,
+  ...bbSandboxHandlers,
 ];

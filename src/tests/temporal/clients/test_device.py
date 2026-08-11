@@ -14,7 +14,7 @@
 # limitations under the License.
 import json
 from configparser import ConfigParser
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import paramiko
 import pytest
@@ -22,6 +22,8 @@ import pytest
 from nv_config_manager.temporal.client.device import (
     ConfigSyntaxException,
     CumulusConnection,
+    DiffChangedException,
+    JunosConnection,
     MockNetworkConnection,
     NetworkConnection,
 )
@@ -302,3 +304,52 @@ def test_from_device_data_returns_cumulus_when_mock_false(mock_load_config):
     mock_load_config.return_value = _mock_config(mock=False)
     conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
     assert isinstance(conn, CumulusConnection)
+
+
+@patch("nv_config_manager.temporal.client.device.JunosConnection")
+@patch("nv_config_manager.temporal.client.device.load_config")
+def test_from_device_data_routes_junos_to_netconf(mock_load_config, mock_junos):
+    """Juniper Junos devices select the NETCONF connection outside mock mode."""
+    mock_load_config.return_value = _mock_config(mock=False)
+    device = _CUMULUS_DEVICE.model_copy(update={"platform": "juniper-junos"})
+
+    connection = NetworkConnection.from_device_data(device)
+
+    assert connection is mock_junos.return_value
+    mock_junos.assert_called_once_with("192.0.2.100", site="SITEA")
+
+
+def test_junos_candidate_diff_uses_candidate_datastore() -> None:
+    """Junos diff loads rendered text through NETCONF and returns show-compare output."""
+    connection = JunosConnection.__new__(JunosConnection)
+    connection._manager = MagicMock()
+    connection._manager.compare_configuration.return_value.xml = (
+        '<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">'
+        "<configuration-information><configuration-output>"
+        "[edit protocols isis interface ae100]\n+ metric 1000000;"
+        "</configuration-output></configuration-information></rpc-reply>"
+    )
+
+    diff = connection.perform_candidate_diff("system { host-name test; }")
+
+    assert diff == "[edit protocols isis interface ae100]\n+ metric 1000000;"
+    connection._manager.load_configuration.assert_called_once_with(
+        action="override",
+        format="text",
+        config="system { host-name test; }",
+    )
+    connection._manager.validate.assert_called_once_with(source="candidate")
+    connection._manager.discard_changes.assert_called()
+
+
+def test_junos_apply_rechecks_approved_diff() -> None:
+    """Junos apply aborts if the candidate changed after operator approval."""
+    connection = JunosConnection.__new__(JunosConnection)
+    connection._manager = MagicMock()
+    connection._candidate_diff = MagicMock(return_value="different diff")
+
+    with pytest.raises(DiffChangedException, match="changed since approval"):
+        connection.commit_candidate_config("rendered config", "approved diff")
+
+    connection._manager.commit.assert_not_called()
+    connection._manager.discard_changes.assert_called()

@@ -852,8 +852,9 @@ def _build_cnpg(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 def _build_rbac(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the top-level ``rbac`` block for Temporal workflow authorization."""
     overrides = {o.name: o for o in config.rbac.workflow_overrides}
+    known_workflows = get_known_workflows()
     workflows: list[dict[str, Any]] = []
-    for name in get_known_workflows():
+    for name in [*known_workflows, *(name for name in overrides if name not in known_workflows)]:
         if name in overrides:
             entry = overrides[name]
             workflows.append(

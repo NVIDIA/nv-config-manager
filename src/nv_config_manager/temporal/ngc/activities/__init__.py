@@ -14,6 +14,9 @@
 # limitations under the License.
 """NGC Network Activities."""
 
+from nv_config_manager.temporal.bb_sandbox.activities import (
+    REGISTERED_ACTIVITIES as BB_SANDBOX_REGISTERED_ACTIVITIES,
+)
 from nv_config_manager.temporal.ngc.activities.backup import (
     load_running_configuration,
     persist_config_backup,
@@ -271,3 +274,5 @@ REGISTERED_ACTIVITIES = [
     upload_tech_support_from_redis,
     add_ticket_comment,
 ]
+
+REGISTERED_ACTIVITIES.extend(BB_SANDBOX_REGISTERED_ACTIVITIES)

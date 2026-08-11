@@ -33,6 +33,7 @@ from nv_config_manager.common.telemetry import (
 )
 from nv_config_manager.temporal.api import codec_server, parameter_v1, workflow_v1
 from nv_config_manager.temporal.api.audit import install_workflow_audit_logging
+from nv_config_manager.temporal.bb_sandbox import parameters as bb_sandbox_parameters
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.telemetry import setup_telemetry
 
@@ -67,6 +68,7 @@ if config.has_section("temporal.api"):
         )
 
 app.include_router(parameter_v1.router, prefix="/v1")
+app.include_router(bb_sandbox_parameters.router, prefix="/v1")
 app.include_router(workflow_v1.router, prefix="/v1")
 app.include_router(codec_server.router, prefix="/v1")
 

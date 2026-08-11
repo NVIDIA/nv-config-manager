@@ -2087,6 +2087,19 @@ nkeys = [
 ]
 
 [[package]]
+name = "ncclient"
+version = "0.7.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "paramiko" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ef/92/e36995ee7ce151814335583571bed95f1a5a491b7ea4d5487cb67377800a/ncclient-0.7.1.tar.gz", hash = "sha256:60dabb6ac1a2d84fbc3349cb104ef7d0c5d12cf8eee43fefc715410d70410ddc", size = 123086, upload-time = "2026-03-15T16:05:49.317Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/7c/c0c06d1696b03b901fa5a854b03e16f35c5c5cc8f00a0f43217dc467cd39/ncclient-0.7.1-py3-none-any.whl", hash = "sha256:47beeeee6074bd70a9215c4d353b51c7237af3c5c15269d81692810f2aa15147", size = 94833, upload-time = "2026-03-15T16:05:47.879Z" },
+]
+
+[[package]]
 name = "netaddr"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2222,6 +2235,7 @@ dependencies = [
     { name = "mcp" },
     { name = "mkdocs" },
     { name = "nats-py", extra = ["nkeys"] },
+    { name = "ncclient" },
     { name = "netaddr" },
     { name = "netmiko" },
     { name = "nkeys" },
@@ -2334,6 +2348,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.8.0" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "nats-py", extras = ["nkeys"], specifier = ">=2.8.0" },
+    { name = "ncclient", specifier = ">=0.7.1" },
     { name = "netaddr", specifier = ">=0.10.1" },
     { name = "netmiko", specifier = ">=4.3.0" },
     { name = "nkeys", specifier = ">=0.2.0" },

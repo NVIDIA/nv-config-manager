@@ -110,6 +110,7 @@ dependencies = [
     "mcp>=1.8.0",
     # Network Templates (render service)
     "nv-config-manager-templates",
+    "ncclient>=0.7.1",
 ]
 
 [project.scripts]

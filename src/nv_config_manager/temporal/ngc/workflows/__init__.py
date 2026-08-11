@@ -14,6 +14,9 @@
 # limitations under the License.
 """NGC Workflow Definitions."""
 
+from nv_config_manager.temporal.bb_sandbox.workflows import (
+    REGISTERED_WORKFLOWS as BB_SANDBOX_REGISTERED_WORKFLOWS,
+)
 from nv_config_manager.temporal.ngc.workflows.backup import BackupWorkflow
 from nv_config_manager.temporal.ngc.workflows.bmc import RedfishProvisioningWorkflow
 from nv_config_manager.temporal.ngc.workflows.cable_validation import (
@@ -104,3 +107,5 @@ REGISTERED_WORKFLOWS = [
     IBPortGuidDiscoveryWorkflow,
     DiagnosticsWorkflow,
 ]
+
+REGISTERED_WORKFLOWS.extend(BB_SANDBOX_REGISTERED_WORKFLOWS)

@@ -1,0 +1,112 @@
+# =============================================================================
+# NVIDIA Config Manager - Local Backbone Sandbox Demo
+# =============================================================================
+# Usage:
+#   make kind-up INSTALL_CONFIG=deploy/configs/bb-installer.yaml
+#
+# This profile is branch-local. It installs the sibling BB template plugin and
+# intentionally does not run the generic mock-topology Nautobot job.
+# =============================================================================
+
+version: "1"
+
+cluster:
+  hostname: config-manager.local
+  environment: bb-sandbox
+  namespace: nv-config-manager
+  release_name: nv-config-manager
+  airgapped: false
+  mock_devices: true
+  size: small
+
+secrets:
+  method: kubernetes
+  config_manager_service_username: nv-config-manager
+  k8s:
+    nautobot:
+      values:
+        token: bb-sandbox-local-api-token
+    nautobot_app:
+      values:
+        adminPassword: admin
+        superuserApiToken: bb-sandbox-local-api-token
+
+network_secrets:
+  - name: Hash Salt
+    description: Password hashing salt for user accounts
+    source: generate
+    secret_key: hash_salt
+    rotation: r1
+    required: true
+  - name: BGP Password
+    description: BGP peering authentication
+    source: generate
+    secret_key: bgp_password
+    rotation: r1
+    required: true
+  - name: Device Admin Password
+    description: Admin/root password for managed devices
+    source: generate
+    secret_key: root_password
+    rotation: r1
+    required: true
+  - name: NVIDIA Config Manager API Key
+    description: NVIDIA Config Manager service account device credential
+    source: generate
+    secret_key: api_user_key
+    rotation: r1
+    required: true
+
+sites:
+  - name: SJC0C
+  - name: LHR0A2
+  - name: AMS0A
+
+sso:
+  enabled: false
+
+spiffe:
+  enabled: false
+
+content:
+  jobs: []
+  template_plugins:
+    - path: ../gni-bb-sandbox-templates
+  run_after_deploy: []
+
+services:
+  render: true
+  ztp: true
+  dhcp: true
+  temporal: true
+  config_store: true
+  nautobot: true
+
+rbac:
+  admin_roles:
+    - all
+  default_read_roles:
+    - all
+  default_execute_roles:
+    - all
+  workflow_overrides:
+    - name: BBDrainInterfaceWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
+    - name: BBInternalBackboneBringupWorkflow
+      read_roles:
+        - all
+      execute_roles:
+        - all
+
+infrastructure:
+  gateway: envoyGateway
+  tls: true
+  cnpg_s3_backup:
+    enabled: false
+  monitoring:
+    enabled: false
+  load_balancer:
+    provider: ""
