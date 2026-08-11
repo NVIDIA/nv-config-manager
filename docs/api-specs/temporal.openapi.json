@@ -1754,96 +1754,6 @@
         "title": "Tenant",
         "type": "object"
       },
-      "TenantDeployInput": {
-        "description": "Tenant Config Deployment Workflow Input Definiton.",
-        "oneOf": [
-          {
-            "properties": {
-              "intended_config_commit_id": {
-                "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              "tenant_config_commit_id": {
-                "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-                "pattern": "^\\d+$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "tenant_config_commit_id",
-              "intended_config_commit_id"
-            ]
-          },
-          {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "tenant_config_commit_id"
-                  ]
-                },
-                {
-                  "required": [
-                    "intended_config_commit_id"
-                  ]
-                }
-              ]
-            }
-          }
-        ],
-        "properties": {
-          "device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "$ref": "#/components/schemas/NetworkDeviceData"
-              }
-            ],
-            "description": "Identifier or preloaded data for the network device to configure.",
-            "title": "Device"
-          },
-          "intended_config_commit_id": {
-            "anyOf": [
-              {
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-            "title": "Intended Config Commit Id"
-          },
-          "tenant_config_commit_id": {
-            "anyOf": [
-              {
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-            "title": "Tenant Config Commit Id"
-          },
-          "use_full_intended_config": {
-            "default": false,
-            "description": "Use the full intended configuration as a replacement candidate while restricting the accepted diff to tenant configuration changes.",
-            "title": "Use Full Intended Config",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "device"
-        ],
-        "title": "TenantDeployInput",
-        "type": "object"
-      },
       "TriggerEnum": {
         "description": "Enum of potential backup triggers.",
         "enum": [
@@ -3769,7 +3679,7 @@
     },
     "/v1/workflow/metadata": {
       "get": {
-        "description": "Return registered workflow metadata and RBAC roles.",
+        "description": "Return public workflow metadata and RBAC roles.",
         "operationId": "get_workflow_metadata_v1_workflow_metadata_get",
         "responses": {
           "200": {
@@ -5157,56 +5067,9 @@
         ]
       }
     },
-    "/v1/workflow/ngc/tenant-deploy": {
-      "post": {
-        "description": "Deploy tenant configuration to network device without approval",
-        "operationId": "tenantdeployworkflow_endpoint_v1_workflow_ngc_tenant_deploy_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TenantDeployInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Execute TenantDeployWorkflow",
-        "tags": [
-          "workflow"
-        ]
-      }
-    },
     "/v1/workflow/types": {
       "get": {
-        "description": "Return registered workflow type names.",
+        "description": "Return publicly executable workflow type names.",
         "operationId": "get_workflow_types_v1_workflow_types_get",
         "responses": {
           "200": {

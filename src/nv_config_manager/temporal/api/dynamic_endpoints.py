@@ -29,7 +29,9 @@ from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
 )
-from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS as NGC_WORKFLOWS
+from nv_config_manager.temporal.ngc.workflows import (
+    PUBLIC_WORKFLOWS as NGC_PUBLIC_WORKFLOWS,
+)
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
@@ -109,8 +111,8 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     """Register all workflow endpoints dynamically based on metadata."""
     registered_count = 0
 
-    # Process all registered workflows
-    all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
+    # Process only workflows intended for direct public execution.
+    all_workflows = NGC_PUBLIC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
     for workflow_class in all_workflows:
         try:
@@ -167,12 +169,12 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     logger.info(f"Successfully registered {registered_count} dynamic workflow endpoints")
 
 
-def get_registered_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
-    """Get information about all registered workflows with metadata."""
+def get_public_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
+    """Get information about publicly executable workflows with metadata."""
     workflows_info: dict[str, dict[str, Any]] = {}
     rbac_config = RBACConfig() if include_rbac else None
 
-    all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
+    all_workflows = NGC_PUBLIC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
     for workflow_class in all_workflows:
         if issubclass(workflow_class, WorkflowMetadataMixin):

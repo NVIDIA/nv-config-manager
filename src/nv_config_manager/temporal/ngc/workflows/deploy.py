@@ -472,9 +472,9 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
 
     # Workflow metadata
     workflow_name = "Tenant Deploy"
-    workflow_description = "Deploy tenant configuration to network device without approval"
+    workflow_description = "Internal tenant configuration deployment child workflow"
     workflow_input_class = TenantDeployInput
-    workflow_api_endpoint = "/ngc/tenant-deploy"
+    workflow_api_endpoint = None
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:

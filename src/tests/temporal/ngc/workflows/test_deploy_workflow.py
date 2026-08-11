@@ -162,7 +162,7 @@ def test_tenant_deploy_input_rejects_explicit_null_snapshot_commit_ids(snapshot_
 
 
 def test_tenant_deploy_input_allows_snapshot_commit_ids_to_be_omitted():
-    """Keep the direct tenant-deploy latest-config path backwards compatible."""
+    """Allow the internal child workflow to deploy the latest rendered snapshot."""
     deploy_input = TenantDeployInput(device="mock_device_uuid")
 
     assert deploy_input.tenant_config_commit_id is None

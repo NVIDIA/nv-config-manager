@@ -19,7 +19,12 @@ from pathlib import Path
 import yaml
 
 import nv_config_manager.temporal.ngc.workflows as workflows
-from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS
+from nv_config_manager.temporal.ngc.workflows import (
+    INTERNAL_WORKFLOWS,
+    PUBLIC_WORKFLOWS,
+    REGISTERED_WORKFLOWS,
+)
+from nv_config_manager.temporal.ngc.workflows.deploy import TenantDeployWorkflow
 
 
 def _load_all_workflow_classes():
@@ -45,6 +50,16 @@ def test_workflow_registration():
         assert workflow_class in REGISTERED_WORKFLOWS, (
             f"Workflow {workflow_class.__name__} not registered"
         )
+
+
+def test_tenant_deploy_is_worker_internal():
+    """Keep Tenant Deploy executable as a child without exposing a public start surface."""
+    assert TenantDeployWorkflow in REGISTERED_WORKFLOWS
+    assert TenantDeployWorkflow in INTERNAL_WORKFLOWS
+    assert TenantDeployWorkflow not in PUBLIC_WORKFLOWS
+    assert TenantDeployWorkflow.get_workflow_api_endpoint() is None
+    assert set(PUBLIC_WORKFLOWS).isdisjoint(INTERNAL_WORKFLOWS)
+    assert set(REGISTERED_WORKFLOWS) == set(PUBLIC_WORKFLOWS + INTERNAL_WORKFLOWS)
 
 
 def test_workflow_rbac_exists():

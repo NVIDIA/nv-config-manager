@@ -4,7 +4,7 @@ sidebar-title: Spectrum-X Overlay Tenant Change
 position: 40
 ---
 
-The Spectrum-X Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign or remove the overlay on selected ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the workflow most operators interact with when adding, moving, removing, or expanding a tenant's footprint on a switch — the underlying [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx), [Render Service](../../render/index.mdx), and [Tenant Deploy](../tenant-deploy/index.mdx) workflows are exposed individually for advanced cases but are normally orchestrated by this workflow.
+The Spectrum-X Overlay Tenant Change workflow drives an end-to-end overlay change against a single device: assign or remove the overlay on selected ports, re-render the tenant configuration, wait for the new render to land in the Config Store, and deploy the rendered configuration to the device. It is the supported operator entry point for adding, moving, removing, or expanding a tenant's footprint on a switch. The final tenant-scoped deployment runs as an internal child workflow so callers cannot bypass assignment reconciliation and render synchronization.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ Before running, confirm:
 - **Device exists in Nautobot** with a primary IPv4, a supported platform (Cumulus Linux or NVOS), and current credentials in the secrets store.
 - **Target ports exist as interfaces in Nautobot** on the selected device. The form queries these interfaces after you choose the device. For assignment or move operations, ports already assigned to the target VRF are silently skipped as no-ops. Removal-only runs intentionally treat selected interfaces with existing Spectrum-X assignments as removal targets.
 - **Render service is healthy.** The workflow waits up to a bounded window for the render service to produce the new tenant config; outages on render will stall the workflow.
-- **Tenant Deploy validation will accept the diff.** [Tenant Deploy](../tenant-deploy/index.mdx) only applies diffs that match the tenant-allowed `nv set` / `nv unset` patterns.
+- **The tenant-scoped deployment validation will accept the diff.** The internal deployment child only applies diffs that match the tenant-allowed `nv set` / `nv unset` patterns.
 
 ## Running the workflow
 
@@ -49,15 +49,15 @@ The workflow runs six stages in order. None require manual approval.
 
 1. **`render_tenant_config` — Trigger a tenant-scoped re-render for the device.**
 
-   Submits a render request to the render service to generate the updated tenant configuration that reflects the requested overlay change. The stage captures the resulting `tenant_config_file` commit ID for tracking.
+   Submits a render request to the render service to generate the updated tenant configuration that reflects the requested overlay change. The stage captures matching tenant and full intended configuration commit IDs from the same render snapshot.
 
 1. **`wait_for_render` — Wait for the render to land in the Config Store.**
 
    Polls the Config Store for the rendered configuration tagged with the commit ID from the prior stage. Times out if the render service does not produce the file within the configured window.
 
-1. **`deploy` — Apply the rendered configuration via Tenant Deploy.**
+1. **`deploy` — Apply the rendered configuration.**
 
-   Invokes [Tenant Deploy](../tenant-deploy/index.mdx) as a child workflow against the device. The stage display links to the child while it is running and retains the link whether the child succeeds or fails. Tenant Deploy performs its own diff validation (allowed `nv set` patterns only) before applying.
+   Invokes the internal tenant deployment child workflow against the device. The stage display links to the child while it is running and retains the link whether the child succeeds or fails. The child validates that the diff contains only tenant-allowed `nv set` / `nv unset` operations before applying it. Removal paths use the matching full intended configuration so omitted settings produce the required `nv unset` commands.
 
 ## Verifying outcomes
 
@@ -80,9 +80,9 @@ After the workflow reports success, confirm:
 
 The render service either rejected the render or is unavailable. Open the [Render Service](../../render/index.mdx) status page; once render is healthy, re-run this workflow.
 
-**`deploy` (Tenant Deploy child) fails with `DiffValidationError`.**
+**`deploy` fails with `DiffValidationError`.**
 
-The tenant-scoped diff produced by the re-render exceeds the tenant-allowed `nv set` / `nv unset` set. See [Tenant Deploy → Diff validation rules](../tenant-deploy/index.mdx#diff-validation-rules). Either restructure the template change so only the tenant scope is affected, or apply the change via [Configuration Deploy](../configuration-deploy/index.mdx) with a human approval.
+The tenant-scoped diff produced by the re-render contains commands outside the allowed VXLAN, EVPN, interface-VRF, or non-default-VRF operations. Either restructure the template change so only the tenant scope is affected, or apply the change via [Configuration Deploy](../configuration-deploy/index.mdx) with a human approval.
 
 **`get_device_and_vrf` (inside the assign_spx_overlay child) raises `ApplicationError`.**
 
@@ -93,6 +93,5 @@ Either zero or multiple VRFs were returned for the `overlay_id` + `namespace_tag
 - [Spectrum-X Overlay Creation](../vpc-creation/index.mdx) — provision the VRF, VXLAN, and Overlay metadata before assigning it.
 - [Spectrum-X Overlay Assignment](../vpc-assignment/index.mdx) — the assignment child workflow this orchestration invokes.
 - [Spectrum-X Overlay Deletion](../vpc-deletion/index.mdx) — counterpart deletion lifecycle.
-- [Tenant Deploy](../tenant-deploy/index.mdx) — the tenant-scoped deploy child this orchestration ends with.
 - [Render Service](../../render/index.mdx) — produces the tenant configurations this workflow waits on.
 - [Configuration Deploy](../configuration-deploy/index.mdx) — alternative path when a change is too broad for tenant deploy.
