@@ -29,9 +29,7 @@ from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
 )
-from nv_config_manager.temporal.ngc.workflows import (
-    PUBLIC_WORKFLOWS as NGC_PUBLIC_WORKFLOWS,
-)
+from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS as NGC_WORKFLOWS
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
 
@@ -111,8 +109,7 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     """Register all workflow endpoints dynamically based on metadata."""
     registered_count = 0
 
-    # Process only workflows intended for direct public execution.
-    all_workflows = NGC_PUBLIC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
+    all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
     for workflow_class in all_workflows:
         try:
@@ -125,6 +122,10 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
 
             # Cast to WorkflowMetadataMixin type for mypy
             metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
+
+            # No submission endpoint means this is a worker-only child workflow.
+            if metadata_workflow.get_workflow_api_endpoint() is None:
+                continue
 
             # Check if workflow has complete metadata
             if not metadata_workflow.has_complete_metadata():
@@ -174,7 +175,7 @@ def get_public_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[s
     workflows_info: dict[str, dict[str, Any]] = {}
     rbac_config = RBACConfig() if include_rbac else None
 
-    all_workflows = NGC_PUBLIC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
+    all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
     for workflow_class in all_workflows:
         if issubclass(workflow_class, WorkflowMetadataMixin):

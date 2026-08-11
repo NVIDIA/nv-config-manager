@@ -25,9 +25,7 @@ from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMi
 from nv_config_manager.temporal.hello_world.workflows import (
     REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
 )
-from nv_config_manager.temporal.ngc.workflows import (
-    PUBLIC_WORKFLOWS as NGC_PUBLIC_WORKFLOWS,
-)
+from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS as NGC_WORKFLOWS
 
 SITE_LEVEL_DEVICE_FILTER_FIELDS = frozenset(
     {"site", "roles", "status", "tenant", "device_type_ids"}
@@ -98,10 +96,12 @@ class MCPWorkflow:
 def discover_mcp_workflows() -> list[MCPWorkflow]:
     """Discover workflows explicitly enabled for MCP."""
     workflows: list[MCPWorkflow] = []
-    for workflow_class in NGC_PUBLIC_WORKFLOWS + HELLO_WORLD_WORKFLOWS:
+    for workflow_class in NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS:
         if not issubclass(workflow_class, WorkflowMetadataMixin):
             continue
         metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
+        if metadata_workflow.get_workflow_api_endpoint() is None:
+            continue
         if not metadata_workflow.has_complete_metadata():
             continue
         if not metadata_workflow.get_workflow_mcp_enabled():

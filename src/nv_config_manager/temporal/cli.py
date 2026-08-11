@@ -40,9 +40,7 @@ try:
     from nv_config_manager.temporal.hello_world.workflows import (
         REGISTERED_WORKFLOWS as HELLO_WORLD_WORKFLOWS,
     )
-    from nv_config_manager.temporal.ngc.workflows import (
-        PUBLIC_WORKFLOWS as NGC_PUBLIC_WORKFLOWS,
-    )
+    from nv_config_manager.temporal.ngc.workflows import REGISTERED_WORKFLOWS as NGC_WORKFLOWS
 except ImportError as e:
     click.echo(f"Error importing workflows: {e}", err=True)
     click.echo("Make sure the nv-config-manager-temporal package is properly installed.", err=True)
@@ -175,7 +173,7 @@ class WorkflowDiscovery:
     def _discover_workflows(self) -> None:
         """Discover all available workflows and their metadata."""
         # Process NGC workflows
-        for workflow_class in NGC_PUBLIC_WORKFLOWS:
+        for workflow_class in NGC_WORKFLOWS:
             self._process_workflow(workflow_class, "ngc")
 
         # Process Hello World workflows
@@ -192,6 +190,10 @@ class WorkflowDiscovery:
                 f"Error: {workflow_name} does not use WorkflowMetadataMixin - all workflows must use metadata",
                 err=True,
             )
+            return
+
+        # Workflows without submission endpoints are worker-only children.
+        if workflow_class.get_workflow_api_endpoint() is None:
             return
 
         # Use metadata from the mixin

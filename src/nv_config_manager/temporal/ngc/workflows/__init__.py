@@ -105,11 +105,3 @@ REGISTERED_WORKFLOWS = [
     IBPortGuidDiscoveryWorkflow,
     DiagnosticsWorkflow,
 ]
-
-# Internal workflows remain worker-registered but have no direct public start surface.
-INTERNAL_WORKFLOWS = [TenantDeployWorkflow]
-
-# API, CLI, UI metadata, and MCP discovery must use this list.
-PUBLIC_WORKFLOWS = [
-    workflow for workflow in REGISTERED_WORKFLOWS if workflow not in INTERNAL_WORKFLOWS
-]
