@@ -70,6 +70,12 @@ from nv_config_manager.temporal.common.search_attributes import (
     USER_SEARCH_ATTRIBUTE,
 )
 from nv_config_manager.temporal.converter import get_data_converter
+from nv_config_manager.temporal.hello_world.workflows import (
+    REGISTERED_WORKFLOWS as HELLO_WORLD_REGISTERED_WORKFLOWS,
+)
+from nv_config_manager.temporal.ngc.workflows import (
+    REGISTERED_WORKFLOWS as NGC_REGISTERED_WORKFLOWS,
+)
 from nv_config_manager.temporal.telemetry import get_runtime
 
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
@@ -783,16 +789,28 @@ async def get_workflows(  # pylint: disable=R0913,R0914
 
 @router.get("/types")
 async def get_workflow_types() -> list[str]:
-    """Return publicly executable workflow type names."""
-    return sorted(get_public_workflows_info())
+    """Return registered workflow type names."""
+    return sorted(
+        [
+            workflow.__name__
+            for workflow in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS
+            if workflow.get_workflow_api_endpoint() is not None
+        ]
+    )
 
 
 @router.get("/metadata")
 async def get_workflow_metadata() -> WorkflowMetadataResponse:
-    """Return public workflow metadata and RBAC roles."""
+    """Return registered workflow metadata and RBAC roles."""
+    workflow_types = sorted(
+        [wf.__name__ for wf in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS]
+    )
+
     workflows_info = get_public_workflows_info(include_rbac=True)
     workflows = [
-        WorkflowMetadata.model_validate(workflows_info[name]) for name in sorted(workflows_info)
+        WorkflowMetadata.model_validate(workflows_info[name])
+        for name in workflow_types
+        if name in workflows_info
     ]
     return WorkflowMetadataResponse(workflows=workflows)
 

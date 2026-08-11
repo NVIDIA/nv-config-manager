@@ -3679,7 +3679,7 @@
     },
     "/v1/workflow/metadata": {
       "get": {
-        "description": "Return public workflow metadata and RBAC roles.",
+        "description": "Return registered workflow metadata and RBAC roles.",
         "operationId": "get_workflow_metadata_v1_workflow_metadata_get",
         "responses": {
           "200": {
@@ -5069,7 +5069,7 @@
     },
     "/v1/workflow/types": {
       "get": {
-        "description": "Return publicly executable workflow type names.",
+        "description": "Return registered workflow type names.",
         "operationId": "get_workflow_types_v1_workflow_types_get",
         "responses": {
           "200": {

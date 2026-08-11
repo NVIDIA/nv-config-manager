@@ -100,8 +100,6 @@ def discover_mcp_workflows() -> list[MCPWorkflow]:
         if not issubclass(workflow_class, WorkflowMetadataMixin):
             continue
         metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
-        if metadata_workflow.get_workflow_api_endpoint() is None:
-            continue
         if not metadata_workflow.has_complete_metadata():
             continue
         if not metadata_workflow.get_workflow_mcp_enabled():

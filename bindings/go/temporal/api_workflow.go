@@ -1118,7 +1118,7 @@ func (r ApiGetWorkflowMetadataV1WorkflowMetadataGetRequest) Execute() (*Workflow
 /*
 GetWorkflowMetadataV1WorkflowMetadataGet Get Workflow Metadata
 
-Return public workflow metadata and RBAC roles.
+Return registered workflow metadata and RBAC roles.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiGetWorkflowMetadataV1WorkflowMetadataGetRequest
@@ -1218,7 +1218,7 @@ func (r ApiGetWorkflowTypesV1WorkflowTypesGetRequest) Execute() ([]*string, *htt
 /*
 GetWorkflowTypesV1WorkflowTypesGet Get Workflow Types
 
-Return publicly executable workflow type names.
+Return registered workflow type names.
 
 	@param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
 	@return ApiGetWorkflowTypesV1WorkflowTypesGetRequest
