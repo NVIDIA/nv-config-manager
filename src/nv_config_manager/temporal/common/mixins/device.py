@@ -187,9 +187,7 @@ class NetworkDeviceData(DeviceData):
         if self.platform == Platform.MLNX_OS:
             return "full-config"
         if self.platform == Platform.JUNIPER_JUNOS:
-            # Junos `set` format round-trips through load-configuration
-            # (action="set"), so the stored backup can be re-applied directly.
-            return "config.set"
+            return "full-config"
         if self.platform == Platform.UFM:
             return ""
         raise NotImplementedError(f"No configuration path implemented for platform {self.platform}")
