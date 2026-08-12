@@ -59,11 +59,11 @@ test.describe("DHCP Dashboard Page", () => {
     await expect(
       dashboard.getByText("Config sync age", { exact: true })
     ).toBeVisible();
-    await expect(
-      dashboard.getByRole("group", { name: "Config sync age" })
-    ).toHaveAttribute(
-      "title",
-      "Time since the background DHCP config sync last updated Kea from Nautobot."
+    await dashboard
+      .getByRole("button", { name: "About config sync age" })
+      .hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "An old config likely means there is an issue with DHCP config generation. Consult the logs for further details."
     );
     await expect(
       dashboard.getByRole("button", { name: "Reload DHCP data" })
@@ -89,6 +89,64 @@ test.describe("DHCP Dashboard Page", () => {
     await expect(
       dashboard.getByText("Loaded 1 of 1 pools", { exact: true })
     ).toBeVisible();
+  });
+
+  test("highlights stale config ages by severity", async ({ page }) => {
+    let ageSeconds = 11 * 60;
+    await page.unroute("**/metrics");
+    await page.route("**/metrics", async (route) => {
+      const timestamp = Math.floor(Date.now() / 1000) - ageSeconds;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/plain; version=0.0.4",
+        body: `nv_config_manager_dhcp_cache_last_refresh_timestamp_seconds{ip_version="4"} ${timestamp}\n`,
+      });
+    });
+    await page.reload();
+
+    const dashboard = page.getByTestId("dhcp-dashboard");
+    const configAgeMetric = dashboard.getByRole("group", {
+      name: "Config sync age",
+    });
+    await expect(configAgeMetric.getByText("11m", { exact: true })).toHaveClass(
+      /text-yellow-600/
+    );
+
+    ageSeconds = 31 * 60;
+    await dashboard.getByRole("button", { name: "Reload DHCP data" }).click();
+    await expect(configAgeMetric.getByText("31m", { exact: true })).toHaveClass(
+      /text-red-600/
+    );
+  });
+
+  test("links to Grafana only when it is configured", async ({ page }) => {
+    await expect(
+      page.getByRole("link", { name: "View Grafana" })
+    ).toHaveCount(0);
+
+    await page.unroute("**/api/config");
+    await page.route("**/api/config", async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: {
+          workflowApiUrl: "http://localhost:9000",
+          configStoreApiUrl: "http://localhost:9001",
+          nautobotUrl: "https://nautobot.example.com",
+          renderServiceUrl: "http://localhost:9002",
+          ztpUrl: "http://localhost:9003",
+          dhcpUrl: "http://localhost:9004",
+          grafanaUrl: "https://grafana.example.com/d/dhcp",
+        },
+      });
+    });
+    await page.reload();
+
+    const grafanaLink = page.getByRole("link", { name: "View Grafana" });
+    await expect(grafanaLink).toHaveAttribute(
+      "href",
+      "https://grafana.example.com/d/dhcp"
+    );
+    await expect(grafanaLink).toHaveAttribute("target", "_blank");
   });
 
   test("clears a DHCP lease after confirmation", async ({ page }) => {
