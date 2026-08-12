@@ -50,6 +50,7 @@ from nv_config_manager.temporal.api.workflow_submission import resolve_workflow_
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.client.redis import RedisClient
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
+from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.mixins.stage import (
     ReviewSignalInput,
     Stage,
@@ -794,7 +795,7 @@ async def get_workflow_types() -> list[str]:
         [
             workflow.__name__
             for workflow in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS
-            if workflow.get_workflow_api_endpoint() is not None
+            if cast(type[WorkflowMetadataMixin], workflow).get_workflow_api_endpoint() is not None
         ]
     )
 
