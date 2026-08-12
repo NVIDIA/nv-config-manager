@@ -92,10 +92,13 @@ test.describe("DHCP Dashboard Page", () => {
   });
 
   test("highlights stale config ages by severity", async ({ page }) => {
-    let ageSeconds = 11 * 60;
+    const now = new Date("2026-08-12T20:00:00Z");
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    await page.clock.setFixedTime(now);
+    let ageSeconds = 10 * 60;
     await page.unroute("**/metrics");
     await page.route("**/metrics", async (route) => {
-      const timestamp = Math.floor(Date.now() / 1000) - ageSeconds;
+      const timestamp = nowSeconds - ageSeconds;
       await route.fulfill({
         status: 200,
         contentType: "text/plain; version=0.0.4",
@@ -108,9 +111,24 @@ test.describe("DHCP Dashboard Page", () => {
     const configAgeMetric = dashboard.getByRole("group", {
       name: "Config sync age",
     });
+    await expect(
+      configAgeMetric.getByText("10m", { exact: true })
+    ).not.toHaveClass(/text-(?:yellow|red)-600/);
+
+    ageSeconds = 11 * 60;
+    await dashboard.getByRole("button", { name: "Reload DHCP data" }).click();
     await expect(configAgeMetric.getByText("11m", { exact: true })).toHaveClass(
       /text-yellow-600/
     );
+
+    ageSeconds = 30 * 60;
+    await dashboard.getByRole("button", { name: "Reload DHCP data" }).click();
+    await expect(configAgeMetric.getByText("30m", { exact: true })).toHaveClass(
+      /text-yellow-600/
+    );
+    await expect(
+      configAgeMetric.getByText("30m", { exact: true })
+    ).not.toHaveClass(/text-red-600/);
 
     ageSeconds = 31 * 60;
     await dashboard.getByRole("button", { name: "Reload DHCP data" }).click();
