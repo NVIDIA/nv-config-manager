@@ -101,6 +101,7 @@ spec:
           httpGet:
             path: /healthcheck
             port: 9000
+          timeoutSeconds: 5
           periodSeconds: 5
           failureThreshold: 30
         livenessProbe:
@@ -157,6 +158,7 @@ spec:
           httpGet:
             path: /healthcheck
             port: 8000
+          timeoutSeconds: 5
           periodSeconds: 5
           failureThreshold: 30
         livenessProbe:
