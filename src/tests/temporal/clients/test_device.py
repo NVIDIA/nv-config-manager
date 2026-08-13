@@ -388,6 +388,40 @@ def test_get_device_connects_once_and_caches(juniper_conn):
     fake_device.open.assert_called_once()
     assert mock_device.call_count == 1
     assert mock_device.call_args.kwargs["port"] == 830
+    assert mock_device.call_args.kwargs["conn_open_timeout"] == (
+        juniper_conn._CONN_OPEN_TIMEOUT_SECONDS
+    )
+    assert fake_device.timeout == juniper_conn._RPC_TIMEOUT_SECONDS
+
+
+def test_perform_candidate_diff_uses_config_op_timeout(juniper_conn):
+    """Exclusive diff work temporarily lowers the RPC deadline, then restores it."""
+
+    class _Device:
+        def __init__(self) -> None:
+            self.timeout = juniper_conn._RPC_TIMEOUT_SECONDS
+            self.seen: list[int] = []
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "timeout":
+                object.__setattr__(self, "seen", getattr(self, "seen", []) + [value])
+            object.__setattr__(self, name, value)
+
+    device = _Device()
+    cu = MagicMock()
+    cu.diff.return_value = "diff"
+    cu.__enter__.return_value = cu
+    cu.__exit__.return_value = None
+
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=device),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=cu),
+        patch.object(juniper_conn, "_load_full_config"),
+    ):
+        assert juniper_conn.perform_candidate_diff("system { host-name RTR1; }") == "diff"
+
+    assert juniper_conn._CONFIG_OP_TIMEOUT_SECONDS in device.seen
+    assert device.timeout == juniper_conn._RPC_TIMEOUT_SECONDS
 
 
 def test_connect_rotates_then_raises_on_auth_failure(juniper_conn):

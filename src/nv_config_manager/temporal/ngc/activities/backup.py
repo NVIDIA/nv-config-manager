@@ -32,7 +32,8 @@ from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 @activity.defn
 def load_running_configuration(device_data: NetworkDeviceData) -> str:
     """Load the running configuration for the given device."""
-    return NetworkConnection.from_device_data(device_data).get_running_configuration()
+    with NetworkConnection.from_device_data(device_data) as connection:
+        return connection.get_running_configuration()
 
 
 class PersistConfigBackupInput(BaseModel):

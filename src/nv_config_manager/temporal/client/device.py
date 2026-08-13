@@ -26,10 +26,11 @@ import ssl
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO, StringIO
-from typing import Any, cast
+from typing import Any, Self, cast
 from uuid import uuid4
 
 import netaddr
@@ -752,6 +753,17 @@ class NetworkConnection:
             A tuple of (raw bundle bytes, full cl-support command output text).
         """
         raise NotImplementedError()
+
+    def close(self) -> None:
+        """Release any underlying session; subclasses override when needed."""
+
+    def __enter__(self) -> Self:
+        """Enter a context that closes the connection on exit."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the connection when leaving the context."""
+        self.close()
 
     @staticmethod
     def from_device_data(device_data: NetworkDeviceData) -> NetworkConnection:
@@ -2351,6 +2363,15 @@ class JuniperConnection(NetworkConnection):
     # instead of hanging the activity indefinitely.
     _RPC_TIMEOUT_SECONDS = 300
 
+    # Exclusive configure ops (diff/commit/rollback) run under activities with a
+    # 60s start_to_close. Keep the PyEZ RPC deadline under that so a wedged load
+    # returns and closes the NETCONF session instead of outliving Temporal's
+    # timeout and leaking exclusive locks onto later retries.
+    _CONFIG_OP_TIMEOUT_SECONDS = 45
+
+    # TCP/NETCONF open deadline separate from per-RPC timeout.
+    _CONN_OPEN_TIMEOUT_SECONDS = 30
+
     def __init__(
         self,
         host: str,
@@ -2384,8 +2405,10 @@ class JuniperConnection(NetworkConnection):
                 port=self._port,
                 gather_facts=False,
                 auto_probe=5,
+                conn_open_timeout=self._CONN_OPEN_TIMEOUT_SECONDS,
             )
             device.open()
+            device.timeout = self._RPC_TIMEOUT_SECONDS
             return device
 
         try:
@@ -2407,6 +2430,20 @@ class JuniperConnection(NetworkConnection):
         if self._device is None:
             self._device = self._connect()
         return self._device
+
+    @contextmanager
+    def _device_timeout(self, seconds: int) -> Iterator[Device]:
+        """Run exclusive-config work under a tighter RPC deadline, then restore."""
+        device = self._get_device()
+        previous = device.timeout
+        device.timeout = seconds
+        try:
+            yield device
+        finally:
+            try:
+                device.timeout = previous
+            except Exception:  # noqa: BLE001 - cleanup must not raise
+                logger.debug("Unable to restore RPC timeout on %s", self._host, exc_info=True)
 
     def close(self) -> None:
         """Close the NETCONF session if it is open."""
@@ -2568,9 +2605,11 @@ class JuniperConnection(NetworkConnection):
     def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
         """Load the full desired-state candidate and return the diff versus active."""
         self._reject_partial(partial)
-        device = self._get_device()
         try:
-            with Config(device, mode="exclusive") as cu:
+            with (
+                self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
+                Config(device, mode="exclusive") as cu,
+            ):
                 self._load_full_config(cu, new_configuration)
                 diff = cu.diff()
                 cu.rollback()
@@ -2632,9 +2671,11 @@ class JuniperConnection(NetworkConnection):
 
     def get_rollback_diff(self, rollback_id: int = 1) -> str:
         """Return the diff between the active config and a numbered rollback."""
-        device = self._get_device()
         try:
-            with Config(device, mode="exclusive") as cu:
+            with (
+                self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
+                Config(device, mode="exclusive") as cu,
+            ):
                 diff = cu.diff(rb_id=rollback_id)
                 cu.rollback()
         except (LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
