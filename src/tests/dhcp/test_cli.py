@@ -200,20 +200,29 @@ async def test_config_hash_get_failure_is_handled_without_reapply(mocker: Any) -
     metric.labels.return_value.inc.assert_called_once()
 
 
-async def test_startup_hash_get_failure_does_not_abort_sync(mocker: Any) -> None:
+@pytest.mark.parametrize(
+    "startup_error",
+    [
+        KeaException("Failed to get configuration hash: down"),
+        TimeoutError("KEA Request timed out, are you running within a KEA Docker Container?"),
+    ],
+    ids=["kea_exception", "timeout"],
+)
+async def test_startup_hash_get_failure_does_not_abort_sync(
+    mocker: Any, startup_error: Exception
+) -> None:
     """A config-hash-get failure at startup must not abort the sync loop.
 
     config-set has already applied and persisted the desired config at that
     point, so only the verification read failed -- the same failure the refresh
     loop tolerates. Aborting would crash-loop the sidecar over a config that is
-    actually applied.
+    actually applied. TimeoutError is included because get_config_hash re-raises
+    it instead of wrapping it in KeaException.
     """
     load_kea_config = AsyncMock(side_effect=[DESIRED_CONFIG, DESIRED_CONFIG])
     set_config = AsyncMock(return_value="HASH_A")
     # Startup verification fails; the later drift check succeeds.
-    get_config_hash = AsyncMock(
-        side_effect=[KeaException("Failed to get configuration hash: down"), "HASH_A"]
-    )
+    get_config_hash = AsyncMock(side_effect=[startup_error, "HASH_A"])
     _patch_clients(
         mocker,
         load_kea_config=load_kea_config,

@@ -225,10 +225,11 @@ async def _apply_and_verify_kea_config(
     applied_hash = await kea_client.set_config(config, version=ip_version)
     try:
         effective_hash = await kea_client.get_config_hash(version=ip_version)
-    except KeaException as exc:
+    except (KeaException, TimeoutError) as exc:
         # config-set already succeeded, so the desired config is applied and
-        # persisted -- only the verification read failed. The refresh loop
-        # tolerates this same failure, and aborting here would instead crash-loop
+        # persisted -- only the verification read failed. get_config_hash
+        # re-raises TimeoutError (it does not wrap it in KeaException), and the
+        # refresh loop already swallows both. Aborting here would crash-loop
         # the sidecar over a config that is actually applied. Returning None
         # leaves the next drift check to reapply and re-verify.
         logger.warning(f"Could not verify the applied KEA configuration hash: {exc}")
