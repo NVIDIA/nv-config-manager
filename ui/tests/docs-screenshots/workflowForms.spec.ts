@@ -38,7 +38,6 @@ const DOC_WORKFLOW_DISPLAY_NAMES: Record<string, string> = {
   SiteBackupWorkflow: "Site Configuration Backup",
   ConnectedHostMetadataWorkflow: "Connected Host Metadata",
   DeployWorkflow: "Configuration Deploy",
-  TenantDeployWorkflow: "Tenant Deploy",
   MultiDeployWorkflow: "Multi-Configuration Deploy",
   DeviceCableValidationWorkflow: "Device Cable Validation",
   DevicePasswordRotationWorkflow: "Device Password Rotation",
@@ -67,7 +66,6 @@ const DOC_WORKFLOW_ENDPOINTS: Record<string, string> = {
   SiteBackupWorkflow: "/ngc/site_backup",
   ConnectedHostMetadataWorkflow: "/ngc/connected_host_metadata",
   DeployWorkflow: "/ngc/deploy",
-  TenantDeployWorkflow: "/ngc/tenant-deploy",
   MultiDeployWorkflow: "/ngc/multi_deploy",
   DeviceCableValidationWorkflow: "/ngc/device_cable_validation",
   DevicePasswordRotationWorkflow: "/ngc/device_password_rotation",
@@ -523,12 +521,6 @@ const WORKFLOW_SCREENSHOTS: WorkflowScreenshot[] = [
     path: "/workflows/switchosupgradeworkflow/form",
     query: AIR_DEVICE_QUERY,
     title: "New Switch OS Upgrade Workflow",
-  },
-  {
-    fileName: "tenantdeployworkflow-form.png",
-    path: "/workflows/tenantdeployworkflow/form",
-    query: AIR_DEVICE_QUERY,
-    title: "New Tenant Deploy Workflow",
   },
   {
     fileName: "spxoverlaycreationworkflow-form.png",
