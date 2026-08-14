@@ -26,7 +26,9 @@ trim() {
 }
 
 shell_export() {
-  printf 'export %s=%q\n' "$1" "$2"
+  local name="$1"
+  local value="$2"
+  printf 'export %s=%q\n' "$name" "$value"
   return 0
 }
 
