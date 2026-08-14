@@ -41,13 +41,13 @@ promote_attest="${CI_PROJECT_DIR}/promote.env"
 chart_attest="${CI_PROJECT_DIR}/chart.env"
 digest_attest="${CI_PROJECT_DIR}/digests.env"
 for f in "$promote_attest" "$chart_attest" "$digest_attest"; do
-    [ -f "$f" ] || { echo "ERROR: missing attestation artifact ${f}"; exit 1; }
+    [[ -f "$f" ]] || { echo "ERROR: missing attestation artifact ${f}"; exit 1; }
 done
 
 attest() {
     local key="$1" file="$2" val
     val="$(grep -m1 "^${key}=" "$file" | cut -d= -f2- || true)"
-    [ -n "$val" ] || { echo "ERROR: ${key} missing from $(basename "$file")"; exit 1; }
+    [[ -n "$val" ]] || { echo "ERROR: ${key} missing from $(basename "$file")"; exit 1; }
     printf '%s' "$val"
 }
 
@@ -66,7 +66,7 @@ DIGEST_NV_CONFIG_MANAGER_TEMPORAL="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL "$
 DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_BOOTSTRAP "$digest_attest")"
 DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI="$(attest DIGEST_NV_CONFIG_MANAGER_TEMPORAL_UI "$digest_attest")"
 
-if [ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]; then
+if [[ -n "${NV_CONFIG_MANAGER_VALUES_REPO_URL:-}" ]]; then
     # A full URL override is used as-is (provide any auth it needs in the URL).
     values_repo_url="$NV_CONFIG_MANAGER_VALUES_REPO_URL"
     # Credential-free label for logs: strip any "userinfo@" (e.g. oauth2:token@)
@@ -98,7 +98,7 @@ else
     exit 1
 fi
 
-if [ ! -f "$state_file" ]; then
+if [[ ! -f "$state_file" ]]; then
     echo "ERROR: ${state_file} not found on ${NVCM_ENV_BRANCH}; the env is not seeded."
     exit 1
 fi
@@ -109,7 +109,7 @@ fi
 # change in between. Refuse to write deploy-state against overrides that were
 # never validated - fail closed and let the operator re-run.
 current_env_rev="$(git rev-parse HEAD)"
-if [ "$current_env_rev" != "$ENV_BRANCH_REVISION" ]; then
+if [[ "$current_env_rev" != "$ENV_BRANCH_REVISION" ]]; then
     echo "ERROR: ${NVCM_ENV_BRANCH} moved since the render gate validated it."
     echo "  validated: ${ENV_BRANCH_REVISION}"
     echo "  current:   ${current_env_rev}"
@@ -121,7 +121,7 @@ fi
 # Honor a manual hold: an occupant who set hold: true is protecting the slot.
 current_hold=$(yq -r '.hold // false' "$state_file")
 current_occupant=$(yq -r '.occupant // "none"' "$state_file")
-if [ "$current_hold" = "true" ] && [ "$current_occupant" != "$occupant" ]; then
+if [[ "$current_hold" = "true" && "$current_occupant" != "$occupant" ]]; then
     echo "ERROR: ${NVCM_ENV} is on hold by '${current_occupant}' (deploy-state hold: true)."
     echo "Coordinate with them or have them release the hold before promoting."
     exit 1
@@ -202,6 +202,6 @@ echo ""
 echo "Deploy-state committed. ArgoCD will sync ${NVCM_ENV} to chart ${PROMOTE_VERSION} with digest-pinned images."
 # Only build the web view URL from a known project path - a full-URL override
 # has no clean path and could otherwise produce a malformed/credential URL.
-if [ -n "$values_repo_path" ]; then
+if [[ -n "$values_repo_path" ]]; then
     echo "View: https://${CI_SERVER_HOST}/${values_repo_path}/-/commits/${NVCM_ENV_BRANCH}"
 fi

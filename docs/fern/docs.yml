@@ -99,9 +99,6 @@ navigation:
         path: ../user-guides/multi-deploy/index.mdx
       - page: Batch Deploy
         path: ../user-guides/batch-deploy/index.mdx
-      - page: Tenant Deploy
-        path: ../user-guides/tenant-deploy/index.mdx
-
     - section: Validation
       collapsible: true
       collapsed-by-default: true

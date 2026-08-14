@@ -72,7 +72,7 @@ api_get() {
 # live HEAD - the GitHub PR-HEAD comparison below surfaces any divergence.
 # -----------------------------------------------------------------------------
 PR_SHA="$(git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${PR_REF}" | cut -f1)"
-if [ -z "$PR_SHA" ]; then
+if [[ -z "$PR_SHA" ]]; then
     echo "ERROR: ${PR_REF} does not exist on the mirror."
     echo "Either the PR is closed/merged, copy-pr-bot has not vetted it, or"
     echo "pull-mirroring has not replicated the branch yet."
@@ -88,9 +88,9 @@ echo "Promote version: ${PROMOTE_VERSION}"
 # pull-request/<n> branch (PR_SHA above), which is a VETTED SNAPSHOT that may
 # lag the PR (untrusted authors only re-copy on /ok to test).
 pr_json="$(curl -fsS --max-time 10 "https://api.github.com/repos/${github_repo}/pulls/${PR_NUM}" || true)"
-if [ -n "$pr_json" ]; then
+if [[ -n "$pr_json" ]]; then
     pr_state="$(printf '%s' "$pr_json" | jq -r '.state // empty')"
-    if [ "$pr_state" != "open" ]; then
+    if [[ "$pr_state" != "open" ]]; then
         echo "ERROR: upstream PR #${PR_NUM} is '${pr_state:-unknown}', not open. Refusing to promote."
         exit 1
     fi
@@ -99,16 +99,16 @@ if [ -n "$pr_json" ]; then
     # commits are unvetted and must not run - but the operator must know when
     # what deploys is not their latest push.
     pr_head_sha="$(printf '%s' "$pr_json" | jq -r '.head.sha // empty')"
-    if [ -n "$pr_head_sha" ] && [ "$pr_head_sha" != "$PR_SHA" ]; then
+    if [[ -n "$pr_head_sha" && "$pr_head_sha" != "$PR_SHA" ]]; then
         echo "WARN: PR #${PR_NUM} HEAD is ${pr_head_sha}, but the vetted copy-pr-bot"
         echo "      snapshot (pull-request/${PR_NUM}) is ${PR_SHA}. Promoting the VETTED"
         echo "      snapshot; to deploy newer commits, have them re-vetted (/ok to test)."
-        if [ "${NVCM_PROMOTE_REQUIRE_PR_HEAD:-false}" = "true" ]; then
+        if [[ "${NVCM_PROMOTE_REQUIRE_PR_HEAD:-false}" = "true" ]]; then
             echo "ERROR: NVCM_PROMOTE_REQUIRE_PR_HEAD=true and the snapshot lags PR HEAD."
             exit 1
         fi
     fi
-elif [ "${NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE:-false}" = "true" ]; then
+elif [[ "${NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE:-false}" = "true" ]]; then
     echo "WARN: could not query GitHub PR state; NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE=true set, continuing."
 else
     # Fail closed: don't promote a possibly-closed PR just because GitHub was
@@ -123,14 +123,14 @@ bash "$(dirname "$0")/pr_ref_guard.sh" "$PR_REF" "$PR_SHA"
 # Reuse an existing successful build for this exact ref+SHA, if allowed.
 # -----------------------------------------------------------------------------
 BUILD_PIPELINE_ID=""
-if [ "${NVCM_PROMOTE_REUSE_BUILD:-true}" != "false" ]; then
+if [[ "${NVCM_PROMOTE_REUSE_BUILD:-true}" != "false" ]]; then
     # Consider several recent successes, not just the newest: a pipeline with a
     # disallowed source would be rejected by the provenance gate below, which
     # would dead-end the promote instead of falling through to a fresh trigger.
     BUILD_PIPELINE_ID="$(api_get "${api}/pipelines?ref=$(printf '%s' "$PR_REF" | sed 's|/|%2F|g')&sha=${PR_SHA}&status=success&order_by=id&sort=desc&per_page=20" \
         | jq -r --argjson allowed "$allowed_build_sources" \
             '[.[] | select(.source as $s | $allowed | index($s))] | sort_by(.id) | last | .id // empty')"
-    if [ -n "$BUILD_PIPELINE_ID" ]; then
+    if [[ -n "$BUILD_PIPELINE_ID" ]]; then
         echo "Found existing successful build pipeline ${BUILD_PIPELINE_ID} for ${PR_SHA}; will verify its artifacts."
     fi
 fi
@@ -140,7 +140,7 @@ fi
 # Uses a pipeline trigger token (NVCM_BUILD_TRIGGER_TOKEN): GitLab returns 422
 # for a job token triggering its own project. NO variables are passed.
 # -----------------------------------------------------------------------------
-if [ -z "$BUILD_PIPELINE_ID" ]; then
+if [[ -z "$BUILD_PIPELINE_ID" ]]; then
     : "${NVCM_BUILD_TRIGGER_TOKEN:?NVCM_BUILD_TRIGGER_TOKEN required to trigger a build (Settings > CI/CD > Pipeline triggers)}"
     echo "Triggering build pipeline on ${PR_REF}..."
     # No `-f`: it suppresses the response body on an HTTP error and, under
@@ -158,7 +158,7 @@ if [ -z "$BUILD_PIPELINE_ID" ]; then
     trigger_http="$(printf '%s' "$trigger_raw" | tail -n 1)"
     trigger_response="$(printf '%s' "$trigger_raw" | sed '$d')"
     BUILD_PIPELINE_ID="$(printf '%s' "$trigger_response" | jq -r '.id // empty' 2>/dev/null || true)"
-    if [ -z "$BUILD_PIPELINE_ID" ]; then
+    if [[ -z "$BUILD_PIPELINE_ID" ]]; then
         echo "ERROR: failed to trigger build pipeline (HTTP ${trigger_http:-000}):"
         printf '%s\n' "$trigger_response"
         echo ""
@@ -188,7 +188,7 @@ if [ -z "$BUILD_PIPELINE_ID" ]; then
                 exit 1
                 ;;
             *)
-                if [ "$elapsed" -ge "$poll_timeout" ]; then
+                if [[ "$elapsed" -ge "$poll_timeout" ]]; then
                     echo "ERROR: timed out after ${poll_timeout}s waiting for build pipeline ${BUILD_PIPELINE_ID} (status: ${status})."
                     exit 1
                 fi
@@ -211,7 +211,7 @@ build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha')"
 build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref')"
 build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status')"
 build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source')"
-if [ "$build_sha" != "$PR_SHA" ] || [ "$build_ref" != "$PR_REF" ] || [ "$build_status" != "success" ]; then
+if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status" != "success" ]]; then
     echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch."
     echo "  got ref=${build_ref} sha=${build_sha} status=${build_status}"
     echo "  expected ref=${PR_REF} sha=${PR_SHA} status=success"
@@ -244,15 +244,15 @@ now_epoch="$(date -u +%s)"
 while IFS='|' read -r target image; do
     job_name="pr-build-image: [${target}, ${image}]"
     job_json="$(printf '%s' "$jobs_json" | jq -c --arg name "$job_name" '[.[] | select(.name == $name and .status == "success")] | sort_by(.id) | last // empty')"
-    if [ -z "$job_json" ] || [ "$job_json" = "null" ]; then
+    if [[ -z "$job_json" || "$job_json" = "null" ]]; then
         echo "ERROR: no successful '${job_name}' job in pipeline ${BUILD_PIPELINE_ID}."
         exit 1
     fi
     job_id="$(printf '%s' "$job_json" | jq -r '.id')"
     expires_at="$(printf '%s' "$job_json" | jq -r '.artifacts_expire_at // empty')"
-    if [ -n "$expires_at" ]; then
+    if [[ -n "$expires_at" ]]; then
         expire_epoch="$(date -u -d "$expires_at" +%s 2>/dev/null || date -u -D "%Y-%m-%dT%H:%M:%S" -d "${expires_at%%.*}" +%s 2>/dev/null || echo 0)"
-        if [ "$expire_epoch" != "0" ] && [ "$expire_epoch" -le "$now_epoch" ]; then
+        if [[ "$expire_epoch" != "0" && "$expire_epoch" -le "$now_epoch" ]]; then
             echo "ERROR: artifacts of job ${job_id} (${job_name}) have expired."
             echo "Re-run with NVCM_PROMOTE_REUSE_BUILD=false to force a fresh build."
             exit 1
@@ -269,7 +269,7 @@ EOF
 # so the promote pipeline can download the .tgz and publish it without ever
 # rebuilding from PR source.
 chart_job_id="$(printf '%s' "$jobs_json" | jq -r '[.[] | select(.name == "pr-build-chart" and .status == "success")] | sort_by(.id) | last | .id // empty')"
-if [ -z "$chart_job_id" ]; then
+if [[ -z "$chart_job_id" ]]; then
     echo "ERROR: no successful 'pr-build-chart' job in pipeline ${BUILD_PIPELINE_ID}."
     exit 1
 fi
