@@ -1586,7 +1586,7 @@ def test_workflow_types():
     # workflow creation
     assert {"BackupWorkflow", "DeployWorkflow"}.issubset(workflow_types)
     assert "HelloWorldRunning" not in workflow_types
-    assert "TenantDeployWorkflow" not in workflow_types
+    assert "TenantDeployWorkflow" in workflow_types
 
 
 @patch("nv_config_manager.temporal.api.dynamic_endpoints.RBACConfig")

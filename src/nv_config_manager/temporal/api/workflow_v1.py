@@ -41,7 +41,7 @@ from temporalio.service import RPCError, RPCStatusCode
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.api.dynamic_endpoints import (
-    get_public_workflows_info,
+    get_registered_workflows_info,
     register_dynamic_endpoints,
     set_start_workflow_function,
 )
@@ -50,7 +50,6 @@ from nv_config_manager.temporal.api.workflow_submission import resolve_workflow_
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.client.redis import RedisClient
 from nv_config_manager.temporal.common.mixins.base import BaseMixin
-from nv_config_manager.temporal.common.mixins.metadata import WorkflowMetadataMixin
 from nv_config_manager.temporal.common.mixins.stage import (
     ReviewSignalInput,
     Stage,
@@ -792,11 +791,7 @@ async def get_workflows(  # pylint: disable=R0913,R0914
 async def get_workflow_types() -> list[str]:
     """Return registered workflow type names."""
     return sorted(
-        [
-            workflow.__name__
-            for workflow in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS
-            if cast(type[WorkflowMetadataMixin], workflow).get_workflow_api_endpoint() is not None
-        ]
+        [wf.__name__ for wf in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS]
     )
 
 
@@ -807,7 +802,7 @@ async def get_workflow_metadata() -> WorkflowMetadataResponse:
         [wf.__name__ for wf in NGC_REGISTERED_WORKFLOWS + HELLO_WORLD_REGISTERED_WORKFLOWS]
     )
 
-    workflows_info = get_public_workflows_info(include_rbac=True)
+    workflows_info = get_registered_workflows_info(include_rbac=True)
     workflows = [
         WorkflowMetadata.model_validate(workflows_info[name])
         for name in workflow_types

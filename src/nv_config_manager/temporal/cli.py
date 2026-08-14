@@ -192,10 +192,6 @@ class WorkflowDiscovery:
             )
             return
 
-        # Workflows without submission endpoints are worker-only children.
-        if workflow_class.get_workflow_api_endpoint() is None:
-            return
-
         # Use metadata from the mixin
         if not workflow_class.has_complete_metadata():
             click.echo(f"Error: {workflow_name} has incomplete metadata - skipping", err=True)

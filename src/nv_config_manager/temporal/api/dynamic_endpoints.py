@@ -109,6 +109,7 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     """Register all workflow endpoints dynamically based on metadata."""
     registered_count = 0
 
+    # Process all registered workflows
     all_workflows = NGC_WORKFLOWS + HELLO_WORLD_WORKFLOWS
 
     for workflow_class in all_workflows:
@@ -122,10 +123,6 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
 
             # Cast to WorkflowMetadataMixin type for mypy
             metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
-
-            # No submission endpoint means this is a worker-only child workflow.
-            if metadata_workflow.get_workflow_api_endpoint() is None:
-                continue
 
             # Check if workflow has complete metadata
             if not metadata_workflow.has_complete_metadata():
@@ -170,8 +167,8 @@ def register_dynamic_endpoints(router: APIRouter) -> None:
     logger.info(f"Successfully registered {registered_count} dynamic workflow endpoints")
 
 
-def get_public_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
-    """Get information about publicly executable workflows with metadata."""
+def get_registered_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[str, Any]]:
+    """Get information about all registered workflows with metadata."""
     workflows_info: dict[str, dict[str, Any]] = {}
     rbac_config = RBACConfig() if include_rbac else None
 
@@ -181,9 +178,6 @@ def get_public_workflows_info(*, include_rbac: bool = False) -> dict[str, dict[s
         if issubclass(workflow_class, WorkflowMetadataMixin):
             # Cast to WorkflowMetadataMixin type for mypy
             metadata_workflow = cast(type[WorkflowMetadataMixin], workflow_class)
-
-            if metadata_workflow.get_workflow_api_endpoint() is None:
-                continue
 
             if metadata_workflow.has_complete_metadata():
                 input_class = metadata_workflow.get_workflow_input_class()
