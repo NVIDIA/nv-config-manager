@@ -107,7 +107,7 @@ COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/static /opt/nau
 COPY --from=builder --chown=1000:1000 /opt/nautobot/media /opt/nautobot/media
 COPY --from=builder --chown=1000:1000 /opt/nautobot/git /opt/nautobot/git
 # Writable dir for prometheus_client multiprocess metric files (see ENV above).
-COPY --from=builder --chown=1000:1000 /prom_cache /prom_cache
+COPY --from=builder --chown=root:root --chmod=0755 /prom_cache /prom_cache
 COPY --from=builder --chown=root:root --chmod=0755 /opt/nautobot/jobs /opt/nautobot/jobs
 COPY --from=builder --chown=1000:1000 /opt/nautobot/.cache /opt/nautobot/.cache
 
