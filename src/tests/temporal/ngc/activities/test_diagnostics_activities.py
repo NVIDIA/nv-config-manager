@@ -70,6 +70,9 @@ def _make_mock_connection(
 ) -> MagicMock:
     """Return a mock NetworkConnection with configurable outputs."""
     conn = MagicMock()
+    # Activities use `with NetworkConnection...`; without this, __enter__ returns a
+    # fresh MagicMock and the configured return values never reach the activity.
+    conn.__enter__.return_value = conn
     if command_outputs is not None:
         conn.run_diagnostic_command.side_effect = lambda name: command_outputs[name]
     else:
@@ -163,7 +166,7 @@ def test_run_diagnostic_commands_per_command_error_captured():
             raise RuntimeError("connection refused")
         return "ok output"
 
-    mock_conn = MagicMock()
+    mock_conn = _make_mock_connection()
     mock_conn.run_diagnostic_command.side_effect = side_effect
 
     with patch(
@@ -180,7 +183,7 @@ def test_run_diagnostic_commands_per_command_error_captured():
 
 def test_run_diagnostic_commands_error_message_contains_exception():
     """The ERROR: string captures the exception message."""
-    mock_conn = MagicMock()
+    mock_conn = _make_mock_connection()
     mock_conn.run_diagnostic_command.side_effect = ValueError("timed out")
 
     with patch(
