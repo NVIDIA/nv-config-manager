@@ -2363,10 +2363,9 @@ class JuniperConnection(NetworkConnection):
     # instead of hanging the activity indefinitely.
     _RPC_TIMEOUT_SECONDS = 300
 
-    # Exclusive configure ops (diff/commit/rollback) run under activities with a
-    # 60s start_to_close. Keep the PyEZ RPC deadline under that so a wedged load
-    # returns and closes the NETCONF session instead of outliving Temporal's
-    # timeout and leaking exclusive locks onto later retries.
+    # Exclusive *diff* ops run under activities with a 60s start_to_close.
+    # Keep the PyEZ RPC deadline under that so a wedged load/diff returns and
+    # closes the NETCONF session instead of outliving Temporal's timeout.
     _CONFIG_OP_TIMEOUT_SECONDS = 45
 
     # TCP/NETCONF open deadline separate from per-RPC timeout.
@@ -2522,8 +2521,11 @@ class JuniperConnection(NetworkConnection):
             ) from error
         if isinstance(result, str):
             return result
-        # set/text formats return an lxml element whose text holds the config.
-        return getattr(result, "text", "") or ""
+        # text/set replies wrap the body in <configuration-information>.
+        text = result.findtext("configuration-output")
+        if text is not None:
+            return text
+        return ""
 
     def _load_full_config(self, cu: Config, new_configuration: str) -> None:
         """Load the complete desired-state config via Junos ``load update``."""
@@ -2533,6 +2535,14 @@ class JuniperConnection(NetworkConnection):
             raise ConfigSyntaxException(
                 f"Invalid configuration for {self._host}: {error}"
             ) from error
+
+    @staticmethod
+    def _discard_candidate(cu: Config, host: str) -> None:
+        """Best-effort rollback."""
+        try:
+            cu.rollback()
+        except Exception:  # noqa: BLE001 - cleanup must not mask the original error
+            logger.debug("Failed to discard candidate config on %s", host, exc_info=True)
 
     @staticmethod
     def _reject_partial(partial: bool) -> None:
@@ -2610,9 +2620,14 @@ class JuniperConnection(NetworkConnection):
                 self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
                 Config(device, mode="exclusive") as cu,
             ):
-                self._load_full_config(cu, new_configuration)
-                diff = cu.diff()
-                cu.rollback()
+                try:
+                    self._load_full_config(cu, new_configuration)
+                    diff = cu.diff()
+                    cu.rollback()
+                except Exception:
+                    # Discard a partial load so the next exclusive session is clean.
+                    self._discard_candidate(cu, self._host)
+                    raise
         except ConfigSyntaxException:
             raise
         except (LockError, UnlockError, RpcError, ConnectError) as error:
@@ -2676,8 +2691,12 @@ class JuniperConnection(NetworkConnection):
                 self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
                 Config(device, mode="exclusive") as cu,
             ):
-                diff = cu.diff(rb_id=rollback_id)
-                cu.rollback()
+                try:
+                    diff = cu.diff(rb_id=rollback_id)
+                    cu.rollback()
+                except Exception:
+                    self._discard_candidate(cu, self._host)
+                    raise
         except (LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
             raise NetworkDeviceException(
                 f"Failed to read rollback {rollback_id} diff on {self._host}: {error}"
@@ -2719,12 +2738,32 @@ class JuniperConnection(NetworkConnection):
         """Return the saved rescue configuration, or None if none is set."""
         device = self._get_device()
         try:
-            result = Config(device).rescue(action="get", format="text")
-        except (RpcError, ConnectError) as error:
+            got = device.rpc.get_rescue_information(format="text")
+        except RpcError as error:
+            if self._is_rescue_absent(error):
+                return None
             raise NetworkDeviceException(
                 f"Failed to read rescue configuration on {self._host}: {error}"
             ) from error
-        return result if result else None
+        except ConnectError as error:
+            raise NetworkDeviceException(
+                f"Failed to read rescue configuration on {self._host}: {error}"
+            ) from error
+        text = got.findtext("configuration-information/configuration-output")
+        if text is None:
+            text = got.findtext("configuration-output")
+        return text if text else None
+
+    @staticmethod
+    def _is_rescue_absent(error: RpcError) -> bool:
+        """True when Junos reports that no rescue configuration is defined."""
+        message = str(error).lower()
+        return "rescue" in message and (
+            "does not exist" in message
+            or "not found" in message
+            or "no rescue" in message
+            or "rescue configuration is not set" in message
+        )
 
     def delete_rescue_configuration(self) -> None:
         """Delete the saved rescue configuration."""
@@ -2741,11 +2780,22 @@ class JuniperConnection(NetworkConnection):
         device = self._get_device()
         try:
             with Config(device, mode="exclusive") as cu:
-                cu.rescue(action="reload")
-                if cu.diff():
-                    self._commit(cu, commit_confirm)
-                else:
-                    cu.rollback()
+                try:
+                    loaded = cu.rescue(action="reload")
+                    if not loaded:
+                        raise NetworkDeviceException(
+                            f"No rescue configuration on {self._host}.",
+                            non_retryable=True,
+                        )
+                    if cu.diff():
+                        self._commit(cu, commit_confirm)
+                    else:
+                        cu.rollback()
+                except Exception:
+                    self._discard_candidate(cu, self._host)
+                    raise
+        except NetworkDeviceException:
+            raise
         except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
             raise NetworkDeviceException(
                 f"Failed to roll back to rescue configuration on {self._host}: {error}"

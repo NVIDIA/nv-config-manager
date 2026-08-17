@@ -24,6 +24,7 @@ from jnpr.junos.exception import (
     ConfigLoadError,
     ConnectAuthError,
     ConnectClosedError,
+    ConnectError,
     ProbeError,
     RpcError,
 )
@@ -473,9 +474,13 @@ def test_rpc_requests_json_and_converts_flag_params(juniper_conn):
 
 
 def test_get_running_configuration_returns_text_format(juniper_conn):
-    """Backup returns full hierarchical text config terminated by a newline."""
+    """Backup returns full hierarchical text from <configuration-output>."""
     device = MagicMock()
-    device.rpc.get_config.return_value = SimpleNamespace(text="system {\n    host-name RTR1;\n}")
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<configuration-information><configuration-output>"
+        "system {\n    host-name RTR1;\n}"
+        "</configuration-output></configuration-information>"
+    )
     with patch.object(juniper_conn, "_get_device", return_value=device):
         config = juniper_conn.get_running_configuration()
     assert config == "system {\n    host-name RTR1;\n}\n"
@@ -485,7 +490,11 @@ def test_get_running_configuration_returns_text_format(juniper_conn):
 def test_get_configuration_text_returns_hierarchical(juniper_conn):
     """The text getter requests hierarchical (curly-brace) format."""
     device = MagicMock()
-    device.rpc.get_config.return_value = SimpleNamespace(text="system {\n    host-name RTR1;\n}")
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<configuration-information><configuration-output>"
+        "system {\n    host-name RTR1;\n}"
+        "</configuration-output></configuration-information>"
+    )
     with patch.object(juniper_conn, "_get_device", return_value=device):
         text = juniper_conn.get_configuration_text()
     assert "host-name RTR1" in text
@@ -616,7 +625,7 @@ def test_commit_candidate_config_rejects_partial(juniper_conn):
 
 
 def test_perform_candidate_diff_raises_config_syntax_on_load_error(juniper_conn):
-    """A load failure surfaces as ConfigSyntaxException."""
+    """A load failure surfaces as ConfigSyntaxException and discards the candidate."""
     cu = MagicMock()
     cu.load.side_effect = ConfigLoadError(rsp=_rpc_error_rsp("syntax error"))
     with (
@@ -625,6 +634,21 @@ def test_perform_candidate_diff_raises_config_syntax_on_load_error(juniper_conn)
     ):
         with pytest.raises(ConfigSyntaxException):
             juniper_conn.perform_candidate_diff("set nonsense")
+    cu.rollback.assert_called_once()
+
+
+def test_perform_candidate_diff_rolls_back_when_diff_rpc_fails(juniper_conn):
+    """A mid-diff RpcError still discards the loaded candidate before unlocking."""
+    cu = MagicMock()
+    cu.diff.side_effect = RpcError(rsp=_rpc_error_rsp("diff failed"))
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch.object(juniper_conn, "_load_full_config"),
+    ):
+        with pytest.raises(NetworkDeviceException, match="candidate diff"):
+            juniper_conn.perform_candidate_diff("system { host-name RTR1; }")
+    cu.rollback.assert_called_once()
 
 
 def test_commit_candidate_config_raises_when_diff_changed(juniper_conn):
@@ -766,25 +790,49 @@ def test_save_rescue_configuration_calls_rescue_save(juniper_conn):
 
 
 def test_get_rescue_configuration_returns_text(juniper_conn):
-    """get_rescue_configuration returns the saved rescue text."""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
-    ):
-        mock_config.return_value.rescue.return_value = "system { host-name RTR1; }"
+    """get_rescue_configuration reads get-rescue-information directly."""
+    device = MagicMock()
+    device.rpc.get_rescue_information.return_value = etree.fromstring(
+        "<rescue-information><configuration-information><configuration-output>"
+        "system { host-name RTR1; }"
+        "</configuration-output></configuration-information></rescue-information>"
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
         rescue = juniper_conn.get_rescue_configuration()
     assert rescue == "system { host-name RTR1; }"
-    mock_config.return_value.rescue.assert_called_once_with(action="get", format="text")
+    device.rpc.get_rescue_information.assert_called_once_with(format="text")
 
 
 def test_get_rescue_configuration_returns_none_when_absent(juniper_conn):
-    """get_rescue_configuration returns None when no rescue config is set."""
-    with (
-        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
-    ):
-        mock_config.return_value.rescue.return_value = None
+    """Missing rescue is reported as an rpc-error and mapped to None."""
+    device = MagicMock()
+    device.rpc.get_rescue_information.side_effect = RpcError(
+        rsp=_rpc_error_rsp("Rescue configuration does not exist")
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
         assert juniper_conn.get_rescue_configuration() is None
+
+
+def test_get_rescue_configuration_raises_on_transport_error(juniper_conn):
+    """Transport failures are not silently treated as a missing rescue config."""
+    device = MagicMock()
+    device.rpc.get_rescue_information.side_effect = ConnectError(
+        dev=SimpleNamespace(hostname="test-router")
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(NetworkDeviceException, match="rescue configuration"):
+            juniper_conn.get_rescue_configuration()
+
+
+def test_get_rescue_configuration_raises_on_unexpected_rpc_error(juniper_conn):
+    """Non-absent rescue RpcErrors surface instead of looking like None."""
+    device = MagicMock()
+    device.rpc.get_rescue_information.side_effect = RpcError(
+        rsp=_rpc_error_rsp("permission denied")
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        with pytest.raises(NetworkDeviceException, match="rescue configuration"):
+            juniper_conn.get_rescue_configuration()
 
 
 def test_delete_rescue_configuration_calls_rescue_delete(juniper_conn):
@@ -800,6 +848,7 @@ def test_delete_rescue_configuration_calls_rescue_delete(juniper_conn):
 def test_rollback_to_rescue_reloads_and_commits(juniper_conn):
     """rollback_to_rescue reloads the rescue config and commits when it differs."""
     cu = MagicMock()
+    cu.rescue.return_value = True
     cu.diff.return_value = "diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
@@ -813,6 +862,7 @@ def test_rollback_to_rescue_reloads_and_commits(juniper_conn):
 def test_rollback_to_rescue_noop_when_no_diff(juniper_conn):
     """rollback_to_rescue does nothing when the rescue config matches the active config."""
     cu = MagicMock()
+    cu.rescue.return_value = True
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
@@ -821,6 +871,20 @@ def test_rollback_to_rescue_noop_when_no_diff(juniper_conn):
         juniper_conn.rollback_to_rescue(commit_confirm=False)
     cu.commit.assert_not_called()
     cu.rollback.assert_called_once()
+
+
+def test_rollback_to_rescue_raises_when_rescue_missing(juniper_conn):
+    """PyEZ rescue reload returns False when no rescue exists; surface that clearly."""
+    cu = MagicMock()
+    cu.rescue.return_value = False
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
+        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+    ):
+        with pytest.raises(NetworkDeviceException, match="No rescue configuration"):
+            juniper_conn.rollback_to_rescue(commit_confirm=False)
+    cu.rollback.assert_called_once()
+    cu.commit.assert_not_called()
 
 
 def test_run_diagnostic_command_dispatches_supported_junos_command(juniper_conn):
