@@ -777,6 +777,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             user="nv-config-manager-temporal",
             user_domain=None,
             workflow_id=workflow.info().workflow_id,
+            suppress_drift_notification=True,
         )
 
         backup_handle = await workflow.start_child_workflow(
