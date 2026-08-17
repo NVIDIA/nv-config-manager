@@ -71,6 +71,7 @@ from nv_config_manager.temporal.ngc.workflows.spx_overlay import (
     SpXOverlayTenantChangeWorkflow,
 )
 
+# Worker registration includes both directly executable workflows and internal children.
 REGISTERED_WORKFLOWS = [
     BackupWorkflow,
     SiteBackupWorkflow,

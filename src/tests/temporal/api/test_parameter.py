@@ -35,6 +35,15 @@ DEVICES = {
     }
 }
 
+DEVICE_INTERFACES = {
+    "data": {
+        "interfaces": [
+            {"id": "interface-2", "name": "swp2"},
+            {"id": "interface-1", "name": "swp1"},
+        ]
+    }
+}
+
 # config_manager_devices response for tenant endpoint (managed_only)
 NV_CONFIG_MANAGER_DEVICES_TENANTS = {
     "data": {
@@ -154,6 +163,23 @@ def test_device_v2():
                 "platform": "cumulus-linux",
             }
         ]
+
+
+def test_device_interfaces():
+    with aioresponses() as m:
+        m.post("https://nautobot.example.com/api/graphql/", payload=DEVICE_INTERFACES)
+
+        client = TestClient(app)
+        rsp = client.get("/v1/parameter/device/aa6ef75b-00fe-45e6-8adb-62609509cb4f/interfaces")
+
+        assert rsp.json() == [
+            {"id": "interface-1", "name": "swp1"},
+            {"id": "interface-2", "name": "swp2"},
+        ]
+        sent = next(iter(m.requests.values()))[0]
+        assert sent.kwargs["json"]["variables"] == {
+            "device_id": ["aa6ef75b-00fe-45e6-8adb-62609509cb4f"]
+        }
 
 
 UFM_DEVICES = {

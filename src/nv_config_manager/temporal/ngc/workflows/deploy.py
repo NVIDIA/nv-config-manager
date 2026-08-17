@@ -425,6 +425,13 @@ class TenantDeployInput(BaseModel):
         pattern=r"^\d+$",
         description=INTENDED_CONFIG_COMMIT_ID_DESCRIPTION,
     )
+    use_full_intended_config: bool = Field(
+        default=False,
+        description=(
+            "Use the full intended configuration as a replacement candidate while "
+            "restricting the accepted diff to tenant configuration changes."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_render_snapshot(self) -> "TenantDeployInput":
@@ -465,9 +472,9 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
 
     # Workflow metadata
     workflow_name = "Tenant Deploy"
-    workflow_description = "Deploy tenant configuration to network device without approval"
+    workflow_description = "Internal tenant configuration deployment child workflow"
     workflow_input_class = TenantDeployInput
-    workflow_api_endpoint = "/ngc/tenant-deploy"
+    workflow_api_endpoint = None
     workflow_namespace = "ngc"
 
     def __init__(self) -> None:
@@ -514,12 +521,15 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         device: str | NetworkDeviceData
         tenant_config_commit_id: str | None = None
         intended_config_commit_id: str | None = None
+        use_full_intended_config: bool = False
 
     class LoadConfigStageOutput(StageOutput):
         """Load Tenant Config Stage Output."""
 
         device: NetworkDeviceData
         tenant_config: str
+        deployment_config: str
+        partial: bool
         commit_id: str
         intended_config_commit_id: str
 
@@ -551,9 +561,15 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        intended_config = None
+        intended_config_url = None
         intended_config_commit_id = stage_input.intended_config_commit_id
         if intended_config_commit_id is None:
-            _, intended_config_commit_id, _ = await workflow.execute_activity(
+            (
+                intended_config,
+                intended_config_commit_id,
+                intended_config_url,
+            ) = await workflow.execute_activity(
                 load_intended_configuration,
                 device,
                 start_to_close_timeout=timedelta(minutes=1),
@@ -563,13 +579,50 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             raise ApplicationError(
                 "Unable to resolve intended configuration commit ID for tenant deployment"
             )
+        resolved_intended_config_commit_id = intended_config_commit_id
+
+        if stage_input.use_full_intended_config:
+            if intended_config is None:
+                (
+                    intended_config,
+                    resolved_intended_config_commit_id,
+                    intended_config_url,
+                ) = await workflow.execute_activity(
+                    load_partial_configuration,
+                    LoadPartialConfigurationActivityInput(
+                        device_data=device,
+                        config_file=device.intended_config_file,
+                        commit_id=resolved_intended_config_commit_id,
+                    ),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+                )
+            if intended_config is None:
+                raise ApplicationError(
+                    "Unable to load intended configuration for tenant replacement"
+                )
+            deployment_config = intended_config
+            partial = False
+        else:
+            deployment_config = content
+            partial = True
+
         config_path = device.tenant_config_path
         markdown = f"Loaded tenant configuration from [{config_path}]({url})."
+        if stage_input.use_full_intended_config:
+            intended_config_path = device.intended_config_path
+            markdown += (
+                " Assignment removals will be deployed by replacing the candidate with "
+                f"the full intended configuration from [{intended_config_path}]"
+                f"({intended_config_url})."
+            )
         return TenantDeployWorkflow.LoadConfigStageOutput(
             device=device,
             tenant_config=content,
+            deployment_config=deployment_config,
+            partial=partial,
             commit_id=commit_id,
-            intended_config_commit_id=intended_config_commit_id,
+            intended_config_commit_id=resolved_intended_config_commit_id,
             display=markdown,
         )
 
@@ -577,7 +630,8 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Diff Stage Input."""
 
         device: NetworkDeviceData
-        tenant_config: str
+        deployment_config: str
+        partial: bool
 
     class PerformDiffStageOutput(StageOutput):
         """Diff Stage Output."""
@@ -593,8 +647,8 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             perform_candidate_diff,
             DiffActivityInput(
                 device_data=stage_input.device,
-                configuration=stage_input.tenant_config,
-                partial=True,
+                configuration=stage_input.deployment_config,
+                partial=stage_input.partial,
             ),
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
@@ -675,8 +729,9 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
         """Apply Stage Input."""
 
         device: NetworkDeviceData
-        tenant_config: str
+        deployment_config: str
         diff: str
+        partial: bool
 
     class ApplyStageOutput(StageOutput):
         """Apply Stage Output."""
@@ -688,9 +743,9 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             apply_approved_configuration,
             ConfigApplyActivityInput(
                 device_data=stage_input.device,
-                configuration=stage_input.tenant_config,
+                configuration=stage_input.deployment_config,
                 approved_diff=stage_input.diff,
-                partial=True,
+                partial=stage_input.partial,
             ),
             start_to_close_timeout=timedelta(minutes=5),
             # Do not retry if the diff changed after approval
@@ -722,6 +777,7 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             user="nv-config-manager-temporal",
             user_domain=None,
             workflow_id=workflow.info().workflow_id,
+            suppress_drift_notification=True,
         )
 
         backup_handle = await workflow.start_child_workflow(
@@ -750,13 +806,15 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
                 device=workflow_input.device,
                 tenant_config_commit_id=workflow_input.tenant_config_commit_id,
                 intended_config_commit_id=workflow_input.intended_config_commit_id,
+                use_full_intended_config=workflow_input.use_full_intended_config,
             )
         )
 
         diff_output = await self.perform_configuration_diff(
             TenantDeployWorkflow.PerformDiffStageInput(
                 device=load_config_output.device,
-                tenant_config=load_config_output.tenant_config,
+                deployment_config=load_config_output.deployment_config,
+                partial=load_config_output.partial,
             )
         )
 
@@ -772,8 +830,9 @@ class TenantDeployWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             await self.apply_configuration(
                 TenantDeployWorkflow.ApplyStageInput(
                     device=load_config_output.device,
-                    tenant_config=load_config_output.tenant_config,
+                    deployment_config=load_config_output.deployment_config,
                     diff=diff_output.diff,
+                    partial=load_config_output.partial,
                 )
             )
 
