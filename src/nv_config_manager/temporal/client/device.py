@@ -2522,10 +2522,8 @@ class JuniperConnection(NetworkConnection):
         if isinstance(result, str):
             return result
         # text/set replies wrap the body in <configuration-information>.
-        text = result.findtext("configuration-output")
-        if text is not None:
-            return text
-        return ""
+        text: str | None = result.findtext("configuration-output")
+        return text if text is not None else ""
 
     def _load_full_config(self, cu: Config, new_configuration: str) -> None:
         """Load the complete desired-state config via Junos ``load update``."""
