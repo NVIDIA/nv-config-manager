@@ -2310,15 +2310,6 @@ cnpg:
   # PostgreSQL Cluster pods; poolerImageName is reserved for CNPG Pooler resources.
   imageName: ""
   poolerImageName: ""
-  # Chart-managed CNPG PodMonitors live in monitoring.yaml and render when
-  # monitoring.podMonitors.enabled and cnpg.enabled are true. Operator
-  # enablePodMonitor is intentionally unused (deprecated upstream).
-  # Scraped samples get global.customLabels via Cluster inheritedMetadata
-  # (podTargetLabels) and PodMonitor metricRelabelings.
-  # The installer sets this true when infrastructure monitoring or the local
-  # observability stack is enabled.
-  monitoring:
-    enabled: true
   # ---------------------------------------------------------------------------
   # Cluster Definitions
   # ---------------------------------------------------------------------------
@@ -2973,7 +2964,9 @@ monitoring:
     # per-environment when probes need to match a site-specific alerting /
     # dashboard regex.
     jobNamePrefix: ""
-  # PodMonitors: each PodMonitor is enabled when podMonitors.enabled AND the target service is enabled
+  # PodMonitors: each PodMonitor is enabled when podMonitors.enabled AND the
+  # target service is enabled. CNPG scrapes also require podMonitors.cnpg.enabled
+  # (and cnpg.enabled + each cluster's enabled flag).
   podMonitors:
     enabled: false
     # Default scrape interval
@@ -2985,6 +2978,8 @@ monitoring:
     nautobot:
       scrapeProtocols:
         - PrometheusText1.0.0
+    cnpg:
+      enabled: true
     # Per-endpoint metricRelabelings for global.customLabels are rendered in monitoring.yaml (job-based).
 # =============================================================================
 # Local Observability Stack (subcharts)

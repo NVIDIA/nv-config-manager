@@ -755,12 +755,10 @@ spec:
       {{- end }}
 {{- end }}
 
-{{- /* CNPG cluster PodMonitors (chart-managed; replaces deprecated
-       Cluster.spec.monitoring.enablePodMonitor). Same gate as other chart
-       PodMonitors: monitoring.podMonitors.enabled + cnpg.enabled.
-       Selectors match CNPG instance pods; customLabels land via
-       podTargetLabels (Cluster.spec.inheritedMetadata) and metricRelabelings. */}}
-{{- if and .Values.monitoring.podMonitors.enabled .Values.cnpg.enabled }}
+{{- /* CNPG PodMonitors: monitoring.podMonitors.enabled + cnpg.enabled +
+       monitoring.podMonitors.cnpg.enabled; one CR per enabled cluster
+       (clusterList + nautobot). Chart-managed; not Cluster.enablePodMonitor. */}}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.cnpg.enabled .Values.monitoring.podMonitors.cnpg.enabled }}
 {{- range $clusterKey := .Values.cnpg.clusterList }}
 {{- $config := index $.Values.cnpg $clusterKey }}
 {{- if $config.enabled }}
