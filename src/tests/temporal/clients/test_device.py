@@ -534,8 +534,8 @@ def test_get_running_configuration_falls_back_to_flattened_text_for_unknown_wrap
     assert "Unexpected get-configuration reply shape" in caplog.text
 
 
-def test_get_running_configuration_keeps_secrets_raw(juniper_conn):
-    """get_running_configuration stays raw; the Config Store needs real secrets to apply config."""
+def test_get_running_configuration_redacts_secrets(juniper_conn):
+    """get_running_configuration redacts secrets."""
     device = MagicMock()
     device.rpc.get_config.return_value = etree.fromstring(
         "<configuration-information><configuration-output>"
@@ -545,7 +545,22 @@ def test_get_running_configuration_keeps_secrets_raw(juniper_conn):
     )
     with patch.object(juniper_conn, "_get_device", return_value=device):
         config = juniper_conn.get_running_configuration()
-    assert '"$6$abcDE12$secretHash"' in config
+    assert "secretHash" not in config
+    assert '"$6$<redacted>"' in config
+
+
+def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
+    """Unlike get_running_configuration, the debug getter keeps secrets raw."""
+    device = MagicMock()
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<configuration-information><configuration-output>"
+        "system {\n    root-authentication {\n        "
+        'encrypted-password "$6$abcDE12$secretHash"; ## SECRET-DATA\n    }\n}'
+        "</configuration-output></configuration-information>"
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        text = juniper_conn.get_configuration_text()
+    assert '"$6$abcDE12$secretHash"' in text
 
 
 def test_get_hostname_and_running_image_use_facts(juniper_conn):

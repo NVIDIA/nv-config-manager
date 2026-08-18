@@ -64,6 +64,7 @@ from temporalio.exceptions import ApplicationError
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
+from nv_config_manager.temporal.common.secret_redaction import redact_junos_secrets
 from nv_config_manager.temporal.common.secrets import (
     get_credential,
     get_rotation_passwords,
@@ -2589,14 +2590,13 @@ class JuniperConnection(NetworkConnection):
     def get_running_configuration(self) -> str:
         """Return the running configuration in hierarchical (curly-brace) text.
 
-        Text is the full desired-state format consumed by ``load update``, so a
-        stored backup can be re-applied through the full-config path. This includes
-        the real (unredacted) Junos ``$``-format secret values, since the Config
-        Store that persists it is RBAC-locked to GNI and needs them to apply
-        configuration. Callers that render this in less-trusted workflow output must
-        redact it first with ``nv_config_manager.temporal.common.secret_redaction``.
+        Backups exist for attribution and drift detection, not restoration --
+        intended state is rolled forward through Nautobot and re-applied, never
+        loaded back from a stored backup. So, as with Arista's ``sanitized``
+        running-config and Cumulus's applied-config read, secret values are
+        redacted before this leaves the device session.
         """
-        return self._get_config("text").strip() + "\n"
+        return redact_junos_secrets(self._get_config("text").strip() + "\n")
 
     def get_configuration_text(self) -> str:
         """Return the running configuration in hierarchical (curly-brace) text."""

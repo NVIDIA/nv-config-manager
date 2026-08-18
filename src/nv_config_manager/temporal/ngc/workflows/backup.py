@@ -163,7 +163,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
         return BackupWorkflow.LoadConfigStageOutput(
             device_data=device_data.device,
             running_config=running_config,
-            display=f"```\n{redact_junos_secrets(running_config)}\n```",
+            display=f"```\n{running_config}\n```",
         )
 
     class CheckDriftStageInput(StageInput):

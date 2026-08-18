@@ -14,10 +14,10 @@
 # limitations under the License.
 """Text sanitizers for device secrets surfaced outside a trusted device session.
 
-The Config Store is RBAC-locked to GNI and needs real secret values to apply
-intended configuration, so it is never sanitized. Workflow output has looser,
-per-workflow RBAC and is viewed by other teams for troubleshooting, so anything
-rendered there must be redacted first.
+Config Store is typically locked down to network administrators, while
+workflow output (backups, diffs) is viewed by more members for
+troubleshooting. Anything read back from a device for that broader audience
+must be redacted first.
 """
 
 import re

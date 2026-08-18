@@ -72,10 +72,10 @@ query ($is_aggregate_managed: Boolean) {
 }
 """
     SUPPORTED_PLATFORMS = [
-        Platform.ARISTA_EOS.nautobot_name,
-        Platform.CUMULUS_LINUX.nautobot_name,
-        Platform.NV_OS.nautobot_name,
-        Platform.JUNIPER_JUNOS.nautobot_name,
+        Platform.ARISTA_EOS.dcim_name,
+        Platform.CUMULUS_LINUX.dcim_name,
+        Platform.NV_OS.dcim_name,
+        Platform.JUNIPER_JUNOS.dcim_name,
     ]
     STATUSES = ["Provisioned", "Active"]
     SCHEDULE_PREFIX = "backup-"

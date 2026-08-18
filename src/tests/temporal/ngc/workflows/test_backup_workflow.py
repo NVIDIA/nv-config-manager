@@ -396,10 +396,13 @@ async def test_execute_workflow(
             assert search_attrs[attr] == val
 
 
+REDACTED_RUNNING_CONFIG = 'system {\n    authentication-key "$9$<redacted>"; ## SECRET-DATA\n}\n'
+
+
 @activity.defn(name="load_running_configuration")
 async def mock_load_running_configuration_with_secret(device_data: NetworkDeviceData) -> str:
-    """Mock load running configuration activity returning a Junos secret value."""
-    return 'system {\n    authentication-key "$9$AbCdEfGhIjKlMnOp"; ## SECRET-DATA\n}\n'
+    """Mock load_running_configuration, returning output as if already redacted."""
+    return REDACTED_RUNNING_CONFIG
 
 
 @pytest.mark.asyncio
@@ -409,13 +412,13 @@ async def mock_load_running_configuration_with_secret(device_data: NetworkDevice
     return_value=TEST_RETRY_POLICY,
 )
 @patch("nv_config_manager.temporal.ngc.workflows.backup.timedelta", return_value=TEST_TIMEOUT)
-async def test_execute_workflow_redacts_secrets_in_display_but_not_config_store(
+async def test_execute_workflow_persists_and_displays_already_redacted_running_config(
     mock_timedelta,
     mock_retry_policy,
     mock_time,
     env,
 ):
-    """Workflow display redacts Junos secrets; the persisted config stays raw for the Config Store."""
+    """load_running_config passes the (already-redacted) activity result through unchanged."""
     task_queue_name = str(uuid.uuid4())
     async with Worker(
         env.client,
@@ -456,13 +459,11 @@ async def test_execute_workflow_redacts_secrets_in_display_but_not_config_store(
         load_config_stage = next(
             stage for stage in stages if stage["name"] == "load_running_configuration"
         )
-        assert "$9$AbCdEfGhIjKlMnOp" not in load_config_stage["output"]["display"]
-        assert '"$9$<redacted>"' in load_config_stage["output"]["display"]
-        # The value handed to persist_backup (and therefore the Config Store) stays raw.
-        assert "$9$AbCdEfGhIjKlMnOp" in load_config_stage["output"]["running_config"]
+        assert load_config_stage["output"]["running_config"] == REDACTED_RUNNING_CONFIG
+        assert load_config_stage["output"]["display"] == f"```\n{REDACTED_RUNNING_CONFIG}\n```"
 
         persist_stage = next(stage for stage in stages if stage["name"] == "persist_backup")
-        assert "$9$AbCdEfGhIjKlMnOp" in persist_stage["input"]["running_config"]
+        assert persist_stage["input"]["running_config"] == REDACTED_RUNNING_CONFIG
 
 
 @pytest.mark.asyncio
