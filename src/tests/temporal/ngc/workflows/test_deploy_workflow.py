@@ -532,6 +532,13 @@ async def test_execute_workflow(
 
         backup_workflow_id = stages[-1]["child_workflows"][0]
         backup_handle = client.get_workflow_handle(backup_workflow_id)
+        backup_history = await backup_handle.fetch_history()
+        scheduled_activity_types = {
+            event.activity_task_scheduled_event_attributes.activity_type.name
+            for event in backup_history.events
+            if event.HasField("activity_task_scheduled_event_attributes")
+        }
+        assert "send_slack_message" not in scheduled_activity_types
 
         expected_backup_stages = [
             {
@@ -593,6 +600,7 @@ async def test_execute_workflow(
                 "input": {
                     "device_id": "mock_device_uuid",
                     "intended_config_commit_id": "mock_commit_id",
+                    "suppress_drift_notification": False,
                 },
                 "name": "check_drift",
                 "output": {
@@ -680,6 +688,7 @@ async def test_execute_workflow(
         expected_backup_input = {
             "device_id": "mock_device_uuid",
             "intended_config_commit_id": "mock_commit_id",
+            "suppress_drift_notification": False,
             "terminate_on_failure": False,
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
@@ -1246,6 +1255,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                 "input": {
                     "device_id": "mock_device_uuid",
                     "intended_config_commit_id": None,
+                    "suppress_drift_notification": True,
                 },
                 "name": "check_drift",
                 "output": {
@@ -1335,6 +1345,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
         expected_backup_input = {
             "device_id": "mock_device_uuid",
             "intended_config_commit_id": None,
+            "suppress_drift_notification": True,
             "terminate_on_failure": False,
             "trigger": "WORKFLOW",
             "user": "nv-config-manager-temporal",
@@ -1679,6 +1690,7 @@ nv set interface swp2 ip vrf test-vrf
         backup_handle = client.get_workflow_handle(backup_workflow_id)
         backup_input = await backup_handle.query("input")
         assert backup_input["intended_config_commit_id"] is None
+        assert backup_input["suppress_drift_notification"] is True
 
     # Reset state for other tests
     _newer_commit_mock_state["use_newer_commit"] = False

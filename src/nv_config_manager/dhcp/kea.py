@@ -122,8 +122,13 @@ class KeaClient:
                 "KEA Request timed out, are you running within a KEA Docker Container?"
             ) from exc
 
-    async def set_config(self, configuration: dict[str, Any], version: int = 4) -> None:
-        """Set the KEA DHCP Configuration."""
+    async def set_config(self, configuration: dict[str, Any], version: int = 4) -> str | None:
+        """Set the KEA DHCP Configuration.
+
+        Returns the SHA-256 hash of the effective configuration reported by KEA
+        (Kea 2.4+ returns this digest from ``config-set``). ``None`` is returned
+        when the running KEA server predates hash support and omits it.
+        """
         session = await self._get_session()
         try:
             # Set configuration in memory
@@ -136,6 +141,7 @@ class KeaClient:
                 result = await rsp.json()
                 if result[0]["result"] != 0:
                     raise KeaException(f"Failed to set configuration: {result[0]['text']}")
+                config_hash: str | None = result[0].get("arguments", {}).get("hash")
 
             # Persist configuration to disk
             data = {
@@ -150,6 +156,34 @@ class KeaClient:
                         f"Failed to persist updated configuration to disk: {result[0]['text']}"
                     )
 
+            return config_hash
+
+        except TimeoutError as exc:
+            raise TimeoutError(
+                "KEA Request timed out, are you running within a KEA Docker Container?"
+            ) from exc
+
+    async def get_config_hash(self, version: int = 4) -> str | None:
+        """Return the SHA-256 hash of the running KEA DHCP Configuration.
+
+        Uses KEA's ``config-hash-get`` command (Kea 2.4+) to detect configuration
+        drift cheaply, without comparing full ``config-get`` output (which
+        contains KEA-generated defaults). ``None`` is returned when the running
+        KEA server predates hash support and omits the digest.
+        """
+        data = {
+            "command": "config-hash-get",
+            "service": [f"dhcp{version}"],
+        }
+        session = await self._get_session()
+        try:
+            async with session.post(self.url, json=data) as rsp:
+                result = await rsp.json()
+                if result[0]["result"] != 0:
+                    raise KeaException(f"Failed to get configuration hash: {result[0]['text']}")
+                arguments: dict[str, Any] = result[0].get("arguments", {})
+                config_hash: str | None = arguments.get("hash")
+                return config_hash
         except TimeoutError as exc:
             raise TimeoutError(
                 "KEA Request timed out, are you running within a KEA Docker Container?"

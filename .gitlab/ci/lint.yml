@@ -59,6 +59,7 @@ lint-mr-installer:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "installer/**/*"
+        - pyproject.toml
       when: always
   image: $NVCM_CI_IMAGE_PYTHON_313
   before_script:

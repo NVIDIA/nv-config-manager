@@ -17,7 +17,7 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from temporalio import activity
@@ -53,6 +53,7 @@ def test_backup_input_optional_metadata_defaults_to_none() -> None:
     assert workflow_input.user_domain is None
     assert workflow_input.workflow_id is None
     assert workflow_input.intended_config_commit_id is None
+    assert workflow_input.suppress_drift_notification is False
     assert workflow_input.terminate_on_failure is False
     assert BackupInput.model_json_schema()["required"] == ["device_id", "trigger"]
 
@@ -138,6 +139,47 @@ async def mock_publish_nats(activity_input: PublishNatsInput) -> None:
 
 
 @pytest.mark.asyncio
+async def test_check_drift_suppresses_slack_notification() -> None:
+    device = await mock_get_network_device(GetNetworkDeviceInput(device_id="mock_device_uuid"))
+    with patch(
+        "nv_config_manager.temporal.common.mixins.stage.workflow.time",
+        return_value=0.0,
+    ):
+        workflow_instance = BackupWorkflow()
+    execute_activity = AsyncMock(
+        side_effect=[
+            device,
+            (
+                "mock intended config",
+                "mock_intended_commit_id",
+                "https://config-manager.example.com/device/mock_device_uuid/startup.yaml",
+            ),
+            "mock_diff",
+        ]
+    )
+
+    with patch(
+        "nv_config_manager.temporal.ngc.workflows.backup.workflow.execute_activity",
+        new=execute_activity,
+    ):
+        output = await BackupWorkflow.check_drift.__wrapped__(  # type: ignore[attr-defined]
+            workflow_instance,
+            BackupWorkflow.CheckDriftStageInput(
+                device_id="mock_device_uuid",
+                intended_config_commit_id=None,
+                suppress_drift_notification=True,
+            ),
+        )
+
+    assert output.has_drift is True
+    assert [call.args[0].__name__ for call in execute_activity.await_args_list] == [
+        "get_network_device",
+        "load_intended_configuration",
+        "perform_candidate_diff",
+    ]
+
+
+@pytest.mark.asyncio
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
     "nv_config_manager.temporal.ngc.workflows.backup.DEFAULT_ACTIVITY_RETRY_POLICY",
@@ -187,6 +229,13 @@ async def test_execute_workflow(
         result = await handle.result()
 
         assert result
+        history = await handle.fetch_history()
+        scheduled_activity_types = {
+            event.activity_task_scheduled_event_attributes.activity_type.name
+            for event in history.events
+            if event.HasField("activity_task_scheduled_event_attributes")
+        }
+        assert "send_slack_message" in scheduled_activity_types
         assert await handle.query("stages") == [
             {
                 "approval_threshold": 0,
@@ -247,6 +296,7 @@ async def test_execute_workflow(
                 "input": {
                     "device_id": "mock_device_uuid",
                     "intended_config_commit_id": None,
+                    "suppress_drift_notification": False,
                 },
                 "name": "check_drift",
                 "output": {

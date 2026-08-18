@@ -234,8 +234,27 @@ force-pushing it.
 - Follow [PEP 8](https://pep8.org/) style guidelines
 - Use type hints for all function signatures
 - Write docstrings in Google style format
-- Run `ruff check` and `mypy` before committing
+- Run `uv run ruff check` and `uv run mypy` before committing
 - Target Python 3.13+
+
+The repository's Ruff baseline and pinned version are defined in the root
+`pyproject.toml`. The installer extends that configuration from
+`installer/pyproject.toml`, uses the same pinned Ruff version, and adds only its
+package-specific test exclusions. Keep shared settings such as the Python
+target, line length, enabled rules, ignores, and formatter behavior in the root
+configuration so they cannot drift between the two packages.
+
+Run Ruff through each package's `uv` environment from the repository root:
+
+```bash
+# Root package
+uv run ruff format --check src/
+uv run ruff check src/
+
+# Installer package
+uv run --project installer ruff format --check installer/src/ installer/tests/
+uv run --project installer ruff check installer/src/ installer/tests/
+```
 
 ### TypeScript/JavaScript (UI)
 
