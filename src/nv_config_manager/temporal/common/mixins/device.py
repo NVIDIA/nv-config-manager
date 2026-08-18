@@ -45,9 +45,9 @@ class Platform(StrEnum):
     UFM = "ufm"
 
     @property
-    def nautobot_name(self) -> str:
-        """Return the Nautobot display name for this platform."""
-        _nautobot_names = {
+    def dcim_name(self) -> str:
+        """Return the DCIM display name for this platform."""
+        _dcim_names = {
             Platform.ARISTA_EOS: "Arista EOS",
             Platform.CUMULUS_LINUX: "Cumulus Linux",
             Platform.NV_OS: "NV-OS",
@@ -55,7 +55,7 @@ class Platform(StrEnum):
             Platform.JUNIPER_JUNOS: "Juniper Junos",
             Platform.UFM: "UFM",
         }
-        return _nautobot_names[self]
+        return _dcim_names[self]
 
 
 class DeviceBayData(BaseModel):
