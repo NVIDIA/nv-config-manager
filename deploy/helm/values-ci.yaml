@@ -72,6 +72,8 @@ monitoring:
     namespace: monitoring
   podMonitors:
     enabled: true
+    cnpg:
+      enabled: true
   probes:
     enabled: true
     blackboxExporterUrl: "blackbox:9115"

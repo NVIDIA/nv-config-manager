@@ -250,9 +250,9 @@ class NautobotClient(BaseNautobotClient):
             variables["device_ids"] = self._normalize_to_list(device_ids)
         if platform:
             variables["platform"] = (
-                [p.nautobot_name for p in platform]
+                [p.dcim_name for p in platform]
                 if isinstance(platform, list | tuple)
-                else [platform.nautobot_name]
+                else [platform.dcim_name]
             )
         if managed_only is not None:
             variables["managed_only"] = managed_only
