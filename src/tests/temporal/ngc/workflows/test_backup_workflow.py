@@ -115,6 +115,14 @@ async def mock_perform_candidate_diff_no_drift(
     return ""
 
 
+@activity.defn(name="perform_candidate_diff")
+async def mock_perform_candidate_diff_with_secret(
+    activity_input: DiffActivityInput,
+) -> str:
+    """Mock perform candidate diff activity returning a Junos secret value."""
+    return '+   authentication-key "$9$AbCdEfGhIjKlMnOp"; ## SECRET-DATA'
+
+
 @activity.defn(name="persist_config_backup")
 async def mock_persist_config_backup(activity_input: PersistConfigBackupInput) -> str:
     """Mock persist config backup activity."""
@@ -386,6 +394,134 @@ async def test_execute_workflow(
         search_attrs = desc.search_attributes
         for attr, val in expected_search_attributes.items():
             assert search_attrs[attr] == val
+
+
+REDACTED_RUNNING_CONFIG = 'system {\n    authentication-key "$9$<redacted>"; ## SECRET-DATA\n}\n'
+
+
+@activity.defn(name="load_running_configuration")
+async def mock_load_running_configuration_with_secret(device_data: NetworkDeviceData) -> str:
+    """Mock load_running_configuration, returning output as if already redacted."""
+    return REDACTED_RUNNING_CONFIG
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.backup.DEFAULT_ACTIVITY_RETRY_POLICY",
+    return_value=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.backup.timedelta", return_value=TEST_TIMEOUT)
+async def test_execute_workflow_persists_and_displays_already_redacted_running_config(
+    mock_timedelta,
+    mock_retry_policy,
+    mock_time,
+    env,
+):
+    """load_running_config passes the (already-redacted) activity result through unchanged."""
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_load_running_configuration_with_secret,
+            mock_load_intended_configuration,
+            mock_perform_candidate_diff,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_publish_nats,
+            mock_send_slack_message,
+        ],
+        activity_executor=ThreadPoolExecutor(100),
+    ):
+        input = BackupInput(
+            device_id="mock_device_uuid",
+            trigger=TriggerEnum.API,
+            user="test_user",
+            user_domain="nvidia.com",
+            workflow_id=None,
+            intended_config_commit_id=None,
+        )
+        workflow_id = str(uuid.uuid4())
+        handle: WorkflowHandle = await env.client.start_workflow(
+            BackupWorkflow.run,
+            input,
+            id=workflow_id,
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=10),
+        )
+
+        assert await handle.result()
+        stages = await handle.query("stages")
+
+        load_config_stage = next(
+            stage for stage in stages if stage["name"] == "load_running_configuration"
+        )
+        assert load_config_stage["output"]["running_config"] == REDACTED_RUNNING_CONFIG
+        assert load_config_stage["output"]["display"] == f"```\n{REDACTED_RUNNING_CONFIG}\n```"
+
+        persist_stage = next(stage for stage in stages if stage["name"] == "persist_backup")
+        assert persist_stage["input"]["running_config"] == REDACTED_RUNNING_CONFIG
+
+
+@pytest.mark.asyncio
+@patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
+@patch(
+    "nv_config_manager.temporal.ngc.workflows.backup.DEFAULT_ACTIVITY_RETRY_POLICY",
+    return_value=TEST_RETRY_POLICY,
+)
+@patch("nv_config_manager.temporal.ngc.workflows.backup.timedelta", return_value=TEST_TIMEOUT)
+async def test_execute_workflow_redacts_secrets_in_drift_diff(
+    mock_timedelta,
+    mock_retry_policy,
+    mock_time,
+    env,
+):
+    """check_drift redacts Junos secrets from both the diff field and its display."""
+    task_queue_name = str(uuid.uuid4())
+    async with Worker(
+        env.client,
+        task_queue=task_queue_name,
+        workflows=[BackupWorkflow],
+        activities=[
+            mock_get_network_device,
+            mock_load_running_configuration,
+            mock_load_intended_configuration,
+            mock_perform_candidate_diff_with_secret,
+            mock_persist_config_backup,
+            mock_record_backup_config_manager_plugin,
+            mock_publish_nats,
+            mock_send_slack_message,
+        ],
+        activity_executor=ThreadPoolExecutor(100),
+    ):
+        input = BackupInput(
+            device_id="mock_device_uuid",
+            trigger=TriggerEnum.API,
+            user="test_user",
+            user_domain="nvidia.com",
+            workflow_id=None,
+            intended_config_commit_id=None,
+        )
+        workflow_id = str(uuid.uuid4())
+        handle: WorkflowHandle = await env.client.start_workflow(
+            BackupWorkflow.run,
+            input,
+            id=workflow_id,
+            task_queue=task_queue_name,
+            run_timeout=timedelta(minutes=10),
+        )
+
+        assert await handle.result()
+        stages = await handle.query("stages")
+        check_drift_stage = next(stage for stage in stages if stage["name"] == "check_drift")
+
+        assert "$9$AbCdEfGhIjKlMnOp" not in check_drift_stage["output"]["diff"]
+        assert '"$9$<redacted>"' in check_drift_stage["output"]["diff"]
+        assert "$9$AbCdEfGhIjKlMnOp" not in check_drift_stage["output"]["display"]
+        assert '"$9$<redacted>"' in check_drift_stage["output"]["display"]
 
 
 @pytest.mark.asyncio

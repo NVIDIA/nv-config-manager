@@ -32,6 +32,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageWorkflowInput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.secret_redaction import redact_junos_secrets
 from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
@@ -213,6 +214,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        diff = redact_junos_secrets(diff)
 
         has_drift = bool(diff.strip())
         if not has_drift:
