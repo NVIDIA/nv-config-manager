@@ -501,6 +501,53 @@ def test_get_configuration_text_returns_hierarchical(juniper_conn):
     assert device.rpc.get_config.call_args.kwargs["options"]["format"] == "text"
 
 
+def test_get_running_configuration_handles_unwrapped_reply_root(juniper_conn):
+    """Real devices reply with <configuration-output> as the root, not nested."""
+    device = MagicMock()
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<configuration-output>system {\n    host-name RTR1;\n}</configuration-output>"
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        config = juniper_conn.get_running_configuration()
+    assert config == "system {\n    host-name RTR1;\n}\n"
+
+
+def test_get_running_configuration_falls_back_to_flattened_text_for_unknown_wrapper(
+    juniper_conn, caplog
+):
+    """An unrecognized reply wrapper still yields the config via flattened text.
+
+    A text-format reply carries nothing but the configuration body, so this is a
+    safety net for wrapper shapes not seen before, instead of silently returning
+    an empty backup.
+    """
+    device = MagicMock()
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<data>system {\n    host-name RTR1;\n}</data>"
+    )
+    with (
+        patch.object(juniper_conn, "_get_device", return_value=device),
+        caplog.at_level("WARNING"),
+    ):
+        config = juniper_conn.get_running_configuration()
+    assert config == "system {\n    host-name RTR1;\n}\n"
+    assert "Unexpected get-configuration reply shape" in caplog.text
+
+
+def test_get_running_configuration_keeps_secrets_raw(juniper_conn):
+    """get_running_configuration stays raw; the Config Store needs real secrets to apply config."""
+    device = MagicMock()
+    device.rpc.get_config.return_value = etree.fromstring(
+        "<configuration-information><configuration-output>"
+        "system {\n    root-authentication {\n        "
+        'encrypted-password "$6$abcDE12$secretHash"; ## SECRET-DATA\n    }\n}'
+        "</configuration-output></configuration-information>"
+    )
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        config = juniper_conn.get_running_configuration()
+    assert '"$6$abcDE12$secretHash"' in config
+
+
 def test_get_hostname_and_running_image_use_facts(juniper_conn):
     """Hostname and running image come from PyEZ facts."""
     device = MagicMock()

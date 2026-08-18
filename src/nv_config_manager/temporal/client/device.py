@@ -2510,6 +2510,27 @@ class JuniperConnection(NetworkConnection):
             ) from error
         return device.facts.get(name)
 
+    def _extract_configuration_output(self, element: Any) -> str | None:
+        """Return text-format config from a PyEZ reply root element."""
+        if element.tag == "configuration-output":
+            direct: str | None = element.text
+            if direct:
+                return direct
+        else:
+            nested: str | None = element.findtext(".//configuration-output")
+            if nested:
+                return nested
+        fallback = "".join(element.itertext()).strip()
+        if not fallback:
+            return None
+        logger.warning(
+            "Unexpected get-configuration reply shape from %s (root tag <%s>); "
+            "fell back to flattened text content.",
+            self._host,
+            element.tag,
+        )
+        return fallback
+
     def _get_config(self, fmt: str) -> str:
         """Return the committed configuration in the requested format."""
         device = self._get_device()
@@ -2521,8 +2542,7 @@ class JuniperConnection(NetworkConnection):
             ) from error
         if isinstance(result, str):
             return result
-        # text/set replies wrap the body in <configuration-information>.
-        text: str | None = result.findtext("configuration-output")
+        text = self._extract_configuration_output(result)
         return text if text is not None else ""
 
     def _load_full_config(self, cu: Config, new_configuration: str) -> None:
@@ -2570,7 +2590,11 @@ class JuniperConnection(NetworkConnection):
         """Return the running configuration in hierarchical (curly-brace) text.
 
         Text is the full desired-state format consumed by ``load update``, so a
-        stored backup can be re-applied through the full-config path.
+        stored backup can be re-applied through the full-config path. This includes
+        the real (unredacted) Junos ``$``-format secret values, since the Config
+        Store that persists it is RBAC-locked to GNI and needs them to apply
+        configuration. Callers that render this in less-trusted workflow output must
+        redact it first with ``nv_config_manager.temporal.common.secret_redaction``.
         """
         return self._get_config("text").strip() + "\n"
 
@@ -2747,9 +2771,7 @@ class JuniperConnection(NetworkConnection):
             raise NetworkDeviceException(
                 f"Failed to read rescue configuration on {self._host}: {error}"
             ) from error
-        text = got.findtext("configuration-information/configuration-output")
-        if text is None:
-            text = got.findtext("configuration-output")
+        text = self._extract_configuration_output(got)
         return text if text else None
 
     @staticmethod
