@@ -136,7 +136,8 @@ def sync_env(mocker, tmp_path):
     heartbeat._last_successful_reconciliation = None
 
     kea = MagicMock()
-    kea.set_config = AsyncMock()
+    kea.set_config = AsyncMock(return_value="HASH")
+    kea.get_config_hash = AsyncMock(return_value="HASH")
     kea.close = AsyncMock()
 
     redis = MagicMock()
