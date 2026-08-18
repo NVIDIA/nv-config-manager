@@ -70,9 +70,6 @@ def _make_mock_connection(
 ) -> MagicMock:
     """Return a mock NetworkConnection with configurable outputs."""
     conn = MagicMock()
-    # Activities use `with NetworkConnection...`; without this, __enter__ returns a
-    # fresh MagicMock and the configured return values never reach the activity.
-    conn.__enter__.return_value = conn
     if command_outputs is not None:
         conn.run_diagnostic_command.side_effect = lambda name: command_outputs[name]
     else:

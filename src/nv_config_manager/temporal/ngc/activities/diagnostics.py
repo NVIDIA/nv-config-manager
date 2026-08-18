@@ -16,6 +16,7 @@
 
 import asyncio
 import time
+from contextlib import closing
 from datetime import timedelta
 
 from pydantic import BaseModel
@@ -195,7 +196,7 @@ def run_diagnostic_commands(activity_input: RunDiagnosticsInput) -> RunDiagnosti
         activity_input.commands,
     )
     outputs: dict[str, str] = {}
-    with NetworkConnection.from_device_data(activity_input.device_data) as connection:
+    with closing(NetworkConnection.from_device_data(activity_input.device_data)) as connection:
         for name in valid_commands:
             try:
                 outputs[name] = connection.run_diagnostic_command(name)
@@ -227,7 +228,7 @@ def collect_tech_support_bundle(activity_input: TechSupportInput) -> TechSupport
         elapsed = int(time.monotonic() - start)
         activity.heartbeat(f"Generating cl-support bundle on {device_name} ({elapsed}s elapsed)...")
 
-    with NetworkConnection.from_device_data(activity_input.device_data) as connection:
+    with closing(NetworkConnection.from_device_data(activity_input.device_data)) as connection:
         content, cl_support_log = connection.get_tech_support_bundle(_heartbeat)
 
     # Store raw bytes in Redis; never transmit them through Temporal.
