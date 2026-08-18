@@ -41,14 +41,15 @@ promote_attest="${CI_PROJECT_DIR}/promote.env"
 chart_attest="${CI_PROJECT_DIR}/chart.env"
 digest_attest="${CI_PROJECT_DIR}/digests.env"
 for f in "$promote_attest" "$chart_attest" "$digest_attest"; do
-    [[ -f "$f" ]] || { echo "ERROR: missing attestation artifact ${f}"; exit 1; }
+    [[ -f "$f" ]] || { echo "ERROR: missing attestation artifact ${f}" >&2; exit 1; }
 done
 
 attest() {
     local key="$1" file="$2" val
     val="$(grep -m1 "^${key}=" "$file" | cut -d= -f2- || true)"
-    [[ -n "$val" ]] || { echo "ERROR: ${key} missing from $(basename "$file")"; exit 1; }
+    [[ -n "$val" ]] || { echo "ERROR: ${key} missing from $(basename "$file")" >&2; exit 1; }
     printf '%s' "$val"
+    return 0
 }
 
 PR_NUM="$(attest PR_NUM "$promote_attest")"
@@ -93,13 +94,13 @@ if git ls-remote --heads origin "${NVCM_ENV_BRANCH}" | grep -q "${NVCM_ENV_BRANC
     git fetch origin "${NVCM_ENV_BRANCH}"
     git checkout "${NVCM_ENV_BRANCH}"
 else
-    echo "ERROR: env branch '${NVCM_ENV_BRANCH}' does not exist in ${values_repo_display}."
+    echo "ERROR: env branch '${NVCM_ENV_BRANCH}' does not exist in ${values_repo_display}." >&2
     echo "Seed it from main first (see the downstream values repository's README migration steps)."
     exit 1
 fi
 
 if [[ ! -f "$state_file" ]]; then
-    echo "ERROR: ${state_file} not found on ${NVCM_ENV_BRANCH}; the env is not seeded."
+    echo "ERROR: ${state_file} not found on ${NVCM_ENV_BRANCH}; the env is not seeded." >&2
     exit 1
 fi
 
@@ -110,7 +111,7 @@ fi
 # never validated - fail closed and let the operator re-run.
 current_env_rev="$(git rev-parse HEAD)"
 if [[ "$current_env_rev" != "$ENV_BRANCH_REVISION" ]]; then
-    echo "ERROR: ${NVCM_ENV_BRANCH} moved since the render gate validated it."
+    echo "ERROR: ${NVCM_ENV_BRANCH} moved since the render gate validated it." >&2
     echo "  validated: ${ENV_BRANCH_REVISION}"
     echo "  current:   ${current_env_rev}"
     echo "Someone pushed to the env branch mid-promote, so its overrides are"
@@ -122,7 +123,7 @@ fi
 current_hold=$(yq -r '.hold // false' "$state_file")
 current_occupant=$(yq -r '.occupant // "none"' "$state_file")
 if [[ "$current_hold" = "true" && "$current_occupant" != "$occupant" ]]; then
-    echo "ERROR: ${NVCM_ENV} is on hold by '${current_occupant}' (deploy-state hold: true)."
+    echo "ERROR: ${NVCM_ENV} is on hold by '${current_occupant}' (deploy-state hold: true)." >&2
     echo "Coordinate with them or have them release the hold before promoting."
     exit 1
 fi

@@ -26,7 +26,7 @@ import click
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, configure_logging, get_logger
-from nv_config_manager.dhcp.kea import KeaClient
+from nv_config_manager.dhcp.kea import KeaClient, KeaException
 from nv_config_manager.dhcp.kea_dhcp_confgen import generate_config, inject_lease_db_config
 from nv_config_manager.dhcp.metrics import DHCP_CACHE_REFRESH_ERRORS
 from nv_config_manager.dhcp.nautobot import NautobotClient
@@ -208,6 +208,41 @@ def refresh_kea_configuration(
     asyncio.run(_refresh_loop_async(ip_version, check, refresh_interval))
 
 
+async def _apply_and_verify_kea_config(
+    kea_client: KeaClient,
+    config: dict[str, Any],
+    ip_version: int,
+) -> str | None:
+    """Apply the desired configuration to KEA and return its verified hash.
+
+    KEA (2.4+) returns the SHA-256 hash of the effective configuration from
+    ``config-set``. Before treating the sync as successful, the running
+    configuration is confirmed against that hash via ``config-hash-get`` so a
+    configuration that was rolled back or only partially applied surfaces as an
+    error rather than being silently trusted. The verified effective hash is
+    returned to track for subsequent drift detection.
+    """
+    applied_hash = await kea_client.set_config(config, version=ip_version)
+    try:
+        effective_hash = await kea_client.get_config_hash(version=ip_version)
+    except (KeaException, TimeoutError) as exc:
+        # config-set already succeeded, so the desired config is applied and
+        # persisted -- only the verification read failed. get_config_hash
+        # re-raises TimeoutError (it does not wrap it in KeaException), and the
+        # refresh loop already swallows both. Aborting here would crash-loop
+        # the sidecar over a config that is actually applied. Returning None
+        # leaves the next drift check to reapply and re-verify.
+        logger.warning(f"Could not verify the applied KEA configuration hash: {exc}")
+        return None
+    if applied_hash is not None and effective_hash != applied_hash:
+        raise KeaException(
+            f"KEA effective configuration hash ({effective_hash}) does not match "
+            f"the hash returned by config-set ({applied_hash}); "
+            "the configuration was not applied cleanly."
+        )
+    return effective_hash
+
+
 async def _sync_kea_configuration_async(
     ip_version: int,
     refresh_interval: int,
@@ -232,9 +267,10 @@ async def _sync_kea_configuration_async(
         # so that secrets are not stored in the Redis cache
         config = inject_lease_db_config(config, ip_version)
 
-        # Run once
+        # Run once. The startup path always applies the desired Redis config and
+        # captures a fresh effective hash, which keeps a config-sync restart safe.
         logger.info(f"Setting initial KEA DHCPv{ip_version} Configuration from Redis.")
-        await kea_client.set_config(config, version=ip_version)
+        expected_hash = await _apply_and_verify_kea_config(kea_client, config, ip_version)
 
         if refresh_interval:
             logger.info(
@@ -254,10 +290,29 @@ async def _sync_kea_configuration_async(
                     new_config = inject_lease_db_config(new_config, ip_version)
                     if new_config != previous_config:
                         logger.info("Configuration changed, updating KEA DHCP Configuration.")
-                        await kea_client.set_config(new_config, version=ip_version)
+                        expected_hash = await _apply_and_verify_kea_config(
+                            kea_client, new_config, ip_version
+                        )
                         previous_config = new_config
-                    elif debug:
-                        logger.info("No configuration changes detected.")
+                    else:
+                        # Redis is unchanged, but KEA (e.g. the Kea container) may
+                        # have restarted from its bootstrap config while this
+                        # sidecar kept running. Compare KEA's effective config hash
+                        # against the last applied hash and reapply on drift.
+                        running_hash = await kea_client.get_config_hash(version=ip_version)
+                        if running_hash != expected_hash:
+                            logger.warning(
+                                "KEA running configuration hash (%s) does not match the "
+                                "expected hash (%s); reapplying desired configuration "
+                                "(KEA may have restarted).",
+                                running_hash,
+                                expected_hash,
+                            )
+                            expected_hash = await _apply_and_verify_kea_config(
+                                kea_client, previous_config, ip_version
+                            )
+                        elif debug:
+                            logger.info("No configuration changes detected.")
                 except Exception as exc:
                     DHCP_CACHE_REFRESH_ERRORS.labels(ip_version=str(ip_version)).inc()
                     logger.error(f"Error refreshing the KEA config: {exc}")

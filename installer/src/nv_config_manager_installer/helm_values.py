@@ -817,7 +817,11 @@ def _build_nautobot(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
 def _build_cnpg(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the ``cnpg`` section."""
     svc = config.services
-    section: dict[str, Any] = {"enabled": True, "monitoring": {"enabled": False}}
+    # CNPG PodMonitors are chart-managed under monitoring.podMonitors.cnpg
+    # (see templates/monitoring.yaml); do not emit cnpg.monitoring.
+    section: dict[str, Any] = {
+        "enabled": True,
+    }
     backup_cfg = config.infrastructure.cnpg_s3_backup
     if backup_cfg.enabled:
         section["backup"] = {
@@ -998,7 +1002,12 @@ def build_values(
             prometheus_namespace = config.cluster.namespace
         values["monitoring"] = {
             "enabled": True,
-            "podMonitors": {"enabled": True},
+            "podMonitors": {
+                "enabled": True,
+                # Chart CNPG PodMonitors also require monitoring.podMonitors.cnpg.enabled
+                # (plus cnpg.enabled and each cluster's enabled flag).
+                "cnpg": {"enabled": True},
+            },
             "probes": {"enabled": True},
             "prometheus": {"namespace": prometheus_namespace},
         }

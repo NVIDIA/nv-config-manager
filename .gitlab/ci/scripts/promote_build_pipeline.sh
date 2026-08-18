@@ -32,7 +32,7 @@ set -euo pipefail
 # here: a run that reuses an existing successful build never needs it.
 
 if ! printf '%s' "$NVCM_PROMOTE_PR" | grep -Eq '^[0-9]+$'; then
-    echo "ERROR: NVCM_PROMOTE_PR must be a PR number, got '${NVCM_PROMOTE_PR}'"
+    echo "ERROR: NVCM_PROMOTE_PR must be a PR number, got '${NVCM_PROMOTE_PR}'" >&2
     exit 1
 fi
 
@@ -64,6 +64,7 @@ temporal-ui|nv-config-manager-temporal-ui"
 
 api_get() {
     curl -fsS --max-time 30 -H "PRIVATE-TOKEN: ${NVCM_MIRROR_API_TOKEN}" "$@"
+    return $?
 }
 
 # -----------------------------------------------------------------------------
@@ -73,7 +74,7 @@ api_get() {
 # -----------------------------------------------------------------------------
 PR_SHA="$(git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${PR_REF}" | cut -f1)"
 if [[ -z "$PR_SHA" ]]; then
-    echo "ERROR: ${PR_REF} does not exist on the mirror."
+    echo "ERROR: ${PR_REF} does not exist on the mirror." >&2
     echo "Either the PR is closed/merged, copy-pr-bot has not vetted it, or"
     echo "pull-mirroring has not replicated the branch yet."
     exit 1
@@ -91,7 +92,7 @@ pr_json="$(curl -fsS --max-time 10 "https://api.github.com/repos/${github_repo}/
 if [[ -n "$pr_json" ]]; then
     pr_state="$(printf '%s' "$pr_json" | jq -r '.state // empty')"
     if [[ "$pr_state" != "open" ]]; then
-        echo "ERROR: upstream PR #${PR_NUM} is '${pr_state:-unknown}', not open. Refusing to promote."
+        echo "ERROR: upstream PR #${PR_NUM} is '${pr_state:-unknown}', not open. Refusing to promote." >&2
         exit 1
     fi
     # Surface (do NOT silently deploy) a vetted snapshot older than PR HEAD. We
@@ -104,7 +105,7 @@ if [[ -n "$pr_json" ]]; then
         echo "      snapshot (pull-request/${PR_NUM}) is ${PR_SHA}. Promoting the VETTED"
         echo "      snapshot; to deploy newer commits, have them re-vetted (/ok to test)."
         if [[ "${NVCM_PROMOTE_REQUIRE_PR_HEAD:-false}" = "true" ]]; then
-            echo "ERROR: NVCM_PROMOTE_REQUIRE_PR_HEAD=true and the snapshot lags PR HEAD."
+            echo "ERROR: NVCM_PROMOTE_REQUIRE_PR_HEAD=true and the snapshot lags PR HEAD." >&2
             exit 1
         fi
     fi
@@ -113,7 +114,7 @@ elif [[ "${NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE:-false}" = "true" ]]; then
 else
     # Fail closed: don't promote a possibly-closed PR just because GitHub was
     # unreachable. Operator can explicitly override for a GitHub outage.
-    echo "ERROR: could not confirm PR #${PR_NUM} is open (GitHub unreachable or rate-limited)."
+    echo "ERROR: could not confirm PR #${PR_NUM} is open (GitHub unreachable or rate-limited)." >&2
     echo "Re-run when GitHub is reachable, or set NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE=true to override."
     exit 1
 fi
@@ -159,7 +160,7 @@ if [[ -z "$BUILD_PIPELINE_ID" ]]; then
     trigger_response="$(printf '%s' "$trigger_raw" | sed '$d')"
     BUILD_PIPELINE_ID="$(printf '%s' "$trigger_response" | jq -r '.id // empty' 2>/dev/null || true)"
     if [[ -z "$BUILD_PIPELINE_ID" ]]; then
-        echo "ERROR: failed to trigger build pipeline (HTTP ${trigger_http:-000}):"
+        echo "ERROR: failed to trigger build pipeline (HTTP ${trigger_http:-000}):" >&2
         printf '%s\n' "$trigger_response"
         echo ""
         echo "Common causes:"
@@ -183,13 +184,13 @@ if [[ -z "$BUILD_PIPELINE_ID" ]]; then
                 break
                 ;;
             failed|canceled|skipped)
-                echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} ended with status '${status}'."
+                echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} ended with status '${status}'." >&2
                 echo "See ${CI_PROJECT_URL}/-/pipelines/${BUILD_PIPELINE_ID}"
                 exit 1
                 ;;
             *)
                 if [[ "$elapsed" -ge "$poll_timeout" ]]; then
-                    echo "ERROR: timed out after ${poll_timeout}s waiting for build pipeline ${BUILD_PIPELINE_ID} (status: ${status})."
+                    echo "ERROR: timed out after ${poll_timeout}s waiting for build pipeline ${BUILD_PIPELINE_ID} (status: ${status})." >&2
                     exit 1
                 fi
                 echo "Build pipeline ${BUILD_PIPELINE_ID} status: ${status} (${elapsed}s elapsed)"
@@ -212,7 +213,7 @@ build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref')"
 build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status')"
 build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source')"
 if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status" != "success" ]]; then
-    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch."
+    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch." >&2
     echo "  got ref=${build_ref} sha=${build_sha} status=${build_status}"
     echo "  expected ref=${PR_REF} sha=${PR_SHA} status=success"
     echo "Re-run with NVCM_PROMOTE_REUSE_BUILD=false to force a fresh build."
@@ -220,7 +221,7 @@ if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status" 
 fi
 if ! printf '%s' "$allowed_build_sources" \
     | jq -e --arg s "$build_source" 'index($s) != null' >/dev/null; then
-    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'."
+    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'." >&2
     echo "Expected a deliberately triggered pipeline ($(printf '%s' "$allowed_build_sources" | jq -r 'join(", ")'))."
     exit 1
 fi
@@ -245,7 +246,7 @@ while IFS='|' read -r target image; do
     job_name="pr-build-image: [${target}, ${image}]"
     job_json="$(printf '%s' "$jobs_json" | jq -c --arg name "$job_name" '[.[] | select(.name == $name and .status == "success")] | sort_by(.id) | last // empty')"
     if [[ -z "$job_json" || "$job_json" = "null" ]]; then
-        echo "ERROR: no successful '${job_name}' job in pipeline ${BUILD_PIPELINE_ID}."
+        echo "ERROR: no successful '${job_name}' job in pipeline ${BUILD_PIPELINE_ID}." >&2
         exit 1
     fi
     job_id="$(printf '%s' "$job_json" | jq -r '.id')"
@@ -253,7 +254,7 @@ while IFS='|' read -r target image; do
     if [[ -n "$expires_at" ]]; then
         expire_epoch="$(date -u -d "$expires_at" +%s 2>/dev/null || date -u -D "%Y-%m-%dT%H:%M:%S" -d "${expires_at%%.*}" +%s 2>/dev/null || echo 0)"
         if [[ "$expire_epoch" != "0" && "$expire_epoch" -le "$now_epoch" ]]; then
-            echo "ERROR: artifacts of job ${job_id} (${job_name}) have expired."
+            echo "ERROR: artifacts of job ${job_id} (${job_name}) have expired." >&2
             echo "Re-run with NVCM_PROMOTE_REUSE_BUILD=false to force a fresh build."
             exit 1
         fi
@@ -270,7 +271,7 @@ EOF
 # rebuilding from PR source.
 chart_job_id="$(printf '%s' "$jobs_json" | jq -r '[.[] | select(.name == "pr-build-chart" and .status == "success")] | sort_by(.id) | last | .id // empty')"
 if [[ -z "$chart_job_id" ]]; then
-    echo "ERROR: no successful 'pr-build-chart' job in pipeline ${BUILD_PIPELINE_ID}."
+    echo "ERROR: no successful 'pr-build-chart' job in pipeline ${BUILD_PIPELINE_ID}." >&2
     exit 1
 fi
 echo "CHART_BUILD_JOB_ID=${chart_job_id}" >> promote.env
