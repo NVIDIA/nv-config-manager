@@ -61,6 +61,20 @@ async def test_devices_to_schedule(graphql_query_mock):
                         "status": {"name": "Provisioned"},
                     }
                 },
+                {
+                    "device": {
+                        "id": "device6",
+                        "platform": {"name": "Juniper Junos"},
+                        "status": {"name": "Active"},
+                    }
+                },
+                {
+                    "device": {
+                        "id": "device7",
+                        "platform": {"name": "Juniper Junos"},
+                        "status": {"name": "Inactive"},
+                    }
+                },
             ]
         }
     }
@@ -69,7 +83,7 @@ async def test_devices_to_schedule(graphql_query_mock):
     scheduler = BackupScheduler()
     devices = await scheduler.devices_to_schedule()
 
-    assert devices == {"device1", "device2"}
+    assert devices == {"device1", "device2", "device6"}
 
 
 @pytest.mark.asyncio

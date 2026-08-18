@@ -1586,6 +1586,7 @@ def test_workflow_types():
     # workflow creation
     assert {"BackupWorkflow", "DeployWorkflow"}.issubset(workflow_types)
     assert "HelloWorldRunning" not in workflow_types
+    assert "TenantDeployWorkflow" in workflow_types
 
 
 @patch("nv_config_manager.temporal.api.dynamic_endpoints.RBACConfig")
@@ -1607,6 +1608,7 @@ def test_workflow_metadata(mock_dynamic_rbac_config):
 
     workflows_by_name = {workflow["name"]: workflow for workflow in response["workflows"]}
     assert "HelloWorldRunning" not in workflows_by_name
+    assert "TenantDeployWorkflow" not in workflows_by_name
     backup_workflow = workflows_by_name["BackupWorkflow"]
     assert backup_workflow["display_name"] == "Configuration Backup"
     assert backup_workflow["description"]
@@ -1616,6 +1618,12 @@ def test_workflow_metadata(mock_dynamic_rbac_config):
     assert backup_workflow["input_class"] == "BackupInput"
     assert backup_workflow["read_roles"] == ["BackupWorkflow", "reader"]
     assert backup_workflow["execute_roles"] == ["BackupWorkflow", "executor"]
+
+
+def test_tenant_deploy_endpoint_is_not_registered():
+    """Do not expose the internal Tenant Deploy child workflow through REST."""
+    route_paths = {path for route in app.routes if (path := getattr(route, "path", None))}
+    assert "/v1/workflow/ngc/tenant-deploy" not in route_paths
 
 
 @patch("nv_config_manager.common.auth.x509.load_pem_x509_certificate")

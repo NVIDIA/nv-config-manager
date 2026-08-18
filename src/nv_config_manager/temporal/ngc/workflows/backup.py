@@ -32,6 +32,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
     StageWorkflowInput,
     stage_executor,
 )
+from nv_config_manager.temporal.common.secret_redaction import redact_junos_secrets
 from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
@@ -85,6 +86,10 @@ class BackupInput(StageWorkflowInput):
     )
     intended_config_commit_id: str | None = Field(
         default=None, description="Config Store commit containing the intended configuration."
+    )
+    suppress_drift_notification: bool = Field(
+        default=False,
+        description="Suppress the Slack notification when configuration drift is detected.",
     )
 
 
@@ -166,6 +171,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
 
         device_id: str
         intended_config_commit_id: str | None
+        suppress_drift_notification: bool
 
     class CheckDriftStageOutput(StageOutput):
         """Check Drift Stage Output."""
@@ -208,22 +214,23 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
+        diff = redact_junos_secrets(diff)
 
         has_drift = bool(diff.strip())
         if not has_drift:
             markdown = "No drift detected between running and intended configuration."
         else:
             markdown = f"Configuration Drift Detected:\n```\n{diff}\n```"
-            # Alert in slack while we're here!
-            await workflow.execute_activity(
-                send_slack_message,
-                SlackMessageInput(
-                    message=f"Configuration Drift Detected on {result.device.name}, see workflow link for details.",
-                    link_workflow=True,
-                ),
-                start_to_close_timeout=timedelta(seconds=30),
-                retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
-            )
+            if not stage_input.suppress_drift_notification:
+                await workflow.execute_activity(
+                    send_slack_message,
+                    SlackMessageInput(
+                        message=f"Configuration Drift Detected on {result.device.name}, see workflow link for details.",
+                        link_workflow=True,
+                    ),
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
+                )
         config_path = result.device.intended_config_path
         markdown = f"Loaded intended configuration from [{config_path}]({url}).\n{markdown}"
 
@@ -304,6 +311,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
                 BackupWorkflow.CheckDriftStageInput(
                     device_id=workflow_input.device_id,
                     intended_config_commit_id=workflow_input.intended_config_commit_id,
+                    suppress_drift_notification=workflow_input.suppress_drift_notification,
                 )
             ),
         )

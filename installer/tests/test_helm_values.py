@@ -1075,6 +1075,9 @@ class TestMonitoringHelmValues:
         )
         values = _gen(config)
         assert values["monitoring"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["cnpg"]["enabled"] is True
+        assert "monitoring" not in values["cnpg"]
         assert values["monitoring"]["prometheus"]["namespace"] == "monitoring"
 
     def test_monitoring_enabled_honors_custom_prometheus_namespace(self):

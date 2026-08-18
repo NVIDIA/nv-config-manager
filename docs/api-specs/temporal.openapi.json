@@ -21,6 +21,12 @@
             "description": "Config Store commit containing the intended configuration.",
             "title": "Intended Config Commit Id"
           },
+          "suppress_drift_notification": {
+            "default": false,
+            "description": "Suppress the Slack notification when configuration drift is detected.",
+            "title": "Suppress Drift Notification",
+            "type": "boolean"
+          },
           "terminate_on_failure": {
             "default": false,
             "description": "Terminate the workflow instead of waiting to retry a failed stage.",
@@ -933,6 +939,7 @@
           "cumulus-linux",
           "nv-os",
           "mlnx-os",
+          "juniper-junos",
           "ufm"
         ],
         "title": "Platform",
@@ -1397,15 +1404,23 @@
             "type": "string"
           },
           "overlay_id": {
-            "description": "Identifier of the SpX overlay whose VRF will be assigned to the device and ports.",
-            "title": "Overlay ID",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the SpX overlay whose VRF will be assigned to the device and ports. Omit the overlay_id property or explicitly set it to null to remove the selected ports' current SpX assignment.",
+            "title": "Overlay ID"
           },
           "port_names": {
             "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "title": "Port Names",
             "type": "array"
           },
@@ -1416,7 +1431,6 @@
           }
         },
         "required": [
-          "overlay_id",
           "device",
           "port_names",
           "site"
@@ -1511,15 +1525,23 @@
             "type": "string"
           },
           "overlay_id": {
-            "description": "Identifier of the SpX overlay to assign and deploy tenant configuration for.",
-            "title": "Overlay ID",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier of the SpX overlay to assign and deploy tenant configuration for. Omit the overlay_id property or explicitly set it to null to remove the selected ports' current SpX assignment.",
+            "title": "Overlay ID"
           },
           "port_names": {
             "description": "Names of the device interfaces to assign to the overlay.",
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "title": "Port Names",
             "type": "array"
           },
@@ -1530,7 +1552,6 @@
           }
         },
         "required": [
-          "overlay_id",
           "device_id",
           "port_names",
           "site"
@@ -1738,90 +1759,6 @@
           "name"
         ],
         "title": "Tenant",
-        "type": "object"
-      },
-      "TenantDeployInput": {
-        "description": "Tenant Config Deployment Workflow Input Definiton.",
-        "oneOf": [
-          {
-            "properties": {
-              "intended_config_commit_id": {
-                "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              "tenant_config_commit_id": {
-                "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-                "pattern": "^\\d+$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "tenant_config_commit_id",
-              "intended_config_commit_id"
-            ]
-          },
-          {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "tenant_config_commit_id"
-                  ]
-                },
-                {
-                  "required": [
-                    "intended_config_commit_id"
-                  ]
-                }
-              ]
-            }
-          }
-        ],
-        "properties": {
-          "device": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "$ref": "#/components/schemas/NetworkDeviceData"
-              }
-            ],
-            "description": "Identifier or preloaded data for the network device to configure.",
-            "title": "Device"
-          },
-          "intended_config_commit_id": {
-            "anyOf": [
-              {
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional config-store commit ID for the intended startup configuration from the same render snapshot as tenant_config_commit_id. Must be supplied with tenant_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-            "title": "Intended Config Commit Id"
-          },
-          "tenant_config_commit_id": {
-            "anyOf": [
-              {
-                "pattern": "^\\d+$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional config-store commit ID for the tenant configuration. Must be supplied with intended_config_commit_id; omit both to deploy the latest tenant and intended configurations.",
-            "title": "Tenant Config Commit Id"
-          }
-        },
-        "required": [
-          "device"
-        ],
-        "title": "TenantDeployInput",
         "type": "object"
       },
       "TriggerEnum": {
@@ -4904,7 +4841,7 @@
     },
     "/v1/workflow/ngc/spx_overlay_assignment": {
       "post": {
-        "description": "Assign a SpX Overlay/VRF to a device and its specified ports",
+        "description": "Change or remove a SpX Overlay/VRF assignment on device ports",
         "operationId": "spxoverlayassignmentworkflow_endpoint_v1_workflow_ngc_spx_overlay_assignment_post",
         "requestBody": {
           "content": {
@@ -5045,7 +4982,7 @@
     },
     "/v1/workflow/ngc/spx_overlay_tenant_change": {
       "post": {
-        "description": "Assign a SpX Overlay to a device and deploy tenant configuration",
+        "description": "Change or remove a SpX Overlay assignment and deploy tenant configuration",
         "operationId": "spxoverlaytenantchangeworkflow_endpoint_v1_workflow_ngc_spx_overlay_tenant_change_post",
         "requestBody": {
           "content": {
@@ -5132,53 +5069,6 @@
           }
         ],
         "summary": "Execute SwitchOSUpgradeWorkflow",
-        "tags": [
-          "workflow"
-        ]
-      }
-    },
-    "/v1/workflow/ngc/tenant-deploy": {
-      "post": {
-        "description": "Deploy tenant configuration to network device without approval",
-        "operationId": "tenantdeployworkflow_endpoint_v1_workflow_ngc_tenant_deploy_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TenantDeployInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Execute TenantDeployWorkflow",
         "tags": [
           "workflow"
         ]

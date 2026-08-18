@@ -39,6 +39,7 @@ from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.client.nautobot import NautobotClient, NautobotException
+from nv_config_manager.temporal.common.mixins.device import Platform
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.common.search_attributes import (
     EXECUTE_ROLES_SEARCH_ATTRIBUTE,
@@ -70,7 +71,12 @@ query ($is_aggregate_managed: Boolean) {
   }
 }
 """
-    SUPPORTED_PLATFORMS = ["Arista EOS", "Cumulus Linux", "NV-OS"]
+    SUPPORTED_PLATFORMS = [
+        Platform.ARISTA_EOS.dcim_name,
+        Platform.CUMULUS_LINUX.dcim_name,
+        Platform.NV_OS.dcim_name,
+        Platform.JUNIPER_JUNOS.dcim_name,
+    ]
     STATUSES = ["Provisioned", "Active"]
     SCHEDULE_PREFIX = "backup-"
     # Run every 12 hours, with a jitter of 1 hour to avoid all devices being scheduled at the same time

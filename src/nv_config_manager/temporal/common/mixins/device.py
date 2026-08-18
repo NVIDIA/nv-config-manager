@@ -41,19 +41,21 @@ class Platform(StrEnum):
     CUMULUS_LINUX = "cumulus-linux"
     NV_OS = "nv-os"
     MLNX_OS = "mlnx-os"
+    JUNIPER_JUNOS = "juniper-junos"
     UFM = "ufm"
 
     @property
-    def nautobot_name(self) -> str:
-        """Return the Nautobot display name for this platform."""
-        _nautobot_names = {
+    def dcim_name(self) -> str:
+        """Return the DCIM display name for this platform."""
+        _dcim_names = {
             Platform.ARISTA_EOS: "Arista EOS",
             Platform.CUMULUS_LINUX: "Cumulus Linux",
             Platform.NV_OS: "NV-OS",
             Platform.MLNX_OS: "MLNX-OS",
+            Platform.JUNIPER_JUNOS: "Juniper Junos",
             Platform.UFM: "UFM",
         }
-        return _nautobot_names[self]
+        return _dcim_names[self]
 
 
 class DeviceBayData(BaseModel):
@@ -183,6 +185,8 @@ class NetworkDeviceData(DeviceData):
         if self.platform == Platform.NV_OS:
             return "startup.yaml"
         if self.platform == Platform.MLNX_OS:
+            return "full-config"
+        if self.platform == Platform.JUNIPER_JUNOS:
             return "full-config"
         if self.platform == Platform.UFM:
             return ""
