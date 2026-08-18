@@ -2371,7 +2371,7 @@ cnpg:
       topologyKey: kubernetes.io/hostname
     backup:
       enabled: false
-      schedule: "0 0 * * *" # Daily at midnight
+      schedule: "0 0 0 * * *" # Daily at midnight; CNPG cron takes 6 fields (leading seconds)
       retentionPolicy: "30d"
       target: preferStandby # preferStandby or primary
   # Temporal visibility database cluster
@@ -2402,7 +2402,7 @@ cnpg:
       topologyKey: kubernetes.io/hostname
     backup:
       enabled: false
-      schedule: "0 0 * * *"
+      schedule: "0 0 0 * * *"
       retentionPolicy: "30d"
       target: preferStandby
   # Config Store Service database cluster
@@ -2433,7 +2433,7 @@ cnpg:
       topologyKey: kubernetes.io/hostname
     backup:
       enabled: false
-      schedule: "0 0 * * *"
+      schedule: "0 0 0 * * *"
       retentionPolicy: "30d" # Config store may need longer retention
       target: preferStandby
   # DHCP database cluster
@@ -2464,7 +2464,7 @@ cnpg:
       topologyKey: kubernetes.io/hostname
     backup:
       enabled: false
-      schedule: "0 0 * * *"
+      schedule: "0 0 0 * * *"
       retentionPolicy: "30d"
       target: preferStandby
   # Nautobot PostgreSQL cluster (when nautobot.enabled=true)
@@ -2496,7 +2496,7 @@ cnpg:
       topologyKey: kubernetes.io/hostname
     backup:
       enabled: false
-      schedule: "0 0 * * *"
+      schedule: "0 0 0 * * *"
       retentionPolicy: "30d"
       target: preferStandby
 # =============================================================================
