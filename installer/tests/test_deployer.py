@@ -42,6 +42,7 @@ from nv_config_manager_installer.deployer import (
     _RerunState,
     _run_logged_parallel,
     _unready_pod_summary_lines,
+    find_project_root,
 )
 from nv_config_manager_installer.k8s import LOADER_POD_IMAGE
 from nv_config_manager_installer.nautobot_jobs import NautobotJobRunner
@@ -188,6 +189,17 @@ class RecordingCallback:
 
     def on_complete(self, success: bool, endpoints: list[str]) -> None:
         self.completed.append((success, endpoints))
+
+
+def test_project_root_defaults_to_installer_source_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated repository in cwd cannot capture installer path resolution."""
+    (tmp_path / "Makefile").write_text("wrapper repository\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert find_project_root() == Path(__file__).resolve().parents[2]
+    assert find_project_root(tmp_path) == tmp_path.resolve()
 
 
 class TestDeployerInit:
@@ -854,6 +866,47 @@ class TestImageBuilds:
 
 
 class TestKindImageLoading:
+    def test_external_dcim_excludes_nautobot_from_local_images(self):
+        config = _make_config()
+        config.services.nautobot = False
+        deployer = Deployer(config, DeployOptions(), RecordingCallback())
+
+        image_names = {build[0] for build in deployer._local_image_builds()}
+
+        assert "nv-config-manager-nautobot" not in image_names
+        assert len(image_names) == 8
+
+    def test_external_dcim_does_not_load_nautobot_image(self, monkeypatch):
+        logged_commands: list[list[str]] = []
+        config = _make_config()
+        config.services.nautobot = False
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._run_logged",
+            lambda cmd, *_args, **_kwargs: logged_commands.append(cmd),
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._docker_server_platform",
+            lambda: "linux/amd64",
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer._kind_preload_images", lambda _config: []
+        )
+        deployer = Deployer(
+            config,
+            DeployOptions(load_kind=True, kind_cluster="test-cluster"),
+            RecordingCallback(),
+        )
+
+        deployer._load_kind()
+
+        loaded_images = {
+            command[3]
+            for command in logged_commands
+            if command[:3] == ["kind", "load", "docker-image"]
+        }
+        assert "nv-config-manager-nautobot:local" not in loaded_images
+        assert len(loaded_images) == 8
+
     def test_kind_preload_images_include_defaults_config_and_env(self, monkeypatch):
         config = _make_config()
         config.images.kind_preload_images = [

@@ -105,6 +105,7 @@ def test_custom_jobs_do_not_infer_mock_topology() -> None:
 def test_template_plugin_paths_are_included_without_generation() -> None:
     cfg = SimConfig(
         run_mock_topology_job=False,
+        mock_blueprint="custom",
         template_plugin_paths=[
             "development/template_plugins/demo",
             "/opt/external/template-plugin.tar.gz",
@@ -124,6 +125,28 @@ def test_template_plugin_paths_are_included_without_generation() -> None:
     assert install_config["content"]["template_plugins"] == [
         {"path": f"{CONFIG_MANAGER_REMOTE_DIR}/development/template_plugins/demo"},
         {"path": "/opt/external/template-plugin.tar.gz"},
+    ]
+
+
+def test_external_dcim_can_skip_population_and_keep_demo_template_plugin() -> None:
+    """DCIM population is independent from provider-neutral demo content."""
+    cfg = SimConfig(
+        generate_fabric_from_mock_context=True,
+        run_mock_topology_job=False,
+        mock_blueprint="air_superpod",
+        deployment_name="demo",
+    )
+
+    jobs, run_after_deploy = build_content_jobs(cfg)
+
+    assert jobs == []
+    assert run_after_deploy == []
+    assert build_template_plugins(cfg) == [
+        {
+            "path": (
+                f"{CONFIG_MANAGER_REMOTE_DIR}/{DEFAULT_AIR_DEMO_TEMPLATE_PLUGIN_PATH.as_posix()}"
+            )
+        }
     ]
 
 

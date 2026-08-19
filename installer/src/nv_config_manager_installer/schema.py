@@ -691,6 +691,43 @@ class ExternalRedisConfig(BaseModel):
     password_auth: bool = True
 
 
+class NATSAuthMethod(StrEnum):
+    """Authentication mode used for a user-managed NATS endpoint."""
+
+    PASSWORD = "password"
+    JWT = "JWT"
+
+
+class ExternalNATSConfig(BaseModel):
+    """User-managed NATS connection settings.
+
+    NATS ownership is independent of the selected DCIM implementation. When
+    disabled, the installer deploys the bundled NATS service.
+    """
+
+    enabled: bool = False
+    server: str = ""
+    auth_method: NATSAuthMethod = NATSAuthMethod.PASSWORD
+    user: str = "nv-config-manager"
+    secret_name: str = ""
+    external_secret_name: str = ""
+    creds_path: str = "/etc/nv-config-manager/secrets/nats.creds"
+
+    @field_validator("server", "user", "secret_name", "external_secret_name", "creds_path")
+    @classmethod
+    def reject_unsafe_strings(cls, value: str) -> str:
+        """Reject values that could introduce additional rendered configuration lines."""
+        if any(character in value for character in "\r\n\x00"):
+            raise ValueError("NATS configuration values must not contain control characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_external_endpoint(self) -> ExternalNATSConfig:
+        if self.enabled and not self.server:
+            raise ValueError("External NATS requires a server")
+        return self
+
+
 class ExternalPostgresConfig(BaseModel):
     """External PostgreSQL host overrides (per-service).
 
@@ -764,6 +801,7 @@ class SlackConfig(BaseModel):
 class ExternalServicesConfig(BaseModel):
     """Out-of-cluster dependency configuration."""
 
+    nats: ExternalNATSConfig = Field(default_factory=ExternalNATSConfig)
     redis: ExternalRedisConfig = Field(default_factory=ExternalRedisConfig)
     postgres: ExternalPostgresConfig = Field(default_factory=ExternalPostgresConfig)
     temporal: ExternalTemporalConfig = Field(default_factory=ExternalTemporalConfig)
@@ -1167,6 +1205,10 @@ def _prune_services(services: dict[str, Any]) -> None:
 
 
 def _prune_external_services(external_services: dict[str, Any]) -> None:
+    nats = _as_dict(external_services.get("nats"))
+    if not nats.get("enabled"):
+        _replace_with_keys(nats, {"enabled"})
+
     redis = _as_dict(external_services.get("redis"))
     if not redis.get("enabled"):
         _replace_with_keys(redis, {"enabled"})

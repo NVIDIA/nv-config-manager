@@ -28,6 +28,7 @@ from nv_config_manager_installer.schema import (
     ContentConfig,
     DCIMConfig,
     DCIMProviderPackage,
+    ExternalNATSConfig,
     ExternalServicesConfig,
     ExternalTemporalConfig,
     GatewayType,
@@ -45,6 +46,7 @@ from nv_config_manager_installer.schema import (
     LBProvider,
     LoadBalancerConfig,
     MonitoringConfig,
+    NATSAuthMethod,
     NVConfigManagerInstallConfig,
     RBACConfig,
     RedfishConfig,
@@ -808,6 +810,32 @@ class TestGenerateHelmValues:
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
         assert values["mcp"]["enabled"] is True
+
+    def test_external_nats_is_independent_of_bundled_nautobot(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                nats=ExternalNATSConfig(
+                    enabled=True,
+                    server="nats://nats.prod.example.com:4222",
+                    auth_method=NATSAuthMethod.JWT,
+                    creds_path="/etc/nats/prod.creds",
+                )
+            )
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["nautobot"]["local"] is True
+        assert values["externalServices"]["nats"] == {
+            "server": "nats://nats.prod.example.com:4222",
+            "authMethod": "JWT",
+            "local": False,
+            "user": "nv-config-manager",
+            "secretName": "",
+            "externalSecretName": "",
+            "credsPath": "/etc/nats/prod.creds",
+        }
+        assert values["nautobotNats"]["enabled"] is False
 
     def test_external_dcim_values_use_generic_configuration(self):
         config = _make_config(

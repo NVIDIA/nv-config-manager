@@ -653,11 +653,23 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
         # carry Nautobot deployment settings but are not used by this provider.
         ext["nautobot"] = {"local": False}
 
-    ext["nats"] = {
-        "server": "nats://nv-config-manager@nats:4222",
-        "authMethod": "password",
-        "local": True,
-    }
+    nats = es.nats
+    if nats.enabled:
+        ext["nats"] = {
+            "server": nats.server,
+            "authMethod": nats.auth_method.value,
+            "local": False,
+            "user": nats.user,
+            "secretName": nats.secret_name,
+            "externalSecretName": nats.external_secret_name,
+            "credsPath": nats.creds_path,
+        }
+    else:
+        ext["nats"] = {
+            "server": "nats://nv-config-manager@nats:4222",
+            "authMethod": "password",
+            "local": True,
+        }
 
     if es.redis.enabled and es.redis.host:
         r = es.redis
@@ -1020,7 +1032,7 @@ def build_values(
     values["nautobot"] = _build_nautobot(config)
 
     values["nautobotNats"] = {
-        "enabled": True,
+        "enabled": not config.external_services.nats.enabled,
         "jetstream": {"enabled": True},
         "natsReady": {"enabled": True, "useNatsCli": True},
     }
