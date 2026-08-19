@@ -442,7 +442,7 @@ async def test_reconcile_spx_overlay_assignments_retry_removes_remaining_device_
             status=204,
         )
 
-        with pytest.raises(NautobotException, match="temporary failure"):
+        with pytest.raises(ApplicationError, match="temporary failure"):
             await reconcile_spx_overlay_assignments(activity_input)
 
         result = await reconcile_spx_overlay_assignments(activity_input)
@@ -499,7 +499,7 @@ async def test_reconcile_spx_overlay_assignments_retry_retains_completed_change_
                 payload={"results": []},
             )
 
-        with pytest.raises(NautobotException, match="temporary failure"):
+        with pytest.raises(ApplicationError, match="temporary failure"):
             await reconcile_spx_overlay_assignments(activity_input)
 
         with patch(
@@ -624,7 +624,7 @@ async def test_remove_unmapped_device_vrfs_retry_retains_prior_removed_ids():
             status=204,
         )
 
-        with pytest.raises(NautobotException, match="temporary failure"):
+        with pytest.raises(ApplicationError, match="temporary failure"):
             await remove_unmapped_device_vrfs(activity_input)
 
         result = await remove_unmapped_device_vrfs(activity_input)

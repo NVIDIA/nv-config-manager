@@ -616,7 +616,7 @@ async def assign_vrf_to_interface(
 
 
 class ReconcileSpXOverlayAssignmentsInput(BaseModel):
-    """Spectrum-X overlay assignments to reconcile in Nautobot."""
+    """Spectrum-X overlay assignments to reconcile in the configured DCIM."""
 
     overlay_id: str | None
     site: str
@@ -661,34 +661,10 @@ async def reconcile_spx_overlay_assignments(
                 activity_input.site,
                 activity_input.device_id,
                 activity_input.interface_ids,
+                activity_input.device_interface_ids,
             )
     except DCIMError as error:
         raise _as_application_error(error) from error
-
-        # Always rebuild the complete active interface state. On an activity
-        # retry, selected-interface deletions from an earlier attempt may
-        # already be absent, but any now-unused device assignment must still be
-        # discovered and removed.
-        for interface_id in activity_input.device_interface_ids:
-            if interface_id not in assignments_by_interface:
-                assignments_by_interface[interface_id] = await _get_overlay_assignments(
-                    client, interface_id
-                )
-
-        active_overlay_ids = {
-            overlay_id
-            for assignments in assignments_by_interface.values()
-            for assignment in assignments
-            if (overlay_id := _related_object_id(assignment.get("overlay"))) is not None
-        }
-        for assignment in device_assignments:
-            overlay_id = _related_object_id(assignment.get("overlay"))
-            if overlay_id is None or overlay_id in active_overlay_ids:
-                continue
-            isolation_type = await _get_assignment_overlay_isolation_type(client, assignment)
-            if isolation_type != SPECTRUMX_ISOLATION_TYPE:
-                continue
-            removed += await _delete_overlay_assignments(client, [str(assignment["id"])])
 
     # A prior attempt can complete the only mutation and then fail during a
     # later read. The retry sees the desired state and reports zero counts, but
@@ -722,33 +698,13 @@ async def remove_unmapped_device_vrfs(
     if not activity_input.vrf_ids:
         return RemoveUnmappedDeviceVrfsOutput(removed_vrf_ids=[])
 
-    client = NautobotClient()
-    removed_vrf_ids: list[str] = []
-
-    async with client:
-        interfaces = await client.get_device_interfaces(activity_input.device_id)
-        mapped_vrf_ids = {interface.vrf_id for interface in interfaces if interface.vrf_id}
-
-        for vrf_id in dict.fromkeys(activity_input.vrf_ids):
-            if vrf_id in mapped_vrf_ids:
-                continue
-
-            assignments = await client.get_all(
-                VRF_DEVICE_ASSIGNMENTS_PATH,
-                params={"device": activity_input.device_id, "vrf": vrf_id},
+    client = create_dcim_client()
+    try:
+        async with client:
+            removed_vrf_ids = await client.remove_unmapped_device_vrfs(
+                activity_input.device_id, activity_input.vrf_ids
             )
-            matching_assignment_ids = [
-                str(assignment["id"])
-                for assignment in assignments
-                if _related_object_id(assignment.get("device")) == activity_input.device_id
-                and _related_object_id(assignment.get("vrf")) == vrf_id
-            ]
-            for assignment_id in matching_assignment_ids:
-                await client.delete(f"{VRF_DEVICE_ASSIGNMENTS_PATH}{assignment_id}/")
-
-            # The output represents the requested VRFs now reconciled as
-            # unmapped, including associations deleted by an earlier partial
-            # attempt. This keeps the activity result stable across retries.
-            removed_vrf_ids.append(vrf_id)
+    except DCIMError as error:
+        raise _as_application_error(error) from error
 
     return RemoveUnmappedDeviceVrfsOutput(removed_vrf_ids=removed_vrf_ids)

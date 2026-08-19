@@ -38,8 +38,16 @@ DEVICES = {
 DEVICE_INTERFACES = {
     "data": {
         "interfaces": [
-            {"id": "interface-2", "name": "swp2"},
-            {"id": "interface-1", "name": "swp1"},
+            {
+                "id": "interface-2",
+                "name": "swp2",
+                "device": {"id": "device-1", "name": "leaf-1"},
+            },
+            {
+                "id": "interface-1",
+                "name": "swp1",
+                "device": {"id": "device-1", "name": "leaf-1"},
+            },
         ]
     }
 }

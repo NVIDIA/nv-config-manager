@@ -100,7 +100,7 @@ OVERLAYS_PLUGIN_BASE = "plugins/overlays"
 _BACKUP_ENABLED_DEVICES_QUERY = load_graphql_query(
     "workflow/operations.graphql", "GetBackupEnabledDevices"
 )
-_BACKUP_SUPPORTED_PLATFORMS = {"Arista EOS", "Cumulus Linux", "NV-OS"}
+_BACKUP_SUPPORTED_PLATFORMS = {"Arista EOS", "Cumulus Linux", "Juniper Junos", "NV-OS"}
 _BACKUP_SUPPORTED_STATUSES = {"Provisioned", "Active"}
 
 _OS_IMAGE_DEVICE_QUERY = load_graphql_query("workflow/operations.graphql", "GetOSImageDevice")
@@ -133,6 +133,7 @@ _NAUTOBOT_PLATFORM_NAMES = {
     Platform.CUMULUS_LINUX: "Cumulus Linux",
     Platform.NV_OS: "NV-OS",
     Platform.MLNX_OS: "MLNX-OS",
+    Platform.JUNIPER_JUNOS: "Juniper Junos",
     Platform.UFM: "UFM",
 }
 
@@ -1143,57 +1144,124 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def reconcile_spectrum_x_overlay_assignments(
         self,
-        overlay_name: str,
+        overlay_name: str | None,
         site: str,
         device_id: str,
         interface_ids: list[str],
+        device_interface_ids: list[str],
     ) -> tuple[int, int]:
         """Make Spectrum-X device and interface assignments match provider intent."""
-        overlay = await self.find_overlay(overlay_name, site)
-        if not overlay:
-            raise ApplicationError(f"Overlay {overlay_name} not found in site {site}")
-        if overlay.get("isolation_type") != _SPECTRUM_X_ISOLATION_TYPE:
-            raise ApplicationError(
-                f"Overlay {overlay_name} in site {site} is not a "
-                f"{_SPECTRUM_X_ISOLATION_TYPE} overlay"
-            )
-        overlay_id = str(overlay["id"])
         created = 0
         removed = 0
         status_id: str | None = None
+        target_overlay_id: str | None = None
+
+        if overlay_name is not None:
+            overlay = await self.find_overlay(overlay_name, site)
+            if not overlay:
+                raise ApplicationError(f"Overlay {overlay_name} not found in site {site}")
+            if overlay.get("isolation_type") != _SPECTRUM_X_ISOLATION_TYPE:
+                raise ApplicationError(
+                    f"Overlay {overlay_name} in site {site} is not a "
+                    f"{_SPECTRUM_X_ISOLATION_TYPE} overlay"
+                )
+            target_overlay_id = str(overlay["id"])
 
         device_assignments = await self._get_overlay_assignments(device_id)
-        if not any(
-            self._related_object_id(assignment.get("overlay")) == overlay_id
+        if target_overlay_id is not None and not any(
+            self._related_object_id(assignment.get("overlay")) == target_overlay_id
             for assignment in device_assignments
         ):
             status_id = await self._get_overlay_assignment_status_id()
-            await self._create_overlay_assignment(overlay_id, "dcim.device", device_id, status_id)
+            await self._create_overlay_assignment(
+                target_overlay_id, "dcim.device", device_id, status_id
+            )
             created += 1
 
+        assignments_by_interface: dict[str, list[dict[str, Any]]] = {}
         for interface_id in interface_ids:
             interface_assignments = await self._get_overlay_assignments(interface_id)
+            assignments_by_interface[interface_id] = interface_assignments
             stale_ids: list[str] = []
             for assignment in interface_assignments:
-                if self._related_object_id(assignment.get("overlay")) == overlay_id:
+                if self._related_object_id(assignment.get("overlay")) == target_overlay_id:
                     continue
                 isolation_type = await self._get_overlay_assignment_isolation_type(assignment)
                 if isolation_type == _SPECTRUM_X_ISOLATION_TYPE:
                     stale_ids.append(str(assignment["id"]))
 
-            if not any(
-                self._related_object_id(assignment.get("overlay")) == overlay_id
+            if target_overlay_id is not None and not any(
+                self._related_object_id(assignment.get("overlay")) == target_overlay_id
                 for assignment in interface_assignments
             ):
                 if status_id is None:
                     status_id = await self._get_overlay_assignment_status_id()
                 await self._create_overlay_assignment(
-                    overlay_id, "dcim.interface", interface_id, status_id
+                    target_overlay_id, "dcim.interface", interface_id, status_id
                 )
                 created += 1
+                interface_assignments.append(
+                    {"id": "created", "overlay": {"id": target_overlay_id}}
+                )
             removed += await self._delete_overlay_assignments(stale_ids)
+            assignments_by_interface[interface_id] = [
+                assignment
+                for assignment in interface_assignments
+                if str(assignment["id"]) not in stale_ids
+            ]
+
+        # Rebuild the complete active interface state so retries also remove
+        # device assignments made unused by a prior partial attempt.
+        for interface_id in device_interface_ids:
+            if interface_id not in assignments_by_interface:
+                assignments_by_interface[interface_id] = await self._get_overlay_assignments(
+                    interface_id
+                )
+
+        active_overlay_ids = {
+            overlay_id
+            for assignments in assignments_by_interface.values()
+            for assignment in assignments
+            if (overlay_id := self._related_object_id(assignment.get("overlay"))) is not None
+        }
+        for assignment in device_assignments:
+            overlay_id = self._related_object_id(assignment.get("overlay"))
+            if overlay_id is None or overlay_id in active_overlay_ids:
+                continue
+            isolation_type = await self._get_overlay_assignment_isolation_type(assignment)
+            if isolation_type == _SPECTRUM_X_ISOLATION_TYPE:
+                removed += await self._delete_overlay_assignments([str(assignment["id"])])
 
         return created, removed
+
+    async def remove_unmapped_device_vrfs(self, device_id: str, vrf_ids: list[str]) -> list[str]:
+        """Remove device VRF associations not used by any device interface."""
+        if not vrf_ids:
+            return []
+
+        interfaces = await self.get_device_interfaces(device_id)
+        mapped_vrf_ids = {interface.vrf_id for interface in interfaces if interface.vrf_id}
+        removed_vrf_ids: list[str] = []
+
+        for vrf_id in dict.fromkeys(vrf_ids):
+            if vrf_id in mapped_vrf_ids:
+                continue
+
+            assignments = await self.get_all(
+                "ipam/vrf-device-assignments/",
+                params={"device": device_id, "vrf": vrf_id},
+            )
+            for assignment in assignments:
+                if (
+                    self._related_object_id(assignment.get("device")) == device_id
+                    and self._related_object_id(assignment.get("vrf")) == vrf_id
+                ):
+                    await self.delete(f"ipam/vrf-device-assignments/{assignment['id']}/")
+
+            # Preserve a stable result when a retry follows a partial attempt.
+            removed_vrf_ids.append(vrf_id)
+
+        return removed_vrf_ids
 
     async def ensure_ib_pkey_partition(
         self,

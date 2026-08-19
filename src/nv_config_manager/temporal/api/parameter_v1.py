@@ -268,26 +268,14 @@ async def get_devices(  # pylint: disable=R0913,R0914
 @router.get("/device/{device_id}/interfaces", responses={400: {"description": "Bad Request"}})
 async def get_device_interfaces(device_id: str) -> list[DeviceInterface]:
     """Return the interfaces belonging to a device."""
-    client = NautobotClient()
-    query = """
-        query ($device_id: [String]) {
-            interfaces(device_id: $device_id) {
-                id
-                name
-            }
-        }
-    """
-
-    try:
-        async with client:
-            data = await client.graphql_query(query, {"device_id": [device_id]})
-    except ApplicationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    client = create_dcim_client()
+    async with client:
+        provider_interfaces = await client.get_device_interfaces(device_id)
 
     interfaces = [
-        DeviceInterface(id=interface["id"], name=interface["name"])
-        for interface in data["data"]["interfaces"]
-        if interface["name"]
+        DeviceInterface(id=interface.id, name=interface.name)
+        for interface in provider_interfaces
+        if interface.name
     ]
     return sorted(interfaces, key=lambda interface: interface.name.casefold())
 

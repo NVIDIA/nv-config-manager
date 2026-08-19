@@ -198,8 +198,16 @@ class DCIMClient(Protocol):
         tenant: str,
     ) -> None: ...
     async def reconcile_spectrum_x_overlay_assignments(
-        self, overlay_name: str, site: str, device_id: str, interface_ids: list[str]
+        self,
+        overlay_name: str | None,
+        site: str,
+        device_id: str,
+        interface_ids: list[str],
+        device_interface_ids: list[str],
     ) -> tuple[int, int]: ...
+    async def remove_unmapped_device_vrfs(
+        self, device_id: str, vrf_ids: list[str]
+    ) -> list[str]: ...
     async def ensure_ib_pkey_partition(
         self,
         pkey: str,
