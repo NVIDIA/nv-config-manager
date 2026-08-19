@@ -234,11 +234,32 @@ Runbooks (run pipeline on the default branch):
     to override during a GitHub outage.
 - **Rollback**: set only `NVCM_PROMOTE_ENV`, start `test-rollback-env`. Without
   `NVCM_ROLLBACK_TO` it lists recent deploy-states and fails; re-run with
-  `NVCM_ROLLBACK_TO=<env-branch commit sha>` to restore that exact snapshot
-  (chart version + digests + pinned baseline revision).
+  `NVCM_ROLLBACK_TO=<env-branch commit sha>` to restore that exact snapshot -
+  chart version, digests, and the baseline values that state was rendered
+  against. Both the deploy-state and the baseline snapshot are taken from that
+  one commit, so the restore does not depend on the values repo's `main`.
 - **Free a slot**: set only `NVCM_PROMOTE_ENV`, start `test-release-env`. It
-  resets the env's deploy-state and overrides to the canonicals on the values
-  repo's `main`.
+  resets the env's deploy-state, overrides and baseline snapshot to the
+  canonicals on the values repo's `main`.
+
+### Where the baseline lives
+
+ArgoCD refuses a multi-source Application that references one repository at two
+revisions, so the appset cannot read baseline values from the values repo's
+`main` while reading overrides from the env branch. Everything it renders comes
+from a single revision - the env branch.
+
+The promote pipeline therefore **snapshots** the baseline onto the env branch,
+in the same commit as `deploy-state.yaml`. `main` stays the source of truth
+(humans edit it via MR); the snapshot is what deploys, and it refreshes on every
+promote or release.
+
+Two consequences worth knowing:
+
+- A baseline change merged to the values repo's `main` does not reach an
+  environment until the next promote or release copies it across.
+- `deploy-state.yaml`'s `baselineRevision` is **provenance only** - it records
+  which `main` SHA the snapshot came from. Nothing renders from it.
 
 Project settings required (GitLab UI):
 
