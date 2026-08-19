@@ -454,14 +454,24 @@ test-rollback-env:
         echo "       (re-run without NVCM_ROLLBACK_TO to list valid candidates)."
         exit 1
       fi
-      # And it must actually carry this env's deploy-state.
-      if ! git cat-file -e "${NVCM_ROLLBACK_TO}:${state_file}" 2>/dev/null; then
-        echo "ERROR: ${NVCM_ROLLBACK_TO} does not contain ${state_file}."
-        exit 1
-      fi
+      # And it must actually carry this env's deploy-state AND the baseline
+      # snapshot that state was rendered against - both are restored together.
+      baseline_file="${NVCM_ENV_BASELINE_VALUES}"
+      for f in "$state_file" "$baseline_file"; do
+        if ! git cat-file -e "${NVCM_ROLLBACK_TO}:${f}" 2>/dev/null; then
+          echo "ERROR: ${NVCM_ROLLBACK_TO} does not contain ${f}."
+          exit 1
+        fi
+      done
 
       echo "Rolling ${NVCM_PROMOTE_ENV} back to deploy-state @ ${NVCM_ROLLBACK_TO}"
-      git show "${NVCM_ROLLBACK_TO}:${state_file}" > "$state_file"
+      # Restore BOTH files. ArgoCD renders the baseline from this branch (it
+      # rejects a multi-source app referencing one repo at two revisions), so
+      # restoring only deploy-state would pin the old chart and digests against
+      # whatever baseline happens to be on the branch now - a mixed state, not a
+      # rollback. Taking both from the same commit is what makes it exact.
+      git show "${NVCM_ROLLBACK_TO}:${state_file}"    > "$state_file"
+      git show "${NVCM_ROLLBACK_TO}:${baseline_file}" > "$baseline_file"
 
       # Idempotency guard, matching test-release-env and write_deploy_state.sh:
       # if the branch already carries these exact deployment pins, stop rather
@@ -474,8 +484,9 @@ test-rollback-env:
       yq "$strip_audit" "$state_file" > "${CI_PROJECT_DIR}/rollback-new.yaml"
       git show "HEAD:${state_file}" 2>/dev/null \
         | yq "$strip_audit" > "${CI_PROJECT_DIR}/rollback-current.yaml" || true
-      if cmp -s "${CI_PROJECT_DIR}/rollback-current.yaml" "${CI_PROJECT_DIR}/rollback-new.yaml"; then
-        echo "✓ ${NVCM_ENV_BRANCH} already carries the deploy-state from ${NVCM_ROLLBACK_TO}; nothing to roll back."
+      if cmp -s "${CI_PROJECT_DIR}/rollback-current.yaml" "${CI_PROJECT_DIR}/rollback-new.yaml" \
+         && git diff --quiet "$baseline_file"; then
+        echo "✓ ${NVCM_ENV_BRANCH} already carries the deploy-state and baseline from ${NVCM_ROLLBACK_TO}; nothing to roll back."
         exit 0
       fi
 
@@ -486,7 +497,11 @@ test-rollback-env:
       yq -i '.occupant = strenv(occupant) | .updatedAt = strenv(updated_at)' "$state_file"
 
       git diff "$state_file"
-      git add "$state_file"
+      if ! git diff --quiet "$baseline_file"; then
+        echo "Baseline snapshot also restored:"
+        git diff --stat "$baseline_file"
+      fi
+      git add "$state_file" "$baseline_file"
       git commit -m "[nvcm CI] Rollback ${NVCM_PROMOTE_ENV} to deploy-state @ ${NVCM_ROLLBACK_TO}
 
       Triggered by: ${occupant}
@@ -510,7 +525,8 @@ test-release-env:
   # concurrent runs can't race on the same nvcm-<env> branch.
   resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
-    - apk add --no-cache bash git coreutils
+    # yq: the baselineRevision restamp below rewrites the restored deploy-state.
+    - apk add --no-cache bash git yq coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
     - git config --global user.name "NVIDIA Config Manager CI"
   script:
@@ -535,13 +551,25 @@ test-release-env:
       git rm -r --quiet --ignore-unmatch "${NVCM_ENV_STATE_DIR}/"
       git checkout origin/main -- "${NVCM_ENV_STATE_DIR}/"
 
+      # Refresh the baseline snapshot too. ArgoCD renders the baseline from this
+      # branch, so leaving a stale snapshot would hand the next occupant a slot
+      # running old baseline config while the deploy-state claims it is clean.
+      baseline_file="${NVCM_ENV_BASELINE_VALUES}"
+      baseline_rev="$(git rev-parse origin/main)"
+      git checkout origin/main -- "$baseline_file"
+      # Keep the restored canonical's provenance honest: it ships a
+      # baselineRevision from whenever it was last edited on main, but the
+      # snapshot beside it now comes from main's current HEAD.
+      export baseline_rev
+      yq -i '.baselineRevision = strenv(baseline_rev)' "${NVCM_ENV_STATE_DIR}/deploy-state.yaml"
+
       if git diff --cached --quiet && git diff --quiet; then
         echo "✓ ${NVCM_PROMOTE_ENV} already matches the canonicals; nothing to release."
         exit 0
       fi
 
-      git add "${NVCM_ENV_STATE_DIR}/"
-      git commit -m "[nvcm CI] Release ${NVCM_PROMOTE_ENV}: reset deploy-state and overrides to canonicals
+      git add "${NVCM_ENV_STATE_DIR}/" "$baseline_file"
+      git commit -m "[nvcm CI] Release ${NVCM_PROMOTE_ENV}: reset deploy-state, overrides and baseline to canonicals
 
       Triggered by: ${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}
       Pipeline: ${CI_PIPELINE_URL}"
