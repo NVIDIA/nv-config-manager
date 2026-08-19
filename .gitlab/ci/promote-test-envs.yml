@@ -525,7 +525,8 @@ test-release-env:
   # concurrent runs can't race on the same nvcm-<env> branch.
   resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
-    - apk add --no-cache bash git coreutils
+    # yq: the baselineRevision restamp below rewrites the restored deploy-state.
+    - apk add --no-cache bash git yq coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
     - git config --global user.name "NVIDIA Config Manager CI"
   script:
