@@ -47,11 +47,11 @@ def test_from_config_env_override_targets_bootstrap_endpoint(monkeypatch) -> Non
     (publishNotReadyAddresses) to run config-test before pods are Ready.
     """
     monkeypatch.setenv(KEA_SERVER_ENV, "dhcp-kea-bootstrap")
-    monkeypatch.setenv(KEA_PORT_ENV, "8000")
+    monkeypatch.setenv(KEA_PORT_ENV, "9999")
 
     client = KeaClient.from_config(_kea_config("dhcp-internal", "8000"))
 
-    assert client.url == "http://dhcp-kea-bootstrap:8000/"
+    assert client.url == "http://dhcp-kea-bootstrap:9999/"
 
 
 def test_from_config_attached_ignores_env_override(monkeypatch) -> None:
