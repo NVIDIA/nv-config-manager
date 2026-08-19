@@ -74,6 +74,18 @@ def heartbeat_age_seconds(
     return now - mtime
 
 
+def age_is_fresh(age: float, max_age: float = DEFAULT_MAX_AGE_SECONDS) -> bool:
+    """Return ``True`` when ``age`` falls inside the acceptable heartbeat window.
+
+    A future-dated mtime (negative age) is not fresh. It means the clock stepped
+    backwards after the last touch, and accepting it would report the loop
+    healthy until real time caught up -- indefinitely, if the loop is wedged. A
+    live loop re-touches the file on its next iteration, which re-dates it under
+    the new clock well inside the probe's failure threshold.
+    """
+    return 0 <= age <= max_age
+
+
 def heartbeat_is_fresh(
     path: str = DEFAULT_HEARTBEAT_FILE,
     max_age: float = DEFAULT_MAX_AGE_SECONDS,
@@ -83,7 +95,7 @@ def heartbeat_is_fresh(
     age = heartbeat_age_seconds(path, now=now)
     if age is None:
         return False
-    return age <= max_age
+    return age_is_fresh(age, max_age)
 
 
 def record_successful_reconciliation(now: float | None = None) -> None:

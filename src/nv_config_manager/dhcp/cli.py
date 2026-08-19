@@ -29,6 +29,7 @@ from nv_config_manager.common.log import LogCategory, configure_logging, get_log
 from nv_config_manager.dhcp.heartbeat import (
     DEFAULT_HEARTBEAT_FILE,
     DEFAULT_MAX_AGE_SECONDS,
+    age_is_fresh,
     heartbeat_age_seconds,
     record_successful_reconciliation,
     touch_heartbeat,
@@ -455,9 +456,9 @@ def check_sync_heartbeat(heartbeat_file: str, max_age_seconds: float) -> None:
     if age is None:
         click.echo(f"heartbeat missing: {heartbeat_file}", err=True)
         sys.exit(1)
-    if age > max_age_seconds:
+    if not age_is_fresh(age, max_age_seconds):
         click.echo(
-            f"heartbeat stale: age={age:.1f}s > max-age={max_age_seconds:.1f}s ({heartbeat_file})",
+            f"heartbeat stale: age={age:.1f}s outside 0..{max_age_seconds:.1f}s ({heartbeat_file})",
             err=True,
         )
         sys.exit(1)

@@ -75,6 +75,24 @@ def test_heartbeat_is_fresh_vs_stale(tmp_path) -> None:
     assert heartbeat.heartbeat_is_fresh(hb, max_age=60) is False
 
 
+def test_future_dated_heartbeat_is_stale(tmp_path) -> None:
+    """A clock step backwards must not make a wedged loop look healthy forever."""
+    hb = str(tmp_path / "hb")
+    heartbeat.touch_heartbeat(hb)
+    ahead = time.time() + 3600
+    os.utime(hb, (ahead, ahead))
+
+    assert heartbeat.heartbeat_age_seconds(hb) < 0
+    assert heartbeat.heartbeat_is_fresh(hb, max_age=60) is False
+
+    result = CliRunner().invoke(
+        cli_group,
+        ["check-sync-heartbeat", "--heartbeat-file", hb, "--max-age", "60"],
+    )
+    assert result.exit_code == 1
+    assert "stale" in result.output
+
+
 def test_record_successful_reconciliation_tracks_timestamp() -> None:
     heartbeat._last_successful_reconciliation = None
     assert heartbeat.last_successful_reconciliation() is None
