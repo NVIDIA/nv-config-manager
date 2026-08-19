@@ -59,7 +59,12 @@ with workflow.unsafe.imports_passed_through():
 
 DEFAULT_CONFIG_MANAGER_STATUS = ["Active", "Provisioned"]
 DEFAULT_CONFIG_MANAGER_TENANT = None
-SUPPORTED_PLATFORMS = [Platform.ARISTA_EOS, Platform.CUMULUS_LINUX, Platform.NV_OS]
+SUPPORTED_PLATFORMS = [
+    Platform.ARISTA_EOS,
+    Platform.CUMULUS_LINUX,
+    Platform.NV_OS,
+    Platform.JUNIPER_JUNOS,
+]
 
 CLONE_SEARCH_ATTRS = [
     USER_SEARCH_ATTRIBUTE,

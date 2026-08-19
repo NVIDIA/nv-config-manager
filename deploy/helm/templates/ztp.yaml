@@ -90,14 +90,34 @@ spec:
         {{- end }}
         {{- include "nv-config-manager.authVolumeMounts" . | nindent 8 }}
         {{- end }}
+        # /healthcheck has no dependencies; it only proves the event loop can
+        # still accept a request. Chart-default timings (1s timeout, 10s period,
+        # 3 failures) kill the pod when the loop is merely busy — that is what
+        # crashlooped ZTP under a boot storm. startupProbe covers slow starts
+        # so the lenient liveness probe does not race them. Generous
+        # timeout/period/failureThreshold ride out transient event-loop stalls;
+        # readiness still drops the pod from the Service after ~30s of misses.
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 9000
+          timeoutSeconds: 5
+          periodSeconds: 5
+          failureThreshold: 30
         livenessProbe:
           httpGet:
             path: /healthcheck
             port: 9000
+          timeoutSeconds: 5
+          periodSeconds: 15
+          failureThreshold: 6
         readinessProbe:
           httpGet:
             path: /healthcheck
             port: 9000
+          timeoutSeconds: 3
+          periodSeconds: 10
+          failureThreshold: 3
 
       # HTTP API container for device access via LoadBalancer (IP-based authorization)
       # No ACCEPT_REQUEST_HEADERS - uses client IP validation against Nautobot device addresses
@@ -132,14 +152,29 @@ spec:
           readOnly: true
         {{- end }}
         {{- end }}
+        # Same timings as http-api: liveness must survive event-loop lag under
+        # load rather than restarting a busy listener. startupProbe covers slow starts.
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8000
+          timeoutSeconds: 5
+          periodSeconds: 5
+          failureThreshold: 30
         livenessProbe:
           httpGet:
             path: /healthcheck
             port: 8000
+          timeoutSeconds: 5
+          periodSeconds: 15
+          failureThreshold: 6
         readinessProbe:
           httpGet:
             path: /healthcheck
             port: 8000
+          timeoutSeconds: 3
+          periodSeconds: 10
+          failureThreshold: 3
       {{- end }}
 
       # SFTP server container

@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import io
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -25,7 +26,7 @@ from nv_config_manager.common.client import (
     ConfigStoreException,
     ConfigStoreFileNotFound,
 )
-from nv_config_manager.ztp.api.main import app
+from nv_config_manager.ztp.api.main import app, healthcheck
 from nv_config_manager.ztp.s3 import (
     S3ExistsException,
     S3NotFoundException,
@@ -49,6 +50,11 @@ def test_healthcheck(client):
     rsp = client.get("/healthcheck")
     assert rsp.status_code == 200
     assert rsp.json() == "OK"
+
+
+def test_healthcheck_is_async():
+    """Keep the probe on the event loop so it is not doubled by a threadpool hop."""
+    assert inspect.iscoroutinefunction(healthcheck)
 
 
 def test_docs(client):

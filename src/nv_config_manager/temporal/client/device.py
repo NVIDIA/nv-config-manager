@@ -26,10 +26,11 @@ import ssl
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 from io import BytesIO, StringIO
-from typing import Any, cast
+from typing import Any, Self, cast
 from uuid import uuid4
 
 import netaddr
@@ -38,6 +39,18 @@ import pyeapi
 import pyeapi.eapilib
 import requests
 import urllib3
+from jnpr.junos import Device
+from jnpr.junos.exception import (
+    CommitError,
+    ConfigLoadError,
+    ConnectAuthError,
+    ConnectError,
+    LockError,
+    ProbeError,
+    RpcError,
+    UnlockError,
+)
+from jnpr.junos.utils.config import Config
 from netmiko import ConnectHandler  # type: ignore[import-untyped]
 from netmiko.base_connection import BaseConnection  # type: ignore[import-untyped]
 from netmiko.exceptions import NetmikoAuthenticationException  # type: ignore[import-untyped]
@@ -51,6 +64,7 @@ from temporalio.exceptions import ApplicationError
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
+from nv_config_manager.temporal.common.secret_redaction import redact_junos_secrets
 from nv_config_manager.temporal.common.secrets import (
     get_credential,
     get_rotation_passwords,
@@ -525,6 +539,30 @@ class NetworkConnection:
         """Load the candidate configuration and commit."""
         raise NotImplementedError()
 
+    def get_rollback_diff(self, rollback_id: int = 1) -> str:
+        """Return the diff between the active config and a numbered rollback."""
+        raise NotImplementedError()
+
+    def rollback_configuration(self, rollback_id: int = 1, *, commit_confirm: bool = True) -> None:
+        """Roll back to a numbered rollback revision and commit."""
+        raise NotImplementedError()
+
+    def save_rescue_configuration(self) -> None:
+        """Save the current active config as the rescue checkpoint."""
+        raise NotImplementedError()
+
+    def get_rescue_configuration(self) -> str | None:
+        """Return the saved rescue configuration, or None if none is set."""
+        raise NotImplementedError()
+
+    def delete_rescue_configuration(self) -> None:
+        """Delete the saved rescue configuration."""
+        raise NotImplementedError()
+
+    def rollback_to_rescue(self, *, commit_confirm: bool = True) -> None:
+        """Roll back to the saved rescue configuration and commit."""
+        raise NotImplementedError()
+
     def execute_ztp(self) -> None:
         """Execute ZTP on the device."""
         raise NotImplementedError()
@@ -662,7 +700,8 @@ class NetworkConnection:
         vary by platform — see the diagnostics catalog for the full list.
 
         Raises:
-            NetworkDeviceException: If the command name is not supported.
+            NetworkDeviceException: If the command name is unknown or the
+                platform does not implement it.
         """
         dispatch: dict[str, Callable[[], object]] = {
             "show_version": self.diag_get_version,
@@ -698,7 +737,13 @@ class NetworkConnection:
                 f"Diagnostic command '{name}' is not supported on this platform. "
                 f"Supported: {sorted(dispatch)}"
             )
-        return json.dumps(dispatch[name](), indent=2)
+        try:
+            result = dispatch[name]()
+        except NotImplementedError as error:
+            raise NetworkDeviceException(
+                f"Diagnostic command '{name}' is not implemented for {type(self).__name__}."
+            ) from error
+        return json.dumps(result, indent=2)
 
     def get_tech_support_bundle(
         self, heartbeat_fn: Callable[[], None] | None = None
@@ -709,6 +754,17 @@ class NetworkConnection:
             A tuple of (raw bundle bytes, full cl-support command output text).
         """
         raise NotImplementedError()
+
+    def close(self) -> None:
+        """Release any underlying session; subclasses override when needed."""
+
+    def __enter__(self) -> Self:
+        """Enter a context that closes the connection on exit."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the connection when leaving the context."""
+        self.close()
 
     @staticmethod
     def from_device_data(device_data: NetworkDeviceData) -> NetworkConnection:
@@ -725,6 +781,8 @@ class NetworkConnection:
             connection = NVOSConnection(device_data.host, site=device_data.site)
         elif device_data.platform == Platform.MLNX_OS:
             connection = MellanoxConnection(device_data.host, site=device_data.site)
+        elif device_data.platform == Platform.JUNIPER_JUNOS:
+            connection = JuniperConnection(device_data.host, site=device_data.site)
         else:
             raise NotImplementedError(f"No handler implemented for platform {device_data.platform}")
         return connection
@@ -2285,3 +2343,501 @@ class MellanoxConnection(NetworkConnection):
         """Load the running configuration for a given device."""
         response = self.execute_enable_command("show running-config")
         return response
+
+
+class JuniperConnection(NetworkConnection):
+    """Juniper Junos device connection over NETCONF (PyEZ).
+
+    Uses junos-eznc (PyEZ) over SSH/NETCONF (default port 830). PyEZ provides
+    native candidate / diff / commit-confirmed / rollback semantics, so the
+    config workflow maps directly onto perform_candidate_diff and
+    commit_candidate_config without hand-rolling RPC batches.
+
+    Config is applied as the full desired state via Junos ``load update``.
+    """
+
+    # Junos commit-confirmed timeout is expressed in minutes, not seconds. Round
+    # up so the rollback window is never shorter than the requested seconds.
+    _COMMIT_CONFIRM_ROLLBACK_MINUTES = max(1, (COMMIT_CONFIRM_ROLLBACK_SECONDS + 59) // 60)
+
+    # Ceiling for a single RPC / commit so a stuck device surfaces an error
+    # instead of hanging the activity indefinitely.
+    _RPC_TIMEOUT_SECONDS = 300
+
+    # Exclusive *diff* ops run under activities with a 60s start_to_close.
+    # Keep the PyEZ RPC deadline under that so a wedged load/diff returns and
+    # closes the NETCONF session instead of outliving Temporal's timeout.
+    _CONFIG_OP_TIMEOUT_SECONDS = 45
+
+    # TCP/NETCONF open deadline separate from per-RPC timeout.
+    _CONN_OPEN_TIMEOUT_SECONDS = 30
+
+    def __init__(
+        self,
+        host: str,
+        port: int = 830,
+        username: str | None = None,
+        password: str | None = None,
+        site: str | None = None,
+    ) -> None:
+        """Initialize a Juniper Connection; the NETCONF session opens lazily."""
+        super().__init__(host, port, username, password, site)
+        self._device: Device | None = None
+
+    # ------------------------------------------------------------------
+    # Connection management — NETCONF with password rotation.
+    # ------------------------------------------------------------------
+
+    def _connect(self) -> Device:
+        """Open a NETCONF session, rotating passwords on authentication failure.
+
+        Only genuine authentication failures trigger password rotation. A probe
+        failure (the port is not reachable) or any other connection error is
+        raised immediately with a clear message, since retrying with a different
+        password would not help.
+        """
+
+        def connect_with_password(password: str) -> Device:
+            device = Device(
+                host=self._host,
+                user=self._username,
+                passwd=password,
+                port=self._port,
+                gather_facts=False,
+                auto_probe=5,
+                conn_open_timeout=self._CONN_OPEN_TIMEOUT_SECONDS,
+            )
+            device.open()
+            device.timeout = self._RPC_TIMEOUT_SECONDS
+            return device
+
+        try:
+            return cast(
+                Device,
+                self._try_passwords_with_callback(connect_with_password, (ConnectAuthError,)),
+            )
+        except ProbeError as error:
+            raise NetworkDeviceException(
+                f"Cannot reach NETCONF on {self._host}:{self._port}."
+            ) from error
+        except ConnectError as error:
+            raise NetworkDeviceException(
+                f"Failed to connect to NETCONF on {self._host}:{self._port}: {error}"
+            ) from error
+
+    def _get_device(self) -> Device:
+        """Return the open PyEZ device, connecting on first use."""
+        if self._device is None:
+            self._device = self._connect()
+        return self._device
+
+    @contextmanager
+    def _device_timeout(self, seconds: int) -> Iterator[Device]:
+        """Run exclusive-config work under a tighter RPC deadline, then restore."""
+        device = self._get_device()
+        previous = device.timeout
+        device.timeout = seconds
+        try:
+            yield device
+        finally:
+            try:
+                device.timeout = previous
+            except Exception:  # noqa: BLE001 - cleanup must not raise
+                logger.debug("Unable to restore RPC timeout on %s", self._host, exc_info=True)
+
+    def close(self) -> None:
+        """Close the NETCONF session if it is open."""
+        device = getattr(self, "_device", None)
+        if device is not None:
+            try:
+                device.close()
+            except Exception:  # noqa: BLE001 - cleanup must not raise
+                logger.debug("Error closing NETCONF session to %s", self._host, exc_info=True)
+            self._device = None
+
+    def __enter__(self) -> JuniperConnection:
+        """Enter a context that closes the NETCONF session on exit."""
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        """Close the NETCONF session when leaving the context."""
+        self.close()
+
+    def __del__(self) -> None:
+        """Best-effort cleanup of the NETCONF session on garbage collection."""
+        self.close()
+
+    def _rpc(self, rpc_name: str, params: dict[str, Any] | None = None) -> Any:
+        """Run an operational RPC and return its JSON (dict) representation.
+
+        rpc_name accepts either Junos style (get-software-information) or Python
+        style (get_software_information). Empty or truthy flag parameters (for
+        example ``terse``) are sent as boolean flags.
+        """
+        device = self._get_device()
+        try:
+            rpc_method = getattr(device.rpc, rpc_name.replace("-", "_"))
+        except AttributeError as error:
+            raise NetworkDeviceException(f"Unknown RPC '{rpc_name}' for {self._host}") from error
+        kwargs: dict[str, Any] = {}
+        for key, value in (params or {}).items():
+            flag = value in ("", "true", "True", True)
+            kwargs[key.replace("-", "_")] = True if flag else value
+        try:
+            return rpc_method({"format": "json"}, **kwargs)
+        except RpcError as error:
+            raise NetworkDeviceException(
+                f"RPC {rpc_name} failed on {self._host}: {error}"
+            ) from error
+
+    def _get_fact(self, name: str) -> Any:
+        """Return a PyEZ fact, or None when the device does not report one.
+
+        The PyEZ fact cache swallows RPC and transport errors and caches None in
+        their place for the life of the session. An empty fact is therefore
+        re-checked against a live RPC: a failure there stays retryable, while a
+        device that answers gets the fact re-gathered before it is called absent.
+        """
+        device = self._get_device()
+        value = device.facts.get(name)
+        if value:
+            return value
+        try:
+            device.rpc.get_software_information()
+            device.facts_refresh(keys=name)
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to read the {name} fact from {self._host}: {error}"
+            ) from error
+        return device.facts.get(name)
+
+    def _extract_configuration_output(self, element: Any) -> str | None:
+        """Return text-format config from a PyEZ reply root element."""
+        if element.tag == "configuration-output":
+            direct: str | None = element.text
+            if direct:
+                return direct
+        else:
+            nested: str | None = element.findtext(".//configuration-output")
+            if nested:
+                return nested
+        fallback = "".join(element.itertext()).strip()
+        if not fallback:
+            return None
+        logger.warning(
+            "Unexpected get-configuration reply shape from %s (root tag <%s>); "
+            "fell back to flattened text content.",
+            self._host,
+            element.tag,
+        )
+        return fallback
+
+    def _get_config(self, fmt: str) -> str:
+        """Return the committed configuration in the requested format."""
+        device = self._get_device()
+        try:
+            result = device.rpc.get_config(options={"format": fmt, "database": "committed"})
+        except RpcError as error:
+            raise NetworkDeviceException(
+                f"Failed to read configuration from {self._host}: {error}"
+            ) from error
+        if isinstance(result, str):
+            return result
+        text = self._extract_configuration_output(result)
+        return text if text is not None else ""
+
+    def _load_full_config(self, cu: Config, new_configuration: str) -> None:
+        """Load the complete desired-state config via Junos ``load update``."""
+        try:
+            cu.load(new_configuration, format="text", update=True)
+        except ConfigLoadError as error:
+            raise ConfigSyntaxException(
+                f"Invalid configuration for {self._host}: {error}"
+            ) from error
+
+    @staticmethod
+    def _discard_candidate(cu: Config, host: str) -> None:
+        """Best-effort rollback."""
+        try:
+            cu.rollback()
+        except Exception:  # noqa: BLE001 - cleanup must not mask the original error
+            logger.debug("Failed to discard candidate config on %s", host, exc_info=True)
+
+    @staticmethod
+    def _reject_partial(partial: bool) -> None:
+        """Reject partial applies; JuniperConnection supports full desired state only."""
+        if partial:
+            raise NetworkDeviceException(
+                "Partial configuration is not supported for JuniperConnection; "
+                "supply the full desired-state configuration.",
+                non_retryable=True,
+            )
+
+    def _commit(self, cu: Config, commit_confirm: bool) -> None:
+        """Commit the candidate, optionally with a rollback timer."""
+        if commit_confirm:
+            cu.commit(
+                confirm=self._COMMIT_CONFIRM_ROLLBACK_MINUTES,
+                timeout=self._RPC_TIMEOUT_SECONDS,
+            )
+        else:
+            cu.commit(timeout=self._RPC_TIMEOUT_SECONDS)
+
+    # ------------------------------------------------------------------
+    # Read operations.
+    # ------------------------------------------------------------------
+
+    def get_running_configuration(self) -> str:
+        """Return the running configuration in hierarchical (curly-brace) text.
+
+        Backups exist for attribution and drift detection, not restoration --
+        intended state is rolled forward through Nautobot and re-applied, never
+        loaded back from a stored backup. So, as with Arista's ``sanitized``
+        running-config and Cumulus's applied-config read, secret values are
+        redacted before this leaves the device session.
+        """
+        return redact_junos_secrets(self._get_config("text").strip() + "\n")
+
+    def get_configuration_text(self) -> str:
+        """Return the running configuration in hierarchical (curly-brace) text."""
+        return self._get_config("text")
+
+    def get_hostname(self) -> str:
+        """Get the system hostname."""
+        hostname = self._get_fact("hostname")
+        if not hostname:
+            raise ApplicationError(
+                f"No hostname returned for {self._host}",
+                non_retryable=True,
+            )
+        return str(hostname)
+
+    def get_running_image(self) -> str:
+        """Get the running Junos version on the device."""
+        version = self._get_fact("version")
+        if not version:
+            raise NetworkDeviceException(
+                f"Unable to determine running image on {self._host}.", non_retryable=True
+            )
+        return str(version)
+
+    def get_uptime(self) -> int:
+        """Get the device uptime in seconds."""
+        data = self._rpc("get-system-uptime-information")
+        try:
+            uptime = data["system-uptime-information"][0]["uptime-information"][0]["up-time"][0]
+            return int(uptime["attributes"]["junos:seconds"])
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            raise NetworkDeviceException(f"Unable to determine uptime on {self._host}.") from error
+
+    # ------------------------------------------------------------------
+    # Configuration operations.
+    # ------------------------------------------------------------------
+
+    def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
+        """Load the full desired-state candidate and return the diff versus active."""
+        self._reject_partial(partial)
+        try:
+            with (
+                self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
+                Config(device, mode="exclusive") as cu,
+            ):
+                try:
+                    self._load_full_config(cu, new_configuration)
+                    diff = cu.diff()
+                    cu.rollback()
+                except Exception:
+                    # Discard a partial load so the next exclusive session is clean.
+                    self._discard_candidate(cu, self._host)
+                    raise
+        except ConfigSyntaxException:
+            raise
+        except (LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to perform candidate diff on {self._host}: {error}"
+            ) from error
+        return diff or ""
+
+    def commit_candidate_config(
+        self,
+        new_configuration: str,
+        approved_diff: str,
+        partial: bool = False,
+        *,
+        commit_confirm: bool = True,
+    ) -> None:
+        """Load the full desired-state candidate and commit."""
+        self._reject_partial(partial)
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                self._load_full_config(cu, new_configuration)
+                diff = cu.diff()
+                if diff and diff != approved_diff:
+                    cu.rollback()
+                    raise DiffChangedException("Diff has changed since approval, aborting.")
+                if diff:
+                    self._commit(cu, commit_confirm)
+                else:
+                    cu.rollback()
+        except (ConfigSyntaxException, DiffChangedException):
+            raise
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to apply candidate configuration on {self._host}: {error}"
+            ) from error
+
+        if commit_confirm:
+            # Confirm the pending commit to cancel the rollback timer.
+            self._confirm_commit()
+
+    def _confirm_commit(self) -> None:
+        """Confirm a pending commit-confirmed, cancelling its rollback timer."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                cu.commit(timeout=self._RPC_TIMEOUT_SECONDS)
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to confirm commit on {self._host}: {error}"
+            ) from error
+
+    # ------------------------------------------------------------------
+    # Rollback to a numbered revision (Junos keeps rollback 0-49).
+    # ------------------------------------------------------------------
+
+    def get_rollback_diff(self, rollback_id: int = 1) -> str:
+        """Return the diff between the active config and a numbered rollback."""
+        try:
+            with (
+                self._device_timeout(self._CONFIG_OP_TIMEOUT_SECONDS) as device,
+                Config(device, mode="exclusive") as cu,
+            ):
+                try:
+                    diff = cu.diff(rb_id=rollback_id)
+                    cu.rollback()
+                except Exception:
+                    self._discard_candidate(cu, self._host)
+                    raise
+        except (LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
+            raise NetworkDeviceException(
+                f"Failed to read rollback {rollback_id} diff on {self._host}: {error}"
+            ) from error
+        return diff or ""
+
+    def rollback_configuration(self, rollback_id: int = 1, *, commit_confirm: bool = True) -> None:
+        """Roll back to a numbered rollback revision and commit (instant rollback)."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                cu.rollback(rb_id=rollback_id)
+                if cu.diff():
+                    self._commit(cu, commit_confirm)
+                else:
+                    cu.rollback()
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError, ValueError) as error:
+            raise NetworkDeviceException(
+                f"Failed to roll back to revision {rollback_id} on {self._host}: {error}"
+            ) from error
+        if commit_confirm:
+            self._confirm_commit()
+
+    # ------------------------------------------------------------------
+    # Rescue configuration (a named checkpoint of the active config).
+    # ------------------------------------------------------------------
+
+    def save_rescue_configuration(self) -> None:
+        """Save the current active config as the rescue checkpoint."""
+        device = self._get_device()
+        try:
+            Config(device).rescue(action="save")
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to save rescue configuration on {self._host}: {error}"
+            ) from error
+
+    def get_rescue_configuration(self) -> str | None:
+        """Return the saved rescue configuration, or None if none is set."""
+        device = self._get_device()
+        try:
+            got = device.rpc.get_rescue_information(format="text")
+        except RpcError as error:
+            if self._is_rescue_absent(error):
+                return None
+            raise NetworkDeviceException(
+                f"Failed to read rescue configuration on {self._host}: {error}"
+            ) from error
+        except ConnectError as error:
+            raise NetworkDeviceException(
+                f"Failed to read rescue configuration on {self._host}: {error}"
+            ) from error
+        text = self._extract_configuration_output(got)
+        return text if text else None
+
+    @staticmethod
+    def _is_rescue_absent(error: RpcError) -> bool:
+        """True when Junos reports that no rescue configuration is defined."""
+        message = str(error).lower()
+        return "rescue" in message and (
+            "does not exist" in message
+            or "not found" in message
+            or "no rescue" in message
+            or "rescue configuration is not set" in message
+        )
+
+    def delete_rescue_configuration(self) -> None:
+        """Delete the saved rescue configuration."""
+        device = self._get_device()
+        try:
+            Config(device).rescue(action="delete")
+        except (RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to delete rescue configuration on {self._host}: {error}"
+            ) from error
+
+    def rollback_to_rescue(self, *, commit_confirm: bool = True) -> None:
+        """Roll back to the saved rescue configuration and commit."""
+        device = self._get_device()
+        try:
+            with Config(device, mode="exclusive") as cu:
+                try:
+                    loaded = cu.rescue(action="reload")
+                    if not loaded:
+                        raise NetworkDeviceException(
+                            f"No rescue configuration on {self._host}.",
+                            non_retryable=True,
+                        )
+                    if cu.diff():
+                        self._commit(cu, commit_confirm)
+                    else:
+                        cu.rollback()
+                except Exception:
+                    self._discard_candidate(cu, self._host)
+                    raise
+        except NetworkDeviceException:
+            raise
+        except (CommitError, LockError, UnlockError, RpcError, ConnectError) as error:
+            raise NetworkDeviceException(
+                f"Failed to roll back to rescue configuration on {self._host}: {error}"
+            ) from error
+        if commit_confirm:
+            self._confirm_commit()
+
+    # ------------------------------------------------------------------
+    # Diagnostic commands — operational RPCs returning JSON.
+    # ------------------------------------------------------------------
+
+    def diag_get_version(self) -> object:
+        return self._rpc("get-software-information")
+
+    def diag_get_interfaces(self) -> object:
+        return self._rpc("get-interface-information", params={"terse": True})
+
+    def diag_get_lldp_neighbors(self) -> object:
+        return self._rpc("get-lldp-neighbors-information")
+
+    def diag_get_route_table(self) -> object:
+        return self._rpc("get-route-summary-information")
+
+    def diag_get_arp_table(self) -> object:
+        return self._rpc("get-arp-table-information")
