@@ -20,15 +20,11 @@ from nv_config_manager_dcim.api import (
     DCIM_PROVIDER_API_VERSION,
     DCIMClient,
     DCIMEventProvider,
-    DCIMParameterClient,
-    DCIMParameterProvider,
     DCIMProvider,
     DCIMProviderMetadata,
     DCIMRenderEventHandler,
     DCIMRenderEventProvider,
     DCIMRenderEventRegistry,
-    DCIMWorkflowClient,
-    DCIMWorkflowProvider,
     NautobotMCPClient,
     NautobotMCPProvider,
     ProviderSettings,
@@ -94,6 +90,7 @@ from nv_config_manager_dcim.workflow_models import (
     HostDeviceData,
     InterfaceData,
     NetworkDeviceData,
+    OSImageVersions,
     Platform,
 )
 

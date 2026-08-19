@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import Any, ClassVar, NamedTuple, assert_never
 
 from pydantic import BaseModel, computed_field
 
@@ -32,6 +32,14 @@ class Platform(StrEnum):
     NV_OS = "nv-os"
     MLNX_OS = "mlnx-os"
     UFM = "ufm"
+
+
+class OSImageVersions(NamedTuple):
+    """Firmware intent and the address used to perform ZTP."""
+
+    intended_firmware: str
+    desired_firmware: str
+    ztp_address: str
 
 
 class DeviceBayData(BaseModel):
@@ -83,13 +91,15 @@ class NetworkDeviceData(DeviceData):
     @computed_field  # type: ignore[misc]
     @property
     def intended_config_file(self) -> str:
-        if self.platform in {Platform.ARISTA_EOS, Platform.MLNX_OS}:
-            return "full-config"
-        if self.platform in {Platform.CUMULUS_LINUX, Platform.NV_OS}:
-            return "startup.yaml"
-        if self.platform == Platform.UFM:
-            return ""
-        raise NotImplementedError(f"No configuration path for platform {self.platform}")
+        match self.platform:
+            case Platform.ARISTA_EOS | Platform.MLNX_OS:
+                return "full-config"
+            case Platform.CUMULUS_LINUX | Platform.NV_OS:
+                return "startup.yaml"
+            case Platform.UFM:
+                return ""
+            case _ as unreachable:
+                assert_never(unreachable)
 
     @computed_field  # type: ignore[misc]
     @property

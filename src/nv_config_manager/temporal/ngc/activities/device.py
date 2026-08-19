@@ -55,18 +55,14 @@ async def get_device_intended_neighbors(
                     if interface.connected_interface_mac
                     else []
                 ),
-                device_name=interface.connected_device.name,
-                device_serial=interface.connected_device.serial,
-                device_role=(
-                    interface.connected_device.role.lower().replace(" ", "-")
-                    if interface.connected_device.role
-                    else None
-                ),
-                device_rack=interface.connected_device.rack,
-                device_position=interface.connected_device.position,
+                device_name=device.name,
+                device_serial=device.serial,
+                device_role=(device.role.lower().replace(" ", "-") if device.role else None),
+                device_rack=device.rack,
+                device_position=device.position,
             )
             for interface in interfaces
-            if interface.connected_device
+            if (device := interface.connected_device)
         },
         ignore=[
             interface.name

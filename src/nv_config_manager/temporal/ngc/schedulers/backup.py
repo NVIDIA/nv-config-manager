@@ -37,7 +37,7 @@ from temporalio.contrib.opentelemetry import TracingInterceptor
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.dcim import DCIMError, create_dcim_workflow_client
+from nv_config_manager.dcim import DCIMError, create_dcim_client
 from nv_config_manager.temporal.client.connection import client_connect_options, temporal_address
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
 from nv_config_manager.temporal.common.search_attributes import (
@@ -80,7 +80,7 @@ class BackupScheduler:
         is_aggregate_env = config.getboolean(
             "aggregate", "is_aggregate_environment", fallback=False
         )
-        client = create_dcim_workflow_client()
+        client = create_dcim_client()
         async with client:
             return await client.get_backup_enabled_device_ids(is_aggregate_env)  # type: ignore[attr-defined]
 

@@ -193,7 +193,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         return_value=DCIMSelection(id=location_id, name="SJC01")
     )
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=location_client,
     ):
         result = await start_workflow(request, HelloWorld, location_body)
@@ -225,7 +225,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     location_body = LocationWorkflowInput(site=missing_location_id)
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
             return_value=location_client,
         ),
         pytest.raises(HTTPException, match="Unknown location") as exc_info,
@@ -266,7 +266,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
         )
     )
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=device_client,
     ):
         result = await start_workflow(request, DeployWorkflow, body)
@@ -298,7 +298,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     device_client.get_device_metadata.return_value = None
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
             return_value=device_client,
         ),
         pytest.raises(HTTPException, match="Unknown device") as exc_info,
@@ -312,7 +312,7 @@ async def test_start_workflow(mock_rbac_config, mock_uuid, mock_connect, mock_ca
     device_client.is_valid_device_id.return_value = False
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
             return_value=device_client,
         ),
         pytest.raises(HTTPException, match="Invalid device identifier") as exc_info,

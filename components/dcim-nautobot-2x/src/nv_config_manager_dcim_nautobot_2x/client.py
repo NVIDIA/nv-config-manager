@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 class NautobotException(DCIMError):
     """Backend-specific compatibility name for a public DCIM failure."""
 
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class NautobotClient:
     """Async Nautobot HTTP client used only by this provider.
@@ -170,7 +174,8 @@ class NautobotClient:
                 error_body = "<unable to read response body>"
 
         raise NautobotException(
-            f"Nautobot API error: {method} {path} returned {rsp.status}: {error_body}"
+            f"Nautobot API error: {method} {path} returned {rsp.status}: {error_body}",
+            status_code=rsp.status,
         )
 
     async def graphql_query(

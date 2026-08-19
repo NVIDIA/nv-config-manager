@@ -29,7 +29,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import create_dcim_client
 from nv_config_manager.temporal.client.device import DeviceArpTable
 from nv_config_manager.temporal.client.redfish import (
     Bluefield3RedfishConnection,
@@ -362,7 +362,7 @@ async def update_dpu_data(
     activity_input: UpdateDpuDataActivityInput,
 ) -> UpdateDpuDataActivityOutput:
     """Update DPU Data."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         server_mac = activity_input.server.mac
         if server_mac is None:

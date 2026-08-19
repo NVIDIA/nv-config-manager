@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import netaddr
@@ -31,7 +32,15 @@ from nv_config_manager_dcim.workflow_models import (
 
 def _slugify(name: str) -> str:
     """Map one Nautobot display name to the SDK's stable slug."""
-    return name.lower().replace(" ", "-")
+    return name.strip().lower().replace(" ", "-")
+
+
+def _require_str(data: Mapping[str, Any], key: str, label: str) -> str:
+    """Return a required non-empty string from a Nautobot response."""
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise DCIMInvalidDataError(f"{label} is missing required field '{key}'")
+    return value
 
 
 def _extract_site(device: dict[str, Any]) -> str:
@@ -39,7 +48,7 @@ def _extract_site(device: dict[str, Any]) -> str:
     location = device.get("location")
     while location:
         if (location.get("location_type") or {}).get("name") == "Site":
-            return str(location["name"])
+            return _require_str(location, "name", "Site location")
         location = location.get("parent")
     raise DCIMInvalidDataError(f"Could not identify a site for {device.get('name')}")
 
@@ -61,11 +70,17 @@ def interface_from_nautobot_graphql(interface: dict[str, Any]) -> InterfaceData:
         raise DCIMInvalidDataError(f"Interface {interface.get('id')} has no device associated")
     mac_address = interface.get("mac_address")
     vrf = interface.get("vrf") or {}
+    try:
+        parsed_mac_address = str(netaddr.EUI(mac_address)) if mac_address else None
+    except netaddr.core.AddrFormatError as exc:
+        raise DCIMInvalidDataError(
+            f"Interface {interface.get('name')} has invalid MAC address: {mac_address}"
+        ) from exc
     return InterfaceData(
         id=str(interface["id"]),
         name=str(interface["name"]),
         host=str(device.get("name") or device.get("id")),
-        mac_address=str(netaddr.EUI(mac_address)) if mac_address else None,
+        mac_address=parsed_mac_address,
         vrf_id=vrf.get("id"),
     )
 
@@ -80,13 +95,13 @@ def network_device_from_nautobot_graphql(device: dict[str, Any]) -> NetworkDevic
     primary_ip4 = device.get("primary_ip4") or {}
     primary_ip6 = device.get("primary_ip6") or {}
     return NetworkDeviceData(
-        id=str(device["id"]),
-        name=str(device["name"]),
+        id=_require_str(device, "id", "Network device"),
+        name=_require_str(device, "name", "Network device"),
         rack=rack.get("name"),
         position=device.get("position"),
-        role=_slugify(str(role["name"])),
-        platform=Platform(_slugify(str(platform["name"]))),
-        device_type=_slugify(str(device_type["model"])),
+        role=_slugify(_require_str(role, "name", "Network device role")),
+        platform=Platform(_slugify(_require_str(platform, "name", "Network device platform"))),
+        device_type=_slugify(_require_str(device_type, "model", "Network device type")),
         site=_extract_site(device),
         primary_ip4=primary_ip4.get("host"),
         primary_ip6=primary_ip6.get("host"),
@@ -104,12 +119,12 @@ def host_device_from_nautobot_graphql(device: dict[str, Any]) -> HostDeviceData:
     device_type = device.get("device_type") or {}
     rack = device.get("rack") or {}
     return HostDeviceData(
-        id=str(device["id"]),
-        name=str(device["name"]),
+        id=_require_str(device, "id", "Host device"),
+        name=_require_str(device, "name", "Host device"),
         rack=rack.get("name"),
         position=device.get("position"),
-        role=_slugify(str(role["name"])),
-        device_type=_slugify(str(device_type["model"])),
+        role=_slugify(_require_str(role, "name", "Host device role")),
+        device_type=_slugify(_require_str(device_type, "model", "Host device type")),
         site=_extract_site(device),
         device_bays=[
             device_bay_from_nautobot_graphql(item) for item in device.get("device_bays", [])

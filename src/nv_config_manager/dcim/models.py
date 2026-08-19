@@ -26,5 +26,6 @@ from nv_config_manager_dcim.workflow_models import (  # noqa: F401
     HostDeviceData,
     InterfaceData,
     NetworkDeviceData,
+    OSImageVersions,
     Platform,
 )

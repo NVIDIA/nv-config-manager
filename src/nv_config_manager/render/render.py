@@ -79,6 +79,76 @@ async def _update_template_version(dcim_client: DCIMClient, device_uuid: str) ->
     await dcim_client.update_render_template_version(device_uuid, template_version_key())
 
 
+async def _persist_rendered_files(
+    dcim_client: DCIMClient,
+    device_uuid: str,
+    files: dict[str, str],
+    commit_message: str,
+    user: str,
+    user_domain: str,
+) -> list[FileCommit]:
+    """Persist rendered files and synchronize the resulting provider state."""
+    csclient = config_store_client()
+    async with csclient:
+        updated_files = await csclient.persist_files(
+            device_uuid, files, commit_message, user, user_domain
+        )
+
+        if updated_files:
+            file_commits = [
+                FileCommit(filename=file.filename, commit=file.commit) for file in updated_files
+            ]
+            deployable_file = next(
+                (file for file in file_commits if file.filename in DEPLOYABLE_FILES), None
+            )
+            logger.info(
+                "Produced commits for %s: %s",
+                device_uuid,
+                {file.filename: file.commit for file in file_commits},
+            )
+            if deployable_file:
+                await _update_intended_configuration(
+                    dcim_client,
+                    device_uuid,
+                    config_store_ui_url(),
+                    deployable_file.commit,
+                    [file.filename for file in file_commits],
+                    user,
+                    commit_message,
+                )
+            else:
+                await _update_template_version(dcim_client, device_uuid)
+            return file_commits
+
+        for candidate in files:
+            if candidate not in DEPLOYABLE_FILES:
+                continue
+            try:
+                latest = await csclient.load_file(device_uuid, candidate)
+                logger.info(
+                    "No config diff for %s, re-syncing DCIM with latest version %s of %s",
+                    device_uuid,
+                    latest.commit,
+                    candidate,
+                )
+                await _update_intended_configuration(
+                    dcim_client,
+                    device_uuid,
+                    config_store_ui_url(),
+                    latest.commit,
+                    [candidate],
+                    user,
+                    commit_message,
+                    updated_at=latest.created_at,
+                )
+                return []
+            except ConfigStoreFileNotFound:
+                continue
+
+        await _update_template_version(dcim_client, device_uuid)
+        return []
+
+
 async def execute_render(device_uuid: str, commit_message: str, user: str) -> list[FileCommit]:
     """Execute a render for a device."""
     logger.info(
@@ -108,62 +178,15 @@ async def execute_render(device_uuid: str, commit_message: str, user: str) -> li
         except Exception as exc:
             raise RenderException(f"Failed to render entrypoints for {device_uuid}: {exc}") from exc
 
-        csclient = config_store_client()
-        async with csclient:
-            updated_files = await csclient.persist_files(
-                device_uuid, files, commit_message, user, user_domain
+        try:
+            return await _persist_rendered_files(
+                dcim_client,
+                device_uuid,
+                files,
+                commit_message,
+                user,
+                user_domain,
             )
-
-            if updated_files:
-                file_commits = [
-                    FileCommit(filename=file.filename, commit=file.commit) for file in updated_files
-                ]
-                deployable_file = next(
-                    (file for file in file_commits if file.filename in DEPLOYABLE_FILES), None
-                )
-                logger.info(
-                    "Produced commits for %s: %s",
-                    device_uuid,
-                    {file.filename: file.commit for file in file_commits},
-                )
-                if deployable_file:
-                    await _update_intended_configuration(
-                        dcim_client,
-                        device_uuid,
-                        config_store_ui_url(),
-                        deployable_file.commit,
-                        [file.filename for file in file_commits],
-                        user,
-                        commit_message,
-                    )
-                else:
-                    await _update_template_version(dcim_client, device_uuid)
-                return file_commits
-
-            for candidate in files:
-                if candidate not in DEPLOYABLE_FILES:
-                    continue
-                try:
-                    latest = await csclient.load_file(device_uuid, candidate)
-                    logger.info(
-                        "No config diff for %s, re-syncing DCIM with latest version %s of %s",
-                        device_uuid,
-                        latest.commit,
-                        candidate,
-                    )
-                    await _update_intended_configuration(
-                        dcim_client,
-                        device_uuid,
-                        config_store_ui_url(),
-                        latest.commit,
-                        [candidate],
-                        user,
-                        commit_message,
-                        updated_at=latest.created_at,
-                    )
-                    return []
-                except ConfigStoreFileNotFound:
-                    continue
-
-            await _update_template_version(dcim_client, device_uuid)
-            return []
+        except Exception:
+            logger.exception("Failed to persist or synchronize render for %s", device_uuid)
+            raise

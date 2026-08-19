@@ -35,7 +35,4 @@ async def test_ztp_device_data(mock_device_data):
         assert device_data.addresses == ["10.180.166.13", "10.180.166.130"]
         assert device_data.platform_name == "Cumulus Linux"
         assert device_data.firmware_version == "5.7.0"
-        assert (
-            device_data.config_store_instance
-            == "https://api-mtls.config-store.config-manager.example.com/"
-        )
+        assert device_data.config_store_instance == "https://config-manager.example.com/"

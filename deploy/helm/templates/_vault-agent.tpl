@@ -397,8 +397,9 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           # Internal endpoint for service-to-service calls (within cluster)
           # Uses sidecar port when auth sidecars are enabled for header injection
           api_service = http://{{ $configStoreName }}-api:{{ $internalPort }}
-          # External URL for user-facing links (markdown, nautobot references, etc.)
+          # External API endpoint for clients outside the cluster
           api_url = https://{{ tpl $root.Values.configStore.gateway.api.hostname $root }}
+          # Unified UI base URL for links (DCIM references, etc.)
           ui_url = https://{{ $root.Values.gateway.baseHostname }}
           # Set to true for internal cluster communication (uses api_service)
           # Set to false for external mTLS communication (uses api_url)

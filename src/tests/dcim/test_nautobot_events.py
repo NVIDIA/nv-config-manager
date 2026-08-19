@@ -17,7 +17,8 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from nv_config_manager_dcim_nautobot_2x.events import cable, configcontext, prefix
+from nv_config_manager_dcim.errors import DCIMInvalidDataError
+from nv_config_manager_dcim_nautobot_2x.events import _id, cable, configcontext, prefix
 from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient, NautobotProvider
 
 from nv_config_manager.dcim import DCIMChangeEvent, RenderEventRequest
@@ -39,6 +40,13 @@ def _event(object_type: str, record: dict) -> DCIMChangeEvent:
 def _client() -> NautobotDCIMClient:
     """Build a provider client without opening an HTTP session."""
     return NautobotDCIMClient("https://nautobot.example", "token")
+
+
+@pytest.mark.parametrize("value", [None, "", 0, False])
+def test_event_id_rejects_falsy_values(value: object) -> None:
+    """Falsy identifiers are consistently treated as missing event data."""
+    with pytest.raises(DCIMInvalidDataError, match="missing device id"):
+        _id(value, "device id")
 
 
 def test_nautobot_provider_registers_its_event_types():

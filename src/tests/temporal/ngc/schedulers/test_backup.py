@@ -25,7 +25,7 @@ async def test_devices_to_schedule(monkeypatch):
     client.__aenter__.return_value = client
     client.get_backup_enabled_device_ids.return_value = {"device1", "device2"}
     monkeypatch.setattr(
-        "nv_config_manager.temporal.ngc.schedulers.backup.create_dcim_workflow_client",
+        "nv_config_manager.temporal.ngc.schedulers.backup.create_dcim_client",
         lambda: client,
     )
 

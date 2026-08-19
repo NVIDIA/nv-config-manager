@@ -63,9 +63,7 @@ class DeviceData:  # pylint: disable=too-many-instance-attributes
             )
         else:
             # External mTLS communication
-            if not self.config_store_instance:
-                raise ValueError("Config store API endpoint not configured")
-            api_endpoint = self.config_store_instance
+            api_endpoint = app_config.get("config_store.client", "api_url")
 
             client_cert_path = None
             if app_config.get("mtls", "tls_client_cert_path") and app_config.get(

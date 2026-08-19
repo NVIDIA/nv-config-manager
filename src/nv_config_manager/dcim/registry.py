@@ -20,10 +20,11 @@ packages receive an explicit provider name and a plain settings mapping.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import AsyncIterator, Callable, Mapping
 from configparser import ConfigParser
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import Any
 
 from nv_config_manager_dcim import (
     DCIMChangeEvent,
@@ -49,6 +50,15 @@ DCIM_PROVIDER_ENTRY_POINT_GROUP = "nv_config_manager.dcim"
 DEFAULT_DCIM_PROVIDER = "nautobot-2x"
 
 
+def _resolved_config(config: ConfigParser | None) -> ConfigParser:
+    """Return an explicit config, loading the service config when omitted."""
+    if config is not None:
+        return config
+    from nv_config_manager.common.config import load_config  # avoid circular import
+
+    return load_config()
+
+
 def discover_dcim_providers() -> dict[str, Any]:
     """Return installed providers from the standalone SDK discovery layer."""
     return discover_sdk_dcim_providers()
@@ -56,10 +66,7 @@ def discover_dcim_providers() -> dict[str, Any]:
 
 def configured_dcim_provider_name(config: ConfigParser | None = None) -> str:
     """Return the service-selected provider, defaulting to Nautobot 2.x."""
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     if not config.has_section("dcim"):
         return DEFAULT_DCIM_PROVIDER
     name = config.get("dcim", "provider", fallback=DEFAULT_DCIM_PROVIDER).strip()
@@ -73,10 +80,20 @@ def provider_settings(config: ConfigParser, provider_name: str | None = None) ->
 
     ``[dcim]`` and ``[dcim.options]`` are the portable service configuration
     surface. A provider-specific ``[dcim.<provider>]`` section takes
-    precedence without leaking ``ConfigParser`` into the provider SDK.
+    precedence without leaking ``ConfigParser`` into the provider SDK. The
+    built-in Nautobot 2.x provider also accepts legacy ``[nautobot]`` values
+    until NVCM 2.0, with every new DCIM section taking precedence.
     """
     provider_name = provider_name or configured_dcim_provider_name(config)
     settings: dict[str, str] = {}
+    if provider_name == DEFAULT_DCIM_PROVIDER and config.has_section("nautobot"):
+        warnings.warn(
+            "The [nautobot] configuration section is deprecated; migrate its values to "
+            "[dcim], [dcim.options], or [dcim.nautobot-2x] before NVCM 2.0",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        settings.update(config.items("nautobot"))
     for section in (
         "dcim",
         "dcim.options",
@@ -91,41 +108,22 @@ def provider_settings(config: ConfigParser, provider_name: str | None = None) ->
 
 def get_dcim_provider(config: ConfigParser | None = None) -> Any:
     """Return the provider selected by this NVCM service configuration."""
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     return get_sdk_dcim_provider(configured_dcim_provider_name(config))
 
 
 def create_dcim_client(config: ConfigParser | None = None) -> DCIMClient:
     """Create one broad client using the service's INI configuration."""
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     name = configured_dcim_provider_name(config)
     return create_sdk_dcim_client(name, provider_settings(config, name))
-
-
-def create_dcim_workflow_client(config: ConfigParser | None = None) -> DCIMClient:
-    """Return a service-managed client compatible with legacy workflow callers."""
-    return cast(DCIMClient, _ManagedDCIMClient(create_dcim_client(config)))
-
-
-def create_dcim_parameter_client(config: ConfigParser | None = None) -> DCIMClient:
-    """Return a service-managed client compatible with legacy API callers."""
-    return cast(DCIMClient, _ManagedDCIMClient(create_dcim_client(config)))
 
 
 def create_nautobot_mcp_client(
     headers: Callable[[], dict[str, str]], config: ConfigParser | None = None
 ) -> NautobotMCPClient | None:
     """Create the optional Nautobot-specific MCP adapter when supported."""
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     name = configured_dcim_provider_name(config)
     provider = get_sdk_dcim_provider(name)
     if not isinstance(provider, NautobotMCPProvider):
@@ -143,10 +141,7 @@ def supports_nautobot_mcp(config: ConfigParser | None = None) -> bool:
     :class:`NautobotMCPProvider`; an unknown provider simply leaves those optional
     tools unavailable.
     """
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     try:
         provider = get_sdk_dcim_provider(configured_dcim_provider_name(config))
     except DCIMProviderNotFoundError:
@@ -158,10 +153,7 @@ def normalize_dcim_event(
     payload: Mapping[str, Any], config: ConfigParser | None = None
 ) -> DCIMChangeEvent:
     """Validate generic events or normalize the selected provider's legacy payload."""
-    if config is None:
-        from nv_config_manager.common.config import load_config  # avoid circular import
-
-        config = load_config()
+    config = _resolved_config(config)
     provider = get_dcim_provider(config)
     try:
         event = DCIMChangeEvent.from_dict(payload)
@@ -185,40 +177,3 @@ async def dcim_client_session(config: ConfigParser | None = None) -> AsyncIterat
         yield client
     finally:
         await client.close()
-
-
-class _ManagedDCIMClient:
-    """Service-side lifecycle adapter for legacy ``async with client`` callers.
-
-    Third-party providers only implement the SDK's explicit ``close()`` method.
-    This adapter keeps legacy workflow code working without requiring providers
-    to implement Python's asynchronous context-manager protocol.
-    """
-
-    def __init__(self, client: DCIMClient) -> None:
-        self._client = client
-        self._closed = False
-
-    async def __aenter__(self) -> _ManagedDCIMClient:
-        """Enter a legacy workflow client scope."""
-        return self
-
-    async def __aexit__(
-        self,
-        _exception_type: type[BaseException] | None,
-        _exception: BaseException | None,
-        _traceback: object,
-    ) -> None:
-        """Close the provider client at the service lifecycle boundary."""
-        await self.close()
-
-    async def close(self) -> None:
-        """Release provider resources exactly once per workflow scope."""
-        if self._closed:
-            return
-        self._closed = True
-        await self._client.close()
-
-    def __getattr__(self, name: str) -> Any:
-        """Delegate SDK operations to the selected provider client."""
-        return getattr(self._client, name)

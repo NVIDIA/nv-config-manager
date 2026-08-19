@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import create_dcim_client
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
 from nv_config_manager.temporal.ngc.activities.config import build_workflow_url
 
@@ -107,7 +107,7 @@ async def get_password_mappings(
     """Get password mapping configuration for a device and username."""
     device = activity_input.device
     username = activity_input.username
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         password_mapping_users = await client.get_device_password_mapping_users(device.id)
 

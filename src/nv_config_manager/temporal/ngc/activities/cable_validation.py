@@ -34,7 +34,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import create_dcim_client
 from nv_config_manager.temporal.client.device import (
     DeviceArpTable,
     DeviceMacTable,
@@ -521,7 +521,7 @@ async def decorate_result(
     if not mac_to_host:
         return DecorateResultActivityOutput(devices=activity_result)
 
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         interfaces = await client.get_interface_hosts_by_mac(list(mac_to_host.keys()))
 

@@ -96,6 +96,29 @@ async def test_dispatch_ignores_unregistered_provider_event():
     )
 
 
+@pytest.mark.asyncio
+async def test_dispatch_logs_event_without_record() -> None:
+    """Record-less events are observable when the dispatcher skips them."""
+    dispatcher = EventDispatcher(SyntheticRenderEventProvider())
+    dispatcher.logger.info = MagicMock()
+    event = DCIMChangeEvent(
+        provider="synthetic",
+        operation="delete",
+        object_type="synthetic.device",
+        object_id="device-1",
+        timestamp="2026-07-20T00:00:00Z",
+        record=None,
+    )
+
+    await dispatcher.dcim_event_dispatch(event)
+
+    dispatcher.logger.info.assert_called_once_with(
+        "Event %s for object %s has no record, ignoring message.",
+        "synthetic.device",
+        "device-1",
+    )
+
+
 @patch("nv_config_manager.render.dispatch.execute_render")
 @pytest.mark.asyncio
 async def test_nautobot_change_dispatch(mock_render):

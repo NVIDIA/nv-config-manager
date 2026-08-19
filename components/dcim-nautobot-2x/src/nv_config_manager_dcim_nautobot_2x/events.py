@@ -79,7 +79,7 @@ def _record(event: DCIMChangeEvent) -> Mapping[str, Any]:
 
 def _id(value: object, description: str) -> str:
     """Return a required provider object identifier."""
-    if value is None or not str(value):
+    if not value:
         raise DCIMInvalidDataError(f"Nautobot event is missing {description}")
     return str(value)
 
@@ -207,8 +207,9 @@ async def configcontext(
 ) -> tuple[RenderEventRequest, ...]:
     """Handle an ``extras.configcontext`` event."""
     filters: dict[str, list[str]] = {}
+    record = _record(event)
     for field in _CONFIG_CONTEXT_FILTER_FIELDS:
-        values = _record(event).get(field, ())
+        values = record.get(field, ())
         if not isinstance(values, list):
             continue
         identifiers = [

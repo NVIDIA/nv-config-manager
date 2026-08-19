@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import create_dcim_client
 from nv_config_manager.temporal.client.ufm import UFMClient
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
@@ -363,7 +363,7 @@ async def discover_ib_port_guids(
             non_retryable=True,
         )
 
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         topology = await client.get_ib_switch_topology(input.switch_device_ids)
         switch_id_to_name = dict(topology.switch_names)
@@ -429,7 +429,7 @@ async def sync_ib_guid_on_interface(input: SyncIBGuidInput) -> SyncIBGuidOutput:
     if not input.guid:
         raise ApplicationError("guid is required", non_retryable=True)
 
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         current = await client.get_ib_interface_guid(input.interface_id)
         previous_guid = current.guid

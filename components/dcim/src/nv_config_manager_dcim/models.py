@@ -23,6 +23,8 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from nv_config_manager_dcim.errors import DCIMInvalidDataError
 
+VALID_DCIM_EVENT_OPERATIONS = frozenset({"create", "update", "delete"})
+
 DCIM_EVENT_CONTRACT_VERSION = "1.0"
 """Version of the provider-neutral event envelope consumed by services."""
 
@@ -350,7 +352,7 @@ class DCIMChangeEvent(DCIMModel):
         if str(data.get("contract_version", "")).strip() != DCIM_EVENT_CONTRACT_VERSION:
             raise DCIMInvalidDataError("Unsupported DCIM event contract version")
         operation = str(data["operation"])
-        if operation not in {"create", "update", "delete"}:
+        if operation not in VALID_DCIM_EVENT_OPERATIONS:
             raise DCIMInvalidDataError("Invalid DCIM event operation")
         record = data.get("record")
         if record is not None and not isinstance(record, Mapping):

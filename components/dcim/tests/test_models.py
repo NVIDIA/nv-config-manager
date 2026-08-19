@@ -22,10 +22,21 @@ from pydantic import BaseModel, ValidationError
 from nv_config_manager_dcim import (
     DCIMDeviceSelection,
     DeviceMetadata,
+    OSImageVersions,
     RenderDeviceIdentity,
     RenderLocation,
 )
 from nv_config_manager_dcim.render import DeviceRenderData, LocationRenderData, RenderData
+
+
+def test_os_image_versions_is_named_and_tuple_compatible() -> None:
+    """OS image data retains its established three-value tuple representation."""
+    versions = OSImageVersions("5.1.0", "5.2.0", "192.0.2.1")
+
+    assert versions.intended_firmware == "5.1.0"
+    assert versions.desired_firmware == "5.2.0"
+    assert versions.ztp_address == "192.0.2.1"
+    assert tuple(versions) == ("5.1.0", "5.2.0", "192.0.2.1")
 
 
 def test_sdk_contract_models_are_pydantic_and_immutable() -> None:

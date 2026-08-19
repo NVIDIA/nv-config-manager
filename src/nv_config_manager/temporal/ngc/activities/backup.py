@@ -25,7 +25,7 @@ from nv_config_manager.common.config import (
     config_store_client,
     config_store_ui_url,
 )
-from nv_config_manager.dcim import ConfigurationBackupIntent, create_dcim_workflow_client
+from nv_config_manager.dcim import ConfigurationBackupIntent, create_dcim_client
 from nv_config_manager.temporal.client.device import NetworkConnection
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 
@@ -97,7 +97,7 @@ async def record_backup_config_manager_plugin(  # pylint: disable=too-many-argum
 
     markdown = f"[Configuration Backup]({csclient.file_url(device_uuid=activity_input.device_id, filename=fname)})"
 
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         existing_backup = await client.get_configuration_backup_metadata(activity_input.device_id)
         deployed_commit_id = activity_input.deployed_commit_id or None

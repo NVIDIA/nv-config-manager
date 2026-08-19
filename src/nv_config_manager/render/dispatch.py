@@ -179,6 +179,11 @@ class EventDispatcher(DCIMRenderEventRegistry):  # pylint: disable=too-few-publi
             # Have seen instances of this occurring, could be an object that was deleted
             # after an update and therefore the change producer has no record to include
             # in the message.
+            self.logger.info(
+                "Event %s for object %s has no record, ignoring message.",
+                model,
+                event.object_id,
+            )
             EVENT_SKIPPED_COUNTER.labels(model, self.instance, self.namespace).inc()
             return
 

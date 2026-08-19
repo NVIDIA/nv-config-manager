@@ -51,7 +51,7 @@ def clients(monkeypatch: pytest.MonkeyPatch) -> tuple[MagicMock, AsyncMock]:
     monkeypatch.setattr(
         backup_activities, "config_store_client", lambda _file_type: config_store_client
     )
-    monkeypatch.setattr(backup_activities, "create_dcim_workflow_client", lambda: dcim_client)
+    monkeypatch.setattr(backup_activities, "create_dcim_client", lambda: dcim_client)
     monkeypatch.setattr(
         backup_activities, "config_store_ui_url", lambda: "https://config-store.example"
     )

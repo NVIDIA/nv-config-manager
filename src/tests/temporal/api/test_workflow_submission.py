@@ -161,7 +161,7 @@ async def test_device_references_are_deduplicated_and_enriched_from_metadata() -
     )
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
@@ -197,7 +197,7 @@ async def test_device_reference_lookups_have_bounded_concurrency() -> None:
     body = DeviceCollectionInput(primary_device=device_ids[0], related_devices=device_ids)
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         await resolve_workflow_references(body)
@@ -230,7 +230,7 @@ async def test_uuid_v5_device_reference_is_accepted() -> None:
     body = DeviceCollectionInput(primary_device=DEVICE_ID_V5, related_devices=[])
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
@@ -268,7 +268,7 @@ async def test_explicit_location_takes_search_attribute_precedence() -> None:
     body = LocationAndDeviceInput(location_scope=LOCATION_ID, target_device=DEVICE_ID)
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
@@ -294,7 +294,7 @@ async def test_optional_location_references_are_resolved(body: BaseModel) -> Non
     }
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(body)
@@ -319,7 +319,7 @@ async def test_optional_device_reference_is_resolved() -> None:
     ]
 
     with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+        "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
         return_value=client,
     ):
         attributes = await resolve_workflow_references(PortLLDPInfoInput(device_id=DEVICE_ID))
@@ -351,7 +351,7 @@ async def test_invalid_reference_shape_is_rejected_only_by_api_resolution(
 
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
             return_value=client,
         ),
         pytest.raises(HTTPException, match=message) as exc_info,
@@ -364,9 +364,7 @@ async def test_invalid_reference_shape_is_rejected_only_by_api_resolution(
 @pytest.mark.asyncio
 async def test_field_names_without_reference_metadata_are_ignored() -> None:
     """Conventional names alone must not trigger validation or Nautobot queries."""
-    with patch(
-        "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client"
-    ) as client:
+    with patch("nv_config_manager.temporal.api.workflow_submission.create_dcim_client") as client:
         attributes = await resolve_workflow_references(ConventionOnlyInput(device_id="not-a-uuid"))
 
     assert attributes == {}
@@ -400,7 +398,7 @@ async def test_api_workflow_inputs_reject_preloaded_device_objects(body: BaseMod
 
     with (
         patch(
-            "nv_config_manager.temporal.api.workflow_submission.create_dcim_parameter_client",
+            "nv_config_manager.temporal.api.workflow_submission.create_dcim_client",
             return_value=client,
         ),
         pytest.raises(HTTPException, match="Preloaded device objects are not accepted") as exc_info,

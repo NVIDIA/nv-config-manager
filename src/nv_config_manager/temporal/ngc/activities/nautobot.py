@@ -27,7 +27,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.log import LogCategory, get_logger
-from nv_config_manager.dcim import DCIMError, DeviceVRF, SpectrumXVRF, create_dcim_workflow_client
+from nv_config_manager.dcim import DCIMError, DeviceVRF, SpectrumXVRF, create_dcim_client
 from nv_config_manager.temporal.common.mixins.device import (
     HostDeviceData,
     InterfaceData,
@@ -72,7 +72,7 @@ async def get_network_device(
     activity_input: GetNetworkDeviceInput,
 ) -> GetNetworkDeviceOutput:
     """Get network device data."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         device = await client.get_network_device(activity_input.device_id)
     return GetNetworkDeviceOutput(device=device)
@@ -95,7 +95,7 @@ async def get_host_device(
     activity_input: GetHostDeviceInput,
 ) -> GetHostDeviceOutput:
     """Get host device data."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         device = await client.get_host_device(activity_input.device_id)
     return GetHostDeviceOutput(device=device)
@@ -130,7 +130,7 @@ async def get_network_devices(
     activity_input: GetNetworkDevicesInput,
 ) -> GetNetworkDevicesOutput:
     """Get network devices for a specific site."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         devices = await client.get_network_devices(
             DeviceInventoryFilter(
@@ -174,7 +174,7 @@ async def get_host_devices(
     activity_input: GetHostDevicesInput,
 ) -> GetHostDevicesOutput:
     """Get host devices."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         devices = await client.get_host_devices(
             DeviceInventoryFilter(
@@ -210,7 +210,7 @@ class HostData(BaseModel):
 @activity.defn
 async def get_host_data_by_macs(mac_addresses: list[str]) -> list[HostData]:
     """Load host data from list of mac addresses."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         hosts = await client.get_host_metadata_by_macs(mac_addresses)
     return [
@@ -232,7 +232,7 @@ async def get_host_data_by_macs(mac_addresses: list[str]) -> list[HostData]:
 @activity.defn
 async def get_host_data_by_names(device_names: list[str]) -> list[HostData]:
     """Load host data from list of device names."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         hosts = await client.get_host_metadata_by_names(device_names)
     return [
@@ -269,7 +269,7 @@ async def get_available_route_distinguishers(
     activity_input: GetAvailableRouteDistinguishersInput,
 ) -> GetAvailableRouteDistinguishersOutput:
     """Get Available Route Distinguishers Activity."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         namespaces = await client.get_namespace_route_distinguishers(
             activity_input.site, activity_input.namespace_tag
@@ -389,7 +389,7 @@ async def provision_vrf(
     in place since it is found-or-created and may be shared.
     """
     vni = _vni_from_rd(activity_input.route_distinguisher)
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     try:
         async with client:
             await client.provision_spectrum_x_vrf(
@@ -416,7 +416,7 @@ class QueryVRFByVPCInput(BaseModel):
 @activity.defn
 async def get_vrfs_by_overlay_id(activity_input: QueryVRFByVPCInput) -> list[Vrf] | None:
     """Get VRFs for an overlay by looking up overlay → vxlans → VRF IDs → GraphQL."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         spectrum_x_vrfs = await client.get_spectrum_x_vrfs(
             activity_input.overlay_id,
@@ -442,7 +442,7 @@ async def delete_vrf(activity_input: VrfDeletionActivityInput) -> None:
     vrf_id (the VRF FK is SET_NULL on VRF deletion, so they are removed
     explicitly to keep the overlay clean).
     """
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         await client.delete_spectrum_x_vrf(activity_input.vrf_id, activity_input.vnid)
 
@@ -465,7 +465,7 @@ class DeleteOverlayOutput(BaseModel):
 async def delete_overlay(activity_input: DeleteOverlayInput) -> DeleteOverlayOutput:
     """Delete the SpectrumX overlay and its assignments if no VXLANs remain."""
     overlay_name = activity_input.overlay_id
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         deleted = await client.delete_spectrum_x_overlay_if_unused(
             overlay_name, activity_input.site
@@ -493,7 +493,7 @@ async def get_switch_port_by_remote_mac_address(
     activity_input: SwitchPortByMacActivityInput,
 ) -> SwitchPortByMacActivityOutput:
     """Get Switch Port by Remote MAC Address."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         device, interface = await client.get_connected_switch_port_by_remote_mac(
             activity_input.remote_mac_address
@@ -512,7 +512,7 @@ async def check_recorded_config_drift(
     activity_input: CheckRecordedConfigDriftInput,
 ) -> bool:
     """Check Recorded Config Drift."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         return await client.has_recorded_config_drift(activity_input.device_id)
 
@@ -534,7 +534,7 @@ async def get_device_vrfs(
     activity_input: GetDeviceVrfsInput,
 ) -> GetDeviceVrfsOutput:
     """Get VRFs assigned to a device."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     try:
         async with client:
             vrfs = await client.get_device_vrfs(activity_input.device_id)
@@ -555,7 +555,7 @@ async def assign_vrf_to_device(
     activity_input: AssignVrfToDeviceInput,
 ) -> None:
     """Assign a VRF to a device."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         await client.assign_vrf_to_device(activity_input.device_id, activity_input.vrf_id)
 
@@ -578,7 +578,7 @@ async def get_device_interfaces(
     activity_input: GetDeviceInterfacesInput,
 ) -> GetDeviceInterfacesOutput:
     """Get interfaces for a device by name."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         interfaces = await client.get_device_interfaces(device_id=activity_input.device_id)
 
@@ -610,7 +610,7 @@ async def assign_vrf_to_interface(
     activity_input: AssignVrfToInterfaceInput,
 ) -> None:
     """Assign a VRF to an interface."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         await client.assign_vrf_to_interface(activity_input.interface_id, activity_input.vrf_id)
 
@@ -653,7 +653,7 @@ async def reconcile_spx_overlay_assignments(
     target overlay removes the selected ports' Spectrum-X assignments. Device
     assignments are removed when no interface on the device uses their overlay.
     """
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     try:
         async with client:
             created, removed = await client.reconcile_spectrum_x_overlay_assignments(

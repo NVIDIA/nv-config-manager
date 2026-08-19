@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import ipaddress
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from nv_config_manager_dcim.errors import DCIMInvalidDataError
 from nv_config_manager_dcim.render import (
@@ -89,30 +89,38 @@ def _mappings(value: object, description: str) -> tuple[Mapping[str, Any], ...]:
     return tuple(value)
 
 
+def _is_blank(value: object) -> bool:
+    """Return whether a nullable Nautobot scalar has no value."""
+    return value is None or value == ""
+
+
 def _required_text(record: Mapping[str, Any], key: str, description: str) -> str:
     """Return one required text field with an actionable mapping error."""
     value = record.get(key)
-    if value is None or value == "":
+    if _is_blank(value):
         raise DCIMInvalidDataError(f"Nautobot {description} is missing required field '{key}'")
     return str(value)
 
 
 def _optional_text(value: object) -> str | None:
     """Normalize a nullable Nautobot scalar to text."""
-    if value is None or value == "":
+    if _is_blank(value):
         return None
     return str(value)
 
 
-def _named_text(value: object, description: str, required: bool = False) -> str | None:
+def _named_text(value: object, description: str) -> str | None:
     """Read a named Nautobot object without leaking its response shape."""
     if value is None:
-        if required:
-            raise DCIMInvalidDataError(f"Nautobot {description} is missing required field 'name'")
         return None
     record = _mapping(value, description)
-    name = _optional_text(record.get("name"))
-    if name is None and required:
+    return _optional_text(record.get("name"))
+
+
+def _required_named_text(value: object, description: str) -> str:
+    """Read a required named Nautobot object."""
+    name = _named_text(value, description)
+    if name is None:
         raise DCIMInvalidDataError(f"Nautobot {description} is missing required field 'name'")
     return name
 
@@ -356,12 +364,10 @@ def _connected_interface(value: object, device_name: str) -> RenderConnectedInte
         device=RenderConnectedDevice(
             id=_optional_text(peer_device.get("id")),
             name=peer_name,
-            role=_named_text(
+            role=_required_named_text(
                 peer_device.get("role"),
                 f"device '{peer_name}' connected device role",
-                required=True,
-            )
-            or "",
+            ),
             tenant=_named_text(peer_device.get("tenant"), f"device '{peer_name}' connected tenant"),
             tags=_tags(peer_device.get("tags", ()), f"device '{peer_name}' connected device"),
             routing_asn=peer_asn,
@@ -450,11 +456,11 @@ def _bgp_peer(value: Mapping[str, Any], device_name: str) -> RenderBGPPeer | Non
 
     peer_group = value.get("peer_group")
     peer_group_name = _named_text(peer_group, f"device '{device_name}' BGP peer group")
-    peer_role = _named_text(
-        peer_device.get("role"), f"device '{device_name}' BGP peer role", required=True
+    peer_role = _required_named_text(
+        peer_device.get("role"), f"device '{device_name}' BGP peer role"
     )
     if peer_group_name is None:
-        peer_group_name = (peer_role or "").upper()
+        peer_group_name = peer_role.upper()
     ttl = None
     if isinstance(peer_group, Mapping):
         extra_attributes = peer_group.get("extra_attributes")
@@ -471,15 +477,15 @@ def _bgp_peer(value: Mapping[str, Any], device_name: str) -> RenderBGPPeer | Non
     addresses = _address_collection(
         source_interface.get("ip_addresses", ()), f"device '{device_name}' BGP peer interface"
     )
+    peer_name = _required_text(peer_device, "name", f"device '{device_name}' BGP peer device")
     return RenderBGPPeer(
-        name=_required_text(peer_device, "name", f"device '{device_name}' BGP peer device"),
-        status=_named_text(
-            routing_instance.get("status"), f"device '{device_name}' BGP peer status", required=True
-        )
-        or "",
-        description=_required_text(peer_device, "name", f"device '{device_name}' BGP peer device"),
+        name=peer_name,
+        status=_required_named_text(
+            routing_instance.get("status"), f"device '{device_name}' BGP peer status"
+        ),
+        description=_optional_text(peer.get("description")) or peer_name,
         peer_group=peer_group_name,
-        peer_role=peer_role or "",
+        peer_role=peer_role,
         asn=_required_text(
             autonomous_system, "asn", f"device '{device_name}' BGP peer autonomous system"
         ),
@@ -530,10 +536,9 @@ def _bgp_instances(value: object, device_name: str) -> tuple[RenderBGPInstance, 
         ) or ("default",)
         result.append(
             RenderBGPInstance(
-                status=_named_text(
-                    instance.get("status"), f"device '{device_name}' BGP status", required=True
-                )
-                or "",
+                status=_required_named_text(
+                    instance.get("status"), f"device '{device_name}' BGP status"
+                ),
                 asn=_required_text(
                     autonomous_system, "asn", f"device '{device_name}' BGP autonomous system"
                 ),
@@ -545,6 +550,15 @@ def _bgp_instances(value: object, device_name: str) -> tuple[RenderBGPInstance, 
             )
         )
     return tuple(result)
+
+
+def _firmware_artifact(value: Mapping[str, Any], image_key: str = "file") -> RenderFirmwareArtifact:
+    """Map a firmware artifact from a context record."""
+    return RenderFirmwareArtifact(
+        version=_optional_text(value.get("version")),
+        image_file=_optional_text(value.get(image_key)),
+        source_path=_optional_text(value.get("s3_path")),
+    )
 
 
 def _firmware_data(context: Mapping[str, Any], device_name: str) -> RenderFirmwareData:
@@ -569,21 +583,13 @@ def _firmware_data(context: Mapping[str, Any], device_name: str) -> RenderFirmwa
                 components.append(
                     RenderFirmwareComponent(
                         name=str(name),
-                        artifact=RenderFirmwareArtifact(
-                            version=_optional_text(component.get("version")),
-                            image_file=_optional_text(component.get("file")),
-                            source_path=_optional_text(component.get("s3_path")),
-                        ),
+                        artifact=_firmware_artifact(component),
                     )
                 )
             bundles.append(
                 RenderFirmwareBundle(
                     version=str(version),
-                    operating_system=RenderFirmwareArtifact(
-                        version=_optional_text(raw_os.get("version")),
-                        image_file=_optional_text(raw_os.get("image_file")),
-                        source_path=_optional_text(raw_os.get("s3_path")),
-                    ),
+                    operating_system=_firmware_artifact(raw_os, "image_file"),
                     components=tuple(components),
                 )
             )
@@ -596,11 +602,7 @@ def _firmware_data(context: Mapping[str, Any], device_name: str) -> RenderFirmwa
         custom_components.append(
             RenderFirmwareComponent(
                 name=str(name),
-                artifact=RenderFirmwareArtifact(
-                    version=_optional_text(component.get("version")),
-                    image_file=_optional_text(component.get("file")),
-                    source_path=_optional_text(component.get("s3_path")),
-                ),
+                artifact=_firmware_artifact(component),
             )
         )
     skip_components = raw_overrides.get("skip_components", ())
@@ -706,53 +708,16 @@ def _routing_data(
     )
 
 
-def _overlay_data(
-    payload: Mapping[str, Any], device: Mapping[str, Any], device_name: str
-) -> RenderOverlayData:
-    """Map Nautobot overlay plugin records into typed L2/L3 VNI concepts."""
-    raw_vxlans = _mappings(payload.get("vxlans", ()), f"device '{device_name}' VXLANs")
-    raw_assignments = _mappings(payload.get("overlay_assignments", ()), "overlay assignments")
-    assigned_overlay_ids: set[str] = set()
-    assigned_overlay_names: set[str] = set()
-    for assignment in raw_assignments:
-        object_type = assignment.get("assigned_object_type")
-        if isinstance(object_type, Mapping) and not (
-            object_type.get("app_label") == "dcim"
-            and str(object_type.get("model", "")).lower() == "device"
-        ):
-            continue
-        overlay = _mapping(assignment.get("overlay"), "overlay assignment overlay")
-        if overlay.get("id") is not None:
-            assigned_overlay_ids.add(str(overlay["id"]))
-        if (overlay_name := _optional_text(overlay.get("name"))) is not None:
-            assigned_overlay_names.add(overlay_name)
-
-    raw_device_vrfs = list(_mappings(device.get("vrfs", ()), "device VRFs"))
-    raw_device_vrfs.extend(
-        interface["vrf"]
-        for interface in _mappings(device.get("interfaces", ()), "device interfaces")
-        if isinstance(interface.get("vrf"), Mapping)
-    )
-    device_vrf_ids = {str(vrf["id"]) for vrf in raw_device_vrfs if vrf.get("id") is not None}
-    device_vrf_names = {
-        str(vrf["name"]) for vrf in raw_device_vrfs if vrf.get("name") not in (None, "")
-    }
-    raw_device_vlans = [
-        vlan
-        for interface in _mappings(device.get("interfaces", ()), "device interfaces")
-        for vlan in (
-            interface.get("untagged_vlan"),
-            *_mappings(interface.get("tagged_vlans", ()), "interface tagged VLANs"),
-        )
-        if isinstance(vlan, Mapping)
-    ]
-    device_vlan_ids = {str(vlan["id"]) for vlan in raw_device_vlans if vlan.get("id") is not None}
-    device_vlan_vids = {
-        int(vlan["vid"]) for vlan in raw_device_vlans if vlan.get("vid") not in (None, "")
-    }
-
-    l2_vnis = []
-    l3_vnis = []
+def _l2_vnis(
+    raw_vxlans: Sequence[Mapping[str, Any]],
+    assigned_overlay_ids: set[str],
+    assigned_overlay_names: set[str],
+    device_vlan_ids: set[str],
+    device_vlan_vids: set[int],
+    device_name: str,
+) -> tuple[list[RenderL2Vni], dict[str, RenderL2Vni], dict[str, RenderL2Vni]]:
+    """Map the L2 VXLANs assigned to a device and index them for VRF mapping."""
+    l2_vnis: list[RenderL2Vni] = []
     l2_by_id: dict[str, RenderL2Vni] = {}
     l2_by_overlay: dict[str, RenderL2Vni] = {}
     for raw_vxlan in raw_vxlans:
@@ -763,73 +728,99 @@ def _overlay_data(
             _optional_text(raw_overlay.get("id")) if isinstance(raw_overlay, Mapping) else None
         )
         raw_vni = raw_vxlan.get("vnid")
-        vni = int(raw_vni) if raw_vni not in (None, "") else None
-        if vni_type and vni_type.lower() == "l2":
-            raw_vlan = raw_vxlan.get("vlan")
-            raw_vlan_id = (
-                _optional_text(raw_vlan.get("id")) if isinstance(raw_vlan, Mapping) else None
+        vni = int(cast(str | int, raw_vni)) if not _is_blank(raw_vni) else None
+        if not vni_type or vni_type.lower() != "l2":
+            continue
+        raw_vlan = raw_vxlan.get("vlan")
+        raw_vlan_id = _optional_text(raw_vlan.get("id")) if isinstance(raw_vlan, Mapping) else None
+        raw_vlan_vid = (
+            int(raw_vlan["vid"])
+            if isinstance(raw_vlan, Mapping) and not _is_blank(raw_vlan.get("vid"))
+            else None
+        )
+        overlay_is_assigned = (
+            overlay_id in assigned_overlay_ids
+            if assigned_overlay_ids and overlay_id is not None
+            else overlay_name in assigned_overlay_names
+        )
+        vlan_is_attached = (
+            raw_vlan_id in device_vlan_ids
+            if device_vlan_ids and raw_vlan_id is not None
+            else raw_vlan_vid in device_vlan_vids
+        )
+        if not overlay_is_assigned and not vlan_is_attached:
+            continue
+        vlan = _vlan(raw_vlan, f"device '{device_name}' L2 VNI VLAN")
+        if vlan is None:
+            raise DCIMInvalidDataError(
+                f"Nautobot device '{device_name}' L2 VNI is missing its VLAN assignment"
             )
-            raw_vlan_vid = (
-                int(raw_vlan["vid"])
-                if isinstance(raw_vlan, Mapping) and raw_vlan.get("vid") not in (None, "")
-                else None
-            )
-            overlay_is_assigned = (
-                overlay_id in assigned_overlay_ids
-                if assigned_overlay_ids and overlay_id is not None
-                else overlay_name in assigned_overlay_names
-            )
-            vlan_is_attached = (
-                raw_vlan_id in device_vlan_ids
-                if device_vlan_ids and raw_vlan_id is not None
-                else raw_vlan_vid in device_vlan_vids
-            )
-            if not overlay_is_assigned and not vlan_is_attached:
+        l2_vni = RenderL2Vni(
+            vlan=vlan,
+            vni=vni,
+            overlay_name=overlay_name,
+            import_targets=_route_targets(raw_vxlan.get("import_targets", ()), "L2 VNI"),
+            export_targets=_route_targets(raw_vxlan.get("export_targets", ()), "L2 VNI"),
+        )
+        l2_vnis.append(l2_vni)
+        if raw_vxlan.get("id") is not None:
+            l2_by_id[str(raw_vxlan["id"])] = l2_vni
+        if overlay_name is not None:
+            l2_by_overlay[overlay_name] = l2_vni
+    return l2_vnis, l2_by_id, l2_by_overlay
+
+
+def _l3_vnis(
+    raw_vxlans: Sequence[Mapping[str, Any]],
+    device_vrf_ids: set[str],
+    device_vrf_names: set[str],
+    device_name: str,
+) -> list[RenderL3Vni]:
+    """Map the L3 VXLANs associated with a device VRF."""
+    l3_vnis: list[RenderL3Vni] = []
+    for raw_vxlan in raw_vxlans:
+        vni_type = _optional_text(raw_vxlan.get("vni_type"))
+        raw_overlay = raw_vxlan.get("overlay")
+        overlay_name = _named_text(raw_overlay, f"device '{device_name}' VXLAN overlay")
+        raw_vni = raw_vxlan.get("vnid")
+        vni = int(cast(str | int, raw_vni)) if not _is_blank(raw_vni) else None
+        if not vni_type or vni_type.lower() != "l3":
+            continue
+        raw_vrf = raw_vxlan.get("vrf")
+        raw_vrf_id = _optional_text(raw_vrf.get("id")) if isinstance(raw_vrf, Mapping) else None
+        raw_vrf_name = _optional_text(raw_vrf.get("name")) if isinstance(raw_vrf, Mapping) else None
+        if device_vrf_ids and raw_vrf_id is not None:
+            if raw_vrf_id not in device_vrf_ids:
                 continue
-            vlan = _vlan(raw_vlan, f"device '{device_name}' L2 VNI VLAN")
-            if vlan is None:
-                raise DCIMInvalidDataError(
-                    f"Nautobot device '{device_name}' L2 VNI is missing its VLAN assignment"
-                )
-            l2_vni = RenderL2Vni(
-                vlan=vlan,
+        elif raw_vrf_name not in device_vrf_names:
+            continue
+        vrf = _vrf(raw_vrf, f"device '{device_name}' L3 VNI VRF")
+        if vrf is None:
+            raise DCIMInvalidDataError(
+                f"Nautobot device '{device_name}' L3 VNI is missing its VRF assignment"
+            )
+        raw_l3_vlan_id = raw_vxlan.get("l3_vlan_id")
+        l3_vnis.append(
+            RenderL3Vni(
+                vrf=vrf,
+                l3_vlan_id=(
+                    int(cast(str | int, raw_l3_vlan_id)) if not _is_blank(raw_l3_vlan_id) else None
+                ),
                 vni=vni,
                 overlay_name=overlay_name,
-                import_targets=_route_targets(raw_vxlan.get("import_targets", ()), "L2 VNI"),
-                export_targets=_route_targets(raw_vxlan.get("export_targets", ()), "L2 VNI"),
             )
-            l2_vnis.append(l2_vni)
-            if raw_vxlan.get("id") is not None:
-                l2_by_id[str(raw_vxlan["id"])] = l2_vni
-            if overlay_name is not None:
-                l2_by_overlay[overlay_name] = l2_vni
-        elif vni_type and vni_type.lower() == "l3":
-            raw_vrf = raw_vxlan.get("vrf")
-            raw_vrf_id = _optional_text(raw_vrf.get("id")) if isinstance(raw_vrf, Mapping) else None
-            raw_vrf_name = (
-                _optional_text(raw_vrf.get("name")) if isinstance(raw_vrf, Mapping) else None
-            )
-            if device_vrf_ids and raw_vrf_id is not None:
-                if raw_vrf_id not in device_vrf_ids:
-                    continue
-            elif raw_vrf_name not in device_vrf_names:
-                continue
-            vrf = _vrf(raw_vrf, f"device '{device_name}' L3 VNI VRF")
-            if vrf is None:
-                raise DCIMInvalidDataError(
-                    f"Nautobot device '{device_name}' L3 VNI is missing its VRF assignment"
-                )
-            raw_l3_vlan_id = raw_vxlan.get("l3_vlan_id")
-            l3_vnis.append(
-                RenderL3Vni(
-                    vrf=vrf,
-                    l3_vlan_id=int(raw_l3_vlan_id) if raw_l3_vlan_id not in (None, "") else None,
-                    vni=vni,
-                    overlay_name=overlay_name,
-                )
-            )
+        )
+    return l3_vnis
 
-    l2_vni_vrfs = []
+
+def _l2_vni_vrfs(
+    raw_assignments: Sequence[Mapping[str, Any]],
+    l2_by_id: Mapping[str, RenderL2Vni],
+    l2_by_overlay: Mapping[str, RenderL2Vni],
+) -> list[RenderL2VniVrf]:
+    """Map overlay assignments to the L2 VNIs used as VRF-facing interfaces."""
+    l2_vni_vrfs: list[RenderL2VniVrf] = []
+
     for assignment in raw_assignments:
         object_type = assignment.get("assigned_object_type")
         if isinstance(object_type, Mapping) and not (
@@ -874,6 +865,64 @@ def _overlay_data(
                 export_targets=export_targets,
             )
         )
+    return l2_vni_vrfs
+
+
+def _overlay_data(
+    payload: Mapping[str, Any], device: Mapping[str, Any], device_name: str
+) -> RenderOverlayData:
+    """Map Nautobot overlay plugin records into typed L2/L3 VNI concepts."""
+    raw_vxlans = _mappings(payload.get("vxlans", ()), f"device '{device_name}' VXLANs")
+    raw_assignments = _mappings(payload.get("overlay_assignments", ()), "overlay assignments")
+    assigned_overlay_ids: set[str] = set()
+    assigned_overlay_names: set[str] = set()
+    for assignment in raw_assignments:
+        object_type = assignment.get("assigned_object_type")
+        if isinstance(object_type, Mapping) and not (
+            object_type.get("app_label") == "dcim"
+            and str(object_type.get("model", "")).lower() == "device"
+        ):
+            continue
+        overlay = _mapping(assignment.get("overlay"), "overlay assignment overlay")
+        if overlay.get("id") is not None:
+            assigned_overlay_ids.add(str(overlay["id"]))
+        if (overlay_name := _optional_text(overlay.get("name"))) is not None:
+            assigned_overlay_names.add(overlay_name)
+
+    raw_device_vrfs = list(_mappings(device.get("vrfs", ()), "device VRFs"))
+    raw_device_vrfs.extend(
+        interface["vrf"]
+        for interface in _mappings(device.get("interfaces", ()), "device interfaces")
+        if isinstance(interface.get("vrf"), Mapping)
+    )
+    device_vrf_ids = {str(vrf["id"]) for vrf in raw_device_vrfs if vrf.get("id") is not None}
+    device_vrf_names = {
+        str(vrf["name"]) for vrf in raw_device_vrfs if not _is_blank(vrf.get("name"))
+    }
+    raw_device_vlans = [
+        vlan
+        for interface in _mappings(device.get("interfaces", ()), "device interfaces")
+        for vlan in (
+            interface.get("untagged_vlan"),
+            *_mappings(interface.get("tagged_vlans", ()), "interface tagged VLANs"),
+        )
+        if isinstance(vlan, Mapping)
+    ]
+    device_vlan_ids = {str(vlan["id"]) for vlan in raw_device_vlans if vlan.get("id") is not None}
+    device_vlan_vids = {
+        int(vlan["vid"]) for vlan in raw_device_vlans if not _is_blank(vlan.get("vid"))
+    }
+
+    l2_vnis, l2_by_id, l2_by_overlay = _l2_vnis(
+        raw_vxlans,
+        assigned_overlay_ids,
+        assigned_overlay_names,
+        device_vlan_ids,
+        device_vlan_vids,
+        device_name,
+    )
+    l3_vnis = _l3_vnis(raw_vxlans, device_vrf_ids, device_vrf_names, device_name)
+    l2_vni_vrfs = _l2_vni_vrfs(raw_assignments, l2_by_id, l2_by_overlay)
 
     return RenderOverlayData(
         l2_vnis=tuple(l2_vnis),
@@ -1007,7 +1056,8 @@ def _build_render_data(
     )
     fallback_site_asn = _optional_text(context.get("site_asn"))
     location_payload = _mapping(location_response.get("data"), "location")
-    location_data = _location_data(location_payload, _location(location), fallback_site_asn)
+    rendered_location = _location(location)
+    location_data = _location_data(location_payload, rendered_location, fallback_site_asn)
     site_asn = location_data.routing.site_asn
 
     raw_nvlink_domains = _mappings(device.get("nvlink_domain", ()), "device NVLink domains")
@@ -1022,7 +1072,7 @@ def _build_render_data(
                 platform=_required_text(platform, "name", "device platform"),
                 role=_required_text(role, "name", "device role"),
                 model=_required_text(device_type, "model", "device type"),
-                location=_location(location),
+                location=rendered_location,
                 tags=_tags(device.get("tags", ()), "device"),
             ),
             interfaces=tuple(

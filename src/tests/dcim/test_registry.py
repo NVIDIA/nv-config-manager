@@ -22,11 +22,11 @@ from unittest.mock import AsyncMock
 import pytest
 from nv_config_manager_dcim import DCIMInvalidDataError, DCIMProviderConfigurationError
 from nv_config_manager_dcim import registry as sdk_registry
+from nv_config_manager_dcim_nautobot_2x.client import NautobotException
 from nv_config_manager_dcim_nautobot_2x.provider import NautobotDCIMClient, NautobotProvider
 
 from nv_config_manager.dcim import (
     create_dcim_client,
-    create_dcim_workflow_client,
     create_nautobot_mcp_client,
     normalize_dcim_event,
     provider_settings,
@@ -119,6 +119,27 @@ async def test_nautobot_device_metadata_propagates_lookup_failures() -> None:
         await client.get_device_metadata("910b85f8-e83c-48ad-9bbd-12b15e97a2d4")
 
 
+@pytest.mark.asyncio
+async def test_cable_termination_reference_cycles_are_rejected() -> None:
+    """Malformed REST references cannot recurse indefinitely."""
+    client = NautobotDCIMClient("https://dcim.example", "token")
+    client.get = AsyncMock(return_value={"url": "/api/dcim/interfaces/interface-1/"})
+
+    with pytest.raises(DCIMInvalidDataError, match="reference cycle"):
+        await client.get_cable_termination_device_id({"url": "/api/dcim/interfaces/interface-1/"})
+
+    client.get.assert_awaited_once_with("dcim/interfaces/interface-1/")
+
+
+@pytest.mark.asyncio
+async def test_idempotent_delete_uses_structured_http_status() -> None:
+    """Retry cleanup treats a structured 404 as success without parsing its message."""
+    client = NautobotDCIMClient("https://dcim.example", "token")
+    client.delete = AsyncMock(side_effect=NautobotException("gone", status_code=404))
+
+    await client._delete_ib_pkey_resource_if_present("resource/1/", "resource")
+
+
 def test_provider_specific_settings_override_generic_dcim_values() -> None:
     """Provider-specific INI sections remain a service concern."""
     config = _config()
@@ -144,27 +165,64 @@ def test_provider_settings_include_portable_dcim_options() -> None:
     }
 
 
-@pytest.mark.asyncio
-async def test_workflow_client_only_requires_sdk_close(monkeypatch) -> None:
-    """Legacy workflows do not require third-party clients to implement ``async with``."""
-    calls: list[str] = []
-
-    class CloseOnlyClient:
-        async def close(self) -> None:
-            calls.append("close")
-
-        async def get_device_serial(self, _device_id: str) -> str:
-            return "serial"
-
-    monkeypatch.setattr(
-        service_registry, "create_dcim_client", lambda _config=None: CloseOnlyClient()
+def test_legacy_nautobot_settings_remain_supported_until_v2() -> None:
+    """A 1.x deployment can still configure the built-in provider through [nautobot]."""
+    config = ConfigParser()
+    config.read_dict(
+        {
+            "nautobot": {
+                "server": "https://legacy.example",
+                "token": "legacy-token",
+                "verify": "false",
+            }
+        }
     )
 
-    client = create_dcim_workflow_client(_config())
-    async with client:
-        assert await client.get_device_serial("device-1") == "serial"
+    with pytest.warns(DeprecationWarning, match=r"\[nautobot\].*deprecated"):
+        client = create_dcim_client(config)
 
-    assert calls == ["close"]
+    assert isinstance(client, NautobotDCIMClient)
+    assert client.nautobot_url == "https://legacy.example/"
+
+
+def test_new_dcim_settings_override_legacy_nautobot_values() -> None:
+    """Migrated values take precedence while an incomplete migration remains compatible."""
+    config = ConfigParser()
+    config.read_dict(
+        {
+            "nautobot": {
+                "server": "https://legacy.example",
+                "token": "legacy-token",
+                "verify": "true",
+            },
+            "dcim": {
+                "provider": "nautobot-2x",
+                "server": "https://generic.example",
+            },
+            "dcim.options": {"verify": "false"},
+            "dcim.nautobot-2x": {"token": "provider-token"},
+        }
+    )
+
+    with pytest.warns(DeprecationWarning):
+        settings = provider_settings(config)
+
+    assert settings["server"] == "https://generic.example"
+    assert settings["token"] == "provider-token"
+    assert settings["verify"] == "false"
+
+
+def test_external_provider_does_not_receive_legacy_nautobot_settings() -> None:
+    """The compatibility fallback is isolated to the built-in Nautobot provider."""
+    config = ConfigParser()
+    config.read_dict(
+        {
+            "nautobot": {"server": "https://legacy.example", "token": "legacy-token"},
+            "dcim": {"provider": "external", "server": "https://external.example"},
+        }
+    )
+
+    assert provider_settings(config) == {"server": "https://external.example"}
 
 
 def test_nautobot_mcp_is_gated_by_provider_capability() -> None:

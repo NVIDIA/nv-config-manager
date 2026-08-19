@@ -23,17 +23,6 @@ from nv_config_manager_dcim.errors import DCIMInvalidDataError
 
 from nv_config_manager_dcim_nautobot_2x.queries import load_graphql_query
 
-NV_CONFIG_MANAGER_MANAGED_VLANS = [
-    "vlan13",
-    "vlan30",
-    "vlan40",
-    "vlan997",
-    "vlan998",
-    "vlan1002",
-    "vlan1001",
-    "vlan901",
-]
-
 
 class DHCPDataError(DCIMInvalidDataError):
     """Nautobot returned invalid data required for DHCP configuration."""
@@ -75,14 +64,21 @@ def _passes_ztp_aggregate_filter(
     status: dict[str, Any] | None, is_aggregate_managed: bool | None
 ) -> bool:
     """Return whether a device passes ZTP and aggregate-management filters."""
-    if status and not status.get("ztp_enabled", True):
+    if not status:
+        return True
+    if not status.get("ztp_enabled", True):
         return False
-    return not (status and status.get("is_aggregate_managed", False) != is_aggregate_managed)
+    return cast(bool, status.get("is_aggregate_managed", False) == is_aggregate_managed)
 
 
-def _pool_ip_matches_prefix(pool_ip: dict[str, Any], prefix_entry_id: str, family: int) -> bool:
-    """Return whether a pool address belongs to the requested prefix and family."""
-    return bool(pool_ip["ip_version"] == family and pool_ip["parent"]["id"] == prefix_entry_id)
+def _ip_matches_prefix(ip: dict[str, Any], prefix_entry_id: str, family: int) -> bool:
+    """Return whether an address belongs to the requested prefix and family."""
+    return cast(bool, ip["ip_version"] == family and ip["parent"]["id"] == prefix_entry_id)
+
+
+def _has_identifier(iface: dict[str, Any]) -> bool:
+    """Return whether an interface has a DHCP reservation identifier."""
+    return bool(iface.get("mac_address") or iface["device"].get("serial"))
 
 
 def _try_build_option_candidate(
@@ -97,7 +93,7 @@ def _try_build_option_candidate(
         iface["device"].get("configmanagerdevicestatus"), is_aggregate_managed
     ):
         return None
-    if not iface.get("mac_address") and not iface["device"].get("serial"):
+    if not _has_identifier(iface):
         return None
     return {
         "address": ipaddress.ip_interface(pool_ip["address"]).ip,
@@ -112,10 +108,10 @@ def _get_pool_ips_and_candidates(
     is_aggregate_managed: bool | None,
 ) -> tuple[list[Any], list[dict[str, Any]]]:
     """Build pool addresses and option candidates for a prefix."""
-    pool_ips: list[Any] = []
+    pool_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     option_candidates: list[dict[str, Any]] = []
     for pool_ip in all_pool_ips:
-        if not _pool_ip_matches_prefix(pool_ip, prefix_entry["id"], family):
+        if not _ip_matches_prefix(pool_ip, prefix_entry["id"], family):
             continue
         pool_ips.append(ipaddress.ip_interface(pool_ip["address"]).ip)
         candidate = _try_build_option_candidate(pool_ip, is_aggregate_managed)
@@ -145,13 +141,13 @@ def _get_reservations_for_prefix(
     """Build provider-normalized reservations for a prefix."""
     reservations: list[dict[str, Any]] = []
     for reserved_ip in all_reserved_ips:
-        if reserved_ip["ip_version"] != family or reserved_ip["parent"]["id"] != prefix_entry["id"]:
+        if not _ip_matches_prefix(reserved_ip, prefix_entry["id"], family):
             continue
         iface = _validate_reserved_ip_interfaces(reserved_ip)
         status = iface["device"].get("configmanagerdevicestatus")
         if not _passes_ztp_aggregate_filter(status, is_aggregate_managed):
             continue
-        if not iface.get("mac_address") and not iface["device"].get("serial"):
+        if not _has_identifier(iface):
             raise DHCPDataError(
                 f"Interface {iface['name']} on IP {reserved_ip['address']} has no MAC address "
                 "or serial number"

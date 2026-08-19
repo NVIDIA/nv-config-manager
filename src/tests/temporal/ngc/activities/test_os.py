@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import responses
+from nv_config_manager_dcim.workflow_models import OSImageVersions
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
@@ -341,9 +342,9 @@ async def test_get_os_image_versions_integration(monkeypatch):
             pass
 
         async def get_os_image_versions(self, device_id):
-            return "5.1.0", "5.2.0", "192.168.1.1"
+            return OSImageVersions("5.1.0", "5.2.0", "192.168.1.1")
 
-    monkeypatch.setattr(os_module, "create_dcim_workflow_client", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     result = await get_os_image_versions(GetOSImageVersionsInput(device_id="test-id"))
     assert result.intended_firmware == "5.1.0"
@@ -368,7 +369,7 @@ async def test_update_intended_os_image_integration(monkeypatch):
         async def set_intended_os_image(self, device_id, desired_firmware):
             merge_called.append((device_id, desired_firmware))
 
-    monkeypatch.setattr(os_module, "create_dcim_workflow_client", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     await update_intended_os_image(
         UpdateIntendedOSImageInput(device_id="test-id", desired_firmware="5.2.0")
@@ -578,9 +579,9 @@ async def test_get_os_image_versions_with_parent_location(monkeypatch):
             pass
 
         async def get_os_image_versions(self, device_id):
-            return "5.1.0", "5.2.0", "192.168.1.1"
+            return OSImageVersions("5.1.0", "5.2.0", "192.168.1.1")
 
-    monkeypatch.setattr(os_module, "create_dcim_workflow_client", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     result = await get_os_image_versions(GetOSImageVersionsInput(device_id="test-id"))
     assert result.intended_firmware == "5.1.0"

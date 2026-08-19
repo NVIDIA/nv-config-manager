@@ -133,6 +133,7 @@ query ($id: ID!, $id_str: String) {
           }
         }
         peer {
+          description
           source_ip {
             address
             ip_version

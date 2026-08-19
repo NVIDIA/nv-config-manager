@@ -22,8 +22,7 @@ from pydantic import BaseModel
 from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.dcim import (
     DCIMDeviceSelectionFilter,
-    create_dcim_parameter_client,
-    create_dcim_workflow_client,
+    create_dcim_client,
 )
 from nv_config_manager.dcim.errors import DCIMConflictError, DCIMInvalidDataError, DCIMNotFoundError
 from nv_config_manager.temporal.common.mixins.device import Platform
@@ -67,7 +66,7 @@ router = APIRouter(prefix="/parameter", tags=["parameters"])
 @router.get("/site")
 async def get_sites() -> list[Location]:
     """Return a list of NVIDIA Config Manager-managed sites."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         sites = await client.list_locations(("Site",))
 
@@ -79,7 +78,7 @@ async def get_locations(
     location_type: Annotated[list[str] | None, Query()] = None,
 ) -> list[Location]:
     """Return a list of NVIDIA Config Manager-managed sites."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         locations = await client.list_locations(tuple(location_type or ()))
 
@@ -121,7 +120,7 @@ async def get_tenants(
     ] = False,
 ) -> list[Tenant]:
     """Return a list of tenants. Default: all. With managed_only=true: only those with managed devices."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         tenants = await client.list_tenants(managed_only)
     return [Tenant(id=tenant.id, name=tenant.name) for tenant in tenants]
@@ -132,7 +131,7 @@ async def get_roles(
     managed_only: Annotated[bool, Query(description="Limit to roles with managed devices")] = False,
 ) -> list[Role]:
     """Return a list of roles. Default: all. With managed_only=true: only those with managed devices."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         roles = await client.list_roles(managed_only)
     return [Role(id=role.id, name=role.name) for role in roles]
@@ -145,7 +144,7 @@ async def get_namespace_tags(
     ] = None,
 ) -> list[Tag]:
     """Return the configured DCIM provider's namespace tag choices."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
 
     try:
         async with client:
@@ -171,7 +170,7 @@ async def get_overlays(
     ] = None,
 ) -> list[Overlay]:
     """Return overlays, optionally filtered by location and isolation type."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     try:
         async with client:
             overlays = await client.list_overlays(location, isolation_type)
@@ -204,7 +203,7 @@ async def get_statuses(
     ] = None,
 ) -> list[Status]:
     """Return a list of statuses. Optional content_type filters to that object type."""
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         statuses = await client.list_statuses(content_type)
 
@@ -249,7 +248,7 @@ async def get_devices(  # pylint: disable=R0913,R0914
     ):
         raise HTTPException(status_code=400, detail="Must apply at least one filter.")
 
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     try:
         async with client:
             devices = await client.list_devices(filters)
@@ -339,7 +338,7 @@ async def get_device_secrets(device_id: str) -> list[Secret]:
     Returns:
         List of secrets returned by the configured DCIM provider
     """
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         secret_versions = await client.get_device_secret_versions(device_id)
 
@@ -367,7 +366,7 @@ async def get_device_users_with_versions(device_id: str) -> list[str]:
     Returns:
         List of secret types plus versions from config context.
     """
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         secrets_versions = await client.get_device_secret_versions(device_id)
 
@@ -395,7 +394,7 @@ async def get_device_password_users(device_id: str) -> list[Secret]:
     Returns:
         List of password users with their provider-normalized secret names.
     """
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         password_mappings = await client.get_device_password_secret_names(device_id)
 
@@ -430,7 +429,7 @@ async def get_device_id_by_name(device_name: str) -> Device:
     Raises:
         HTTPException: If device not found or multiple devices match.
     """
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     try:
         async with client:
             device = await client.get_device_selection_by_name(device_name)

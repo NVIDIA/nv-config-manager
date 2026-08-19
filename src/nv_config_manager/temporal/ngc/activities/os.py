@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.dcim import create_dcim_workflow_client
+from nv_config_manager.dcim import create_dcim_client
 from nv_config_manager.temporal.client.device import (
     MellanoxConnection,
     NetworkConnection,
@@ -203,16 +203,14 @@ async def get_os_image_versions(
     activity_input: GetOSImageVersionsInput,
 ) -> GetOSImageVersionsOutput:
     """Get the intended and desired os image versions for a device."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
-        intended_firmware, desired_firmware, ztp_ipv4_address = (  # type: ignore[attr-defined]
-            await client.get_os_image_versions(activity_input.device_id)
-        )
+        versions = await client.get_os_image_versions(activity_input.device_id)
 
     return GetOSImageVersionsOutput(
-        intended_firmware=intended_firmware,
-        desired_firmware=desired_firmware,
-        ztp_ipv4_address=ztp_ipv4_address,
+        intended_firmware=versions.intended_firmware,
+        desired_firmware=versions.desired_firmware,
+        ztp_ipv4_address=versions.ztp_address,
     )
 
 
@@ -221,7 +219,7 @@ async def update_intended_os_image(
     activity_input: UpdateIntendedOSImageInput,
 ) -> None:
     """Update the intended OS image version through the selected DCIM provider."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     async with client:
         await client.set_intended_os_image(  # type: ignore[attr-defined]
             activity_input.device_id,

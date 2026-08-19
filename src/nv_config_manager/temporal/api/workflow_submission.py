@@ -21,7 +21,7 @@ from typing import Any, cast
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from nv_config_manager.dcim import DCIMClient, DeviceMetadata, create_dcim_parameter_client
+from nv_config_manager.dcim import DCIMClient, DeviceMetadata, create_dcim_client
 from nv_config_manager.temporal.common.search_attributes import (
     DEVICE_ID_SEARCH_ATTRIBUTE,
     DEVICE_NAME_SEARCH_ATTRIBUTE,
@@ -142,7 +142,7 @@ async def resolve_workflow_references(body: BaseModel) -> dict[str, list[Any]]:
     if not device_references and not location_references:
         return {}
 
-    client = create_dcim_parameter_client()
+    client = create_dcim_client()
     async with client:
         attributes = await _resolve_devices(client, device_references)
         for reference, value in location_references:

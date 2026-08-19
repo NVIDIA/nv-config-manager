@@ -22,7 +22,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.common.config import ConfigStoreType, config_store_client, ztp_client
-from nv_config_manager.dcim import FirmwareBundle, create_dcim_workflow_client
+from nv_config_manager.dcim import FirmwareBundle, create_dcim_client
 from nv_config_manager.temporal.client.device import NetworkConnection, NetworkDeviceData
 
 
@@ -163,7 +163,7 @@ async def update_device_context(activity_input: UpdateDeviceContextInput) -> Non
             activity_input.device_data, activity_input.bundle_version
         )
 
-        client = create_dcim_workflow_client()
+        client = create_dcim_client()
 
         async with client:
             await client.set_device_firmware_intent(  # type: ignore[attr-defined]
@@ -297,7 +297,7 @@ async def _get_firmware_bundle(
 ) -> FirmwareBundle:
     """Get normalized firmware intent through the selected DCIM provider."""
     try:
-        client = create_dcim_workflow_client()
+        client = create_dcim_client()
         async with client:
             return await client.get_firmware_bundle(  # type: ignore[attr-defined]
                 device_data.id,

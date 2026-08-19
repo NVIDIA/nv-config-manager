@@ -15,7 +15,7 @@
 """Tests for provider-backed render execution."""
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nv_config_manager_templates.models import DeviceRenderData, LocationRenderData, RenderData
@@ -108,6 +108,37 @@ async def test_execute_render_uses_provider_for_data_and_state(
 
 
 @pytest.mark.asyncio
+async def test_execute_render_logs_post_render_failures_without_wrapping(caplog) -> None:
+    """Persistence failures retain their type and gain device context in logs."""
+    dcim_client = AsyncMock()
+    dcim_client.get_render_data.return_value = _render_data()
+
+    @asynccontextmanager
+    async def session():
+        yield dcim_client
+
+    renderer = MagicMock()
+    renderer.plugin_data_requirements = {}
+    renderer.render_entrypoints.return_value = {"startup.yaml": "test"}
+    config_store = AsyncMock()
+    failure = ValueError("persistence failed")
+    config_store.persist_files.side_effect = failure
+    config_store.__aenter__.return_value = config_store
+
+    with (
+        patch("nv_config_manager.render.render.dcim_client_session", session),
+        patch("nv_config_manager.render.render.Renderer", return_value=renderer),
+        patch("nv_config_manager.render.render.config_store_client", return_value=config_store),
+        caplog.at_level("ERROR"),
+    ):
+        with pytest.raises(ValueError) as caught:
+            await execute_render("device-id", "message", "user")
+
+    assert caught.value is failure
+    assert "Failed to persist or synchronize render for device-id" in caplog.text
+
+
+@pytest.mark.asyncio
 @patch("nv_config_manager.render.render.config_store_client")
 @patch("nv_config_manager.render.render.Renderer")
 @patch("nv_config_manager.render.render.template_version_key", return_value=TEMPLATE_VERSION)
@@ -145,7 +176,9 @@ async def test_execute_render_updates_template_version_without_deployable_file(
 @patch("nv_config_manager.render.render.config_store_client")
 @patch("nv_config_manager.render.render.Renderer")
 @patch("nv_config_manager.render.render.template_version_key", return_value=TEMPLATE_VERSION)
-@patch("nv_config_manager.render.render.config_store_ui_url", return_value="https://config-store/")
+@patch(
+    "nv_config_manager.render.render.config_store_ui_url", return_value="https://config-manager/"
+)
 async def test_execute_render_resyncs_unchanged_deployable_file(
     mock_config_store_ui_url, mock_template_version_key, mock_renderer, mock_config_store
 ):

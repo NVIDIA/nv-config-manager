@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Callable, Mapping
 from typing import Any, Self
 from uuid import UUID
@@ -107,6 +106,13 @@ _PARAMETER_DEVICES_QUERY = load_graphql_query("provider/parameters.graphql", "Li
 _PARAMETER_DEVICE_BY_NAME_QUERY = load_graphql_query(
     "provider/parameters.graphql", "GetDeviceSelectionByName"
 )
+_DEVICE_METADATA_QUERY = load_graphql_query("provider/devices.graphql", "GetDeviceMetadata")
+_MANAGED_DEVICE_METADATA_QUERY = load_graphql_query(
+    "provider/devices.graphql", "ListManagedDeviceMetadata"
+)
+_DEVICE_SERIAL_QUERY = load_graphql_query("provider/devices.graphql", "GetDeviceSerial")
+_RENDER_DATA_QUERY = load_graphql_query("query_config_data_by_device_id_v2.graphql")
+_LOCATION_DATA_QUERY = load_graphql_query("query_location_data.graphql")
 
 _NAUTOBOT_CONNECTION_KEYS = ("server", "token", "public_url", "verify")
 _INTENDED_CONFIGURATION_PATH = "plugins/nv-config-manager/intendedconfig/"
@@ -122,14 +128,34 @@ def _parse_verify(value: object) -> bool | str:
     """Normalize a provider-owned TLS verification setting."""
     if isinstance(value, bool):
         return value
-    if value is None or str(value).strip() == "":
+    if value is None:
         return True
     normalized = str(value).strip()
-    if normalized.lower() in {"true", "yes", "1"}:
+    if not normalized:
         return True
-    if normalized.lower() in {"false", "no", "0"}:
+    lowered = normalized.lower()
+    if lowered in {"true", "yes", "1"}:
+        return True
+    if lowered in {"false", "no", "0"}:
         return False
     return normalized
+
+
+def _is_canonical_uuid(value: str) -> bool:
+    """Return whether a value is a canonical UUID string."""
+    try:
+        return str(UUID(value)) == value
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def _tag_names(tags: object) -> tuple[str, ...]:
+    """Extract tag names from a Nautobot GraphQL collection."""
+    if not isinstance(tags, list):
+        return ()
+    return tuple(
+        str(tag["name"]) for tag in tags if isinstance(tag, dict) and tag.get("name") is not None
+    )
 
 
 def _nautobot_connection_settings(settings: ProviderSettings) -> dict[str, str | bool]:
@@ -175,10 +201,10 @@ def _metadata_from_nautobot_graphql(data: dict[str, Any]) -> DeviceMetadata:
         device_id=data["id"],
         name=data["name"],
         site=site or "Unknown",
-        platform=data.get("platform", {}).get("name") if data.get("platform") else None,
-        role=data.get("role", {}).get("name") if data.get("role") else None,
-        rack=data.get("rack", {}).get("name") if data.get("rack") else None,
-        primary_ip4=data.get("primary_ip4", {}).get("host") if data.get("primary_ip4") else None,
+        platform=platform.get("name") if (platform := data.get("platform")) else None,
+        role=role.get("name") if (role := data.get("role")) else None,
+        rack=rack.get("name") if (rack := data.get("rack")) else None,
+        primary_ip4=primary_ip4.get("host") if (primary_ip4 := data.get("primary_ip4")) else None,
     )
 
 
@@ -214,18 +240,12 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
     @staticmethod
     def is_valid_device_id(value: str) -> bool:
         """Return whether a device identifier is a canonical Nautobot UUID."""
-        try:
-            return str(UUID(value)) == value
-        except (ValueError, TypeError, AttributeError):
-            return False
+        return _is_canonical_uuid(value)
 
     @staticmethod
     def is_valid_location_id(value: str) -> bool:
         """Return whether a location identifier is a canonical Nautobot UUID."""
-        try:
-            return str(UUID(value)) == value
-        except (ValueError, TypeError, AttributeError):
-            return False
+        return _is_canonical_uuid(value)
 
     async def get_location_metadata(self, location_id: str) -> DCIMSelection | None:
         """Return normalized metadata for one location UUID."""
@@ -242,7 +262,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
     async def get_device_metadata(self, device_id: str) -> DeviceMetadata | None:
         """Return normalized metadata for a Nautobot device UUID."""
         result = await self.graphql_query(
-            load_graphql_query("provider/devices.graphql", "GetDeviceMetadata"),
+            _DEVICE_METADATA_QUERY,
             {"id": device_id},
         )
         device_data = result.get("data", {}).get("device")
@@ -273,11 +293,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
                 normalized.append(
                     IntendedInterfaceNeighbor(
                         name=interface["name"],
-                        tags=tuple(
-                            str(tag["name"])
-                            for tag in interface.get("tags", [])
-                            if isinstance(tag, dict) and tag.get("name") is not None
-                        ),
+                        tags=_tag_names(interface.get("tags")),
                     )
                 )
                 continue
@@ -292,11 +308,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
             normalized.append(
                 IntendedInterfaceNeighbor(
                     name=interface["name"],
-                    tags=tuple(
-                        str(tag["name"])
-                        for tag in interface.get("tags", [])
-                        if isinstance(tag, dict) and tag.get("name") is not None
-                    ),
+                    tags=_tag_names(interface.get("tags")),
                     connected_interface_name=(
                         str(connected_interface["name"])
                         if connected_interface.get("name") is not None
@@ -497,13 +509,14 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
 
     async def get_managed_device_metadata(self, page_size: int = 100) -> list[DeviceMetadata]:
         """Return normalized metadata for every NVCM-managed Nautobot device."""
-        query = load_graphql_query("provider/devices.graphql", "ListManagedDeviceMetadata")
         devices: list[DeviceMetadata] = []
         offset = 0
 
         try:
             while True:
-                result = await self.graphql_query(query, {"limit": page_size, "offset": offset})
+                result = await self.graphql_query(
+                    _MANAGED_DEVICE_METADATA_QUERY, {"limit": page_size, "offset": offset}
+                )
                 managed_devices = result.get("data", {}).get("config_manager_devices", [])
                 if not managed_devices:
                     break
@@ -548,11 +561,9 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
             config_context = device.get("config_context") or {}
             firmware_version = config_context.get("intended-firmware", {}).get("version")
             intended_config = managed_device.get("intended_config")
-            config_store_instance = None
-            if intended_config:
-                config_store_instance = re.sub(
-                    "ui", "api-mtls", intended_config["config_store_instance"]
-                )
+            config_store_instance = (
+                intended_config["config_store_instance"] if intended_config else None
+            )
             return ZTPDevice(
                 device_id=device["id"],
                 name=device["name"],
@@ -569,7 +580,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
     async def get_device_serial(self, device_id: str) -> str:
         """Return a Nautobot device serial number for ZTP validation."""
         result = await self.graphql_query(
-            load_graphql_query("provider/devices.graphql", "GetDeviceSerial"),
+            _DEVICE_SERIAL_QUERY,
             variables={"id": device_id},
         )
         serial = result.get("data", {}).get("device", {}).get("serial")
@@ -585,7 +596,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
         """Return the Nautobot data set consumed by the template engine."""
         device_id = request.device_id
         device_data = await self.graphql_query(
-            load_graphql_query("query_config_data_by_device_id_v2.graphql"),
+            _RENDER_DATA_QUERY,
             {"id": device_id, "id_str": device_id},
         )
         try:
@@ -598,9 +609,7 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
                 f"Nautobot returned incomplete render location data for {device_id}"
             ) from exc
 
-        location_data = await self.graphql_query(
-            load_graphql_query("query_location_data.graphql"), {"location": location_name}
-        )
+        location_data = await self.graphql_query(_LOCATION_DATA_QUERY, {"location": location_name})
         return build_render_data(device_data, location_data)
 
     async def get_render_device_status(self, device_id: str) -> RenderDeviceStatus | None:
@@ -723,24 +732,32 @@ class NautobotDCIMClient(NautobotDHCPOperations, NautobotWorkflowClient):
         Changelog payloads may contain an expanded termination or only its REST
         object reference. The provider owns that shape difference.
         """
-        device = termination.get("device")
-        if isinstance(device, Mapping) and device.get("id"):
-            return str(device["id"])
+        current = termination
+        visited_endpoints: set[str] = set()
+        while True:
+            device = current.get("device")
+            if isinstance(device, Mapping) and device.get("id"):
+                return str(device["id"])
 
-        module = termination.get("module")
-        if isinstance(module, Mapping):
-            parent_module_bay = module.get("parent_module_bay")
-            if isinstance(parent_module_bay, Mapping) and parent_module_bay.get("id"):
-                return await self.get_module_bay_parent_device_id(str(parent_module_bay["id"]))
+            module = current.get("module")
+            if isinstance(module, Mapping):
+                parent_module_bay = module.get("parent_module_bay")
+                if isinstance(parent_module_bay, Mapping) and parent_module_bay.get("id"):
+                    return await self.get_module_bay_parent_device_id(str(parent_module_bay["id"]))
 
-        url = termination.get("url")
-        if not isinstance(url, str) or not url:
-            raise DCIMInvalidDataError("Nautobot cable termination has no device or REST URL")
-        endpoint = url.split("/api/", maxsplit=1)[-1].lstrip("/")
-        resolved = await self.get(endpoint)
-        if not isinstance(resolved, Mapping):
-            raise DCIMInvalidDataError("Nautobot returned an invalid cable termination")
-        return await self.get_cable_termination_device_id(resolved)
+            url = current.get("url")
+            if not isinstance(url, str) or not url:
+                raise DCIMInvalidDataError("Nautobot cable termination has no device or REST URL")
+            endpoint = url.split("/api/", maxsplit=1)[-1].lstrip("/")
+            if endpoint in visited_endpoints:
+                raise DCIMInvalidDataError(
+                    f"Nautobot cable termination contains a reference cycle at {endpoint}"
+                )
+            visited_endpoints.add(endpoint)
+            resolved = await self.get(endpoint)
+            if not isinstance(resolved, Mapping):
+                raise DCIMInvalidDataError("Nautobot returned an invalid cable termination")
+            current = resolved
 
     async def set_status_provisioned(self, device_id: str) -> None:
         """Legacy Nautobot method retained while ZTP completes migration."""

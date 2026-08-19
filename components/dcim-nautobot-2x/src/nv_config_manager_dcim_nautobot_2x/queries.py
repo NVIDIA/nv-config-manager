@@ -42,6 +42,9 @@ class GraphQLOperation(str):
         return instance
 
 
+_LOADING_GRAPHQL_SOURCES: set[str] = set()
+
+
 def _import_path(source_file: str, import_target: str) -> str:
     """Resolve one document-local import without allowing path traversal."""
     import_path = PurePosixPath(source_file).parent / import_target
@@ -75,17 +78,23 @@ def _fragment_spreads(selection_set: SelectionSetNode) -> set[str]:
 @cache
 def _load_graphql_source(filename: str) -> str:
     """Load one document and recursively prepend its explicitly imported fragments."""
-    source = files(__package__).joinpath("graphql", filename).read_text(encoding="utf-8")
-    imported_sources: list[str] = []
-    retained_lines: list[str] = []
-    for line in source.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("# import "):
-            target = stripped.removeprefix("# import ").strip().strip('"')
-            imported_sources.append(_load_graphql_source(_import_path(filename, target)))
-            continue
-        retained_lines.append(line)
-    return "\n\n".join((*imported_sources, "\n".join(retained_lines)))
+    if filename in _LOADING_GRAPHQL_SOURCES:
+        raise ValueError(f"Circular GraphQL import detected: {filename!r}")
+    _LOADING_GRAPHQL_SOURCES.add(filename)
+    try:
+        source = files(__package__).joinpath("graphql", filename).read_text(encoding="utf-8")
+        imported_sources: list[str] = []
+        retained_lines: list[str] = []
+        for line in source.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("# import "):
+                target = stripped.removeprefix("# import ").strip().strip('"')
+                imported_sources.append(_load_graphql_source(_import_path(filename, target)))
+                continue
+            retained_lines.append(line)
+        return "\n\n".join((*imported_sources, "\n".join(retained_lines)))
+    finally:
+        _LOADING_GRAPHQL_SOURCES.discard(filename)
 
 
 @cache

@@ -14,6 +14,8 @@
 # limitations under the License.
 """Provider-aware Config Store device identifier validation."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, Request
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
     from nv_config_manager.config_store.core.device_cache_redis import DeviceCacheService
 
 
-def get_cache_service(request: Request) -> "DeviceCacheService | None":
+def get_cache_service(request: Request) -> DeviceCacheService | None:
     """Return the application cache service when it initialized successfully."""
     return getattr(request.app.state, "cache_service", None)
 

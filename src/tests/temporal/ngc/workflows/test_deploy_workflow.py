@@ -722,7 +722,7 @@ async def test_execute_workflow(
 @patch("nv_config_manager.temporal.client.device.CumulusConnection")
 @patch("nv_config_manager.temporal.ngc.activities.backup.config_store_client")
 @patch("nv_config_manager.temporal.ngc.activities.deploy.config_store_client")
-@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_workflow_client")
+@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_client")
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_execute_workflow_no_diff(
@@ -888,7 +888,7 @@ async def test_execute_workflow_no_diff(
 @patch("nv_config_manager.temporal.client.device.CumulusConnection")
 @patch("nv_config_manager.temporal.ngc.activities.backup.config_store_client")
 @patch("nv_config_manager.temporal.ngc.activities.deploy.config_store_client")
-@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_workflow_client")
+@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_client")
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_execute_workflow_rejected_diff(

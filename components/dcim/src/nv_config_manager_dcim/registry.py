@@ -38,10 +38,7 @@ DCIM_PROVIDER_ENTRY_POINT_GROUP = "nv_config_manager.dcim"
 
 
 def _entry_points_for_group() -> tuple[EntryPoint, ...]:
-    discovered = entry_points()
-    if hasattr(discovered, "select"):
-        return tuple(discovered.select(group=DCIM_PROVIDER_ENTRY_POINT_GROUP))
-    return tuple(discovered.get(DCIM_PROVIDER_ENTRY_POINT_GROUP, ()))
+    return tuple(entry_points(group=DCIM_PROVIDER_ENTRY_POINT_GROUP))
 
 
 def _major(version: str) -> int:
@@ -88,10 +85,11 @@ def discover_dcim_providers() -> dict[str, DCIMProvider]:
 
 def get_dcim_provider(name: str) -> DCIMProvider:
     """Return an installed provider by explicit entry-point name."""
+    providers = discover_dcim_providers()
     try:
-        return discover_dcim_providers()[name]
+        return providers[name]
     except KeyError as exc:
-        installed = ", ".join(sorted(discover_dcim_providers())) or "none"
+        installed = ", ".join(sorted(providers)) or "none"
         raise DCIMProviderNotFoundError(
             f'DCIM provider "{name}" is not installed; installed providers: {installed}'
         ) from exc

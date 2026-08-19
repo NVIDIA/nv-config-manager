@@ -53,6 +53,7 @@ from nv_config_manager_dcim.workflow_models import (
     HostDeviceData,
     InterfaceData,
     NetworkDeviceData,
+    OSImageVersions,
 )
 
 DCIM_PROVIDER_API_VERSION = "1.0"
@@ -141,7 +142,7 @@ class DCIMClient(Protocol):
         self, device_id: str
     ) -> ConfigurationBackupMetadata | None: ...
     async def record_configuration_backup(self, intent: ConfigurationBackupIntent) -> None: ...
-    async def get_os_image_versions(self, device_id: str) -> tuple[str, str, str]: ...
+    async def get_os_image_versions(self, device_id: str) -> OSImageVersions: ...
     async def set_intended_os_image(self, device_id: str, desired_firmware: str) -> None: ...
     async def get_firmware_bundle(
         self, device_id: str, bundle_version: str | None = None
@@ -291,10 +292,3 @@ class NautobotMCPProvider(Protocol):
     def create_nautobot_mcp_client(
         self, settings: ProviderSettings, headers: Callable[[], dict[str, str]]
     ) -> NautobotMCPClient: ...
-
-
-# Compatibility names retained while callers move to the single broad client.
-DCIMWorkflowClient = DCIMClient
-DCIMParameterClient = DCIMClient
-DCIMWorkflowProvider = DCIMProvider
-DCIMParameterProvider = DCIMProvider

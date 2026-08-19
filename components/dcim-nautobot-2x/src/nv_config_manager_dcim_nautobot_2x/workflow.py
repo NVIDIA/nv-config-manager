@@ -57,6 +57,7 @@ from nv_config_manager_dcim.workflow_models import (
     HostDeviceData,
     InterfaceData,
     NetworkDeviceData,
+    OSImageVersions,
 )
 
 from nv_config_manager_dcim_nautobot_2x.client import NautobotClient as BaseNautobotClient
@@ -136,6 +137,13 @@ _NAUTOBOT_PLATFORM_NAMES = {
 }
 
 
+def _canonicalize_pkey_value(value: str) -> str | None:
+    """Return a canonical PKey value when its input is valid."""
+    if not value or not _IB_PKEY_VALUE_PATTERN.match(value):
+        return None
+    return f"0x{int(value, 16):04x}"
+
+
 DeviceVrfInfo = DeviceVRF
 """Backward-compatible alias for the provider-neutral device VRF model."""
 
@@ -193,7 +201,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
                 "Nautobot returned invalid backup-enabled device data"
             ) from exc
 
-    async def get_os_image_versions(self, device_id: str) -> tuple[str, str, str]:
+    async def get_os_image_versions(self, device_id: str) -> OSImageVersions:
         """Return firmware intent and target data using the built-in data model."""
         try:
             intended_data = await self.graphql_query(_OS_IMAGE_DEVICE_QUERY, {"id": device_id})
@@ -212,7 +220,11 @@ class NautobotWorkflowClient(BaseNautobotClient):
             desired_firmware = desired_data["data"]["config_contexts"][0]["data"][
                 "firmware-targets"
             ][role][platform]
-            return intended_firmware, desired_firmware, ztp_ipv4_address
+            return OSImageVersions(
+                intended_firmware=intended_firmware,
+                desired_firmware=desired_firmware,
+                ztp_address=ztp_ipv4_address,
+            )
         except (KeyError, IndexError, TypeError) as exc:
             raise DCIMInvalidDataError("Nautobot returned invalid OS image data") from exc
 
@@ -471,10 +483,9 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     @staticmethod
     def _deduplicate_devices(devices_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Remove duplicate devices and raise error if duplicates found."""
+        """Validate that a device result contains no duplicate names."""
         device_names: set[str] = set()
         duplicates: set[str] = set()
-        unique_devices: list[dict[str, Any]] = []
 
         for device_data in devices_data:
             device_name = device_data["name"]
@@ -482,12 +493,11 @@ class NautobotWorkflowClient(BaseNautobotClient):
                 duplicates.add(device_name)
             else:
                 device_names.add(device_name)
-                unique_devices.append(device_data)
 
         if duplicates:
             raise NautobotException(f"Duplicate device names in nautobot: {duplicates}")
 
-        return unique_devices
+        return devices_data
 
     async def get_devices(  # pylint: disable=too-many-arguments
         self,
@@ -544,29 +554,19 @@ class NautobotWorkflowClient(BaseNautobotClient):
             managed_only=filters.managed_only,
         )
         devices = [network_device_from_nautobot_graphql(data) for data in device_data_list]
-        if device_status_filters.get("render_enabled") is not None:
+        active_filters = {
+            attribute: value
+            for attribute, value in device_status_filters.items()
+            if value is not None
+        }
+        if active_filters:
             devices = [
                 device
                 for device in devices
-                if device.render_enabled == device_status_filters["render_enabled"]
-            ]
-        if device_status_filters.get("deploy_enabled") is not None:
-            devices = [
-                device
-                for device in devices
-                if device.deploy_enabled == device_status_filters["deploy_enabled"]
-            ]
-        if device_status_filters.get("backup_enabled") is not None:
-            devices = [
-                device
-                for device in devices
-                if device.backup_enabled == device_status_filters["backup_enabled"]
-            ]
-        if device_status_filters.get("ztp_enabled") is not None:
-            devices = [
-                device
-                for device in devices
-                if device.ztp_enabled == device_status_filters["ztp_enabled"]
+                if all(
+                    getattr(device, attribute) == value
+                    for attribute, value in active_filters.items()
+                )
             ]
         return devices
 
@@ -810,13 +810,12 @@ class NautobotWorkflowClient(BaseNautobotClient):
     ) -> HostDeviceData:
         """Update DPU inventory fields using Nautobot device and interface resources."""
         device = await self.update_host_device(device_id=device_id, data={"serial": serial})
-        device.interfaces = []
-        for interface_id, mac_address in interface_macs.items():
-            device.interfaces.append(
-                await self.update_interface(
-                    interface_id=interface_id, data={"mac_address": mac_address}
-                )
+        device.interfaces = [
+            await self.update_interface(
+                interface_id=interface_id, data={"mac_address": mac_address}
             )
+            for interface_id, mac_address in interface_macs.items()
+        ]
         return device
 
     async def get_interface_hosts_by_mac(self, mac_addresses: list[str]) -> list[InterfaceData]:
@@ -849,6 +848,20 @@ class NautobotWorkflowClient(BaseNautobotClient):
         if count > 1:
             raise NautobotException(f"Ambiguous name '{name}' at {path}: {count} objects match")
         return cast(str, results[0]["id"]) if results else None
+
+    async def _require_id_by_name(
+        self,
+        path: str,
+        name: str,
+        error_message: str,
+        *,
+        non_retryable: bool = False,
+    ) -> str:
+        """Look up a Nautobot object ID, raising the caller's established error if absent."""
+        object_id = await self.lookup_id_by_name(path, name)
+        if object_id is None:
+            raise ApplicationError(error_message, non_retryable=non_retryable)
+        return object_id
 
     async def create_overlay(self, data: Any) -> Any:
         """Create an Overlay in the overlays plugin."""
@@ -996,14 +1009,11 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def _get_overlay_assignment_status_id(self) -> str:
         """Return the default status ID used for overlay assignments."""
-        status_id = await self.lookup_id_by_name(
-            "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+        return await self._require_id_by_name(
+            "extras/statuses/",
+            _SPECTRUM_X_DEFAULT_STATUS_NAME,
+            f"Status {_SPECTRUM_X_DEFAULT_STATUS_NAME} not found for overlay assignment",
         )
-        if status_id is None:
-            raise ApplicationError(
-                f"Status {_SPECTRUM_X_DEFAULT_STATUS_NAME} not found for overlay assignment"
-            )
-        return status_id
 
     async def _create_overlay_assignment(
         self,
@@ -1041,14 +1051,14 @@ class NautobotWorkflowClient(BaseNautobotClient):
         vxlans_created: list[dict[str, Any]] = []
         assignments_created: list[dict[str, Any]] = []
 
-        status_id = await self.lookup_id_by_name(
-            "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+        status_id = await self._require_id_by_name(
+            "extras/statuses/",
+            _SPECTRUM_X_DEFAULT_STATUS_NAME,
+            f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
         )
-        if not status_id:
-            raise ApplicationError(f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM")
-        tenant_id = await self.lookup_id_by_name("tenancy/tenants/", tenant)
-        if not tenant_id:
-            raise ApplicationError(f"Tenant '{tenant}' not found in DCIM")
+        tenant_id = await self._require_id_by_name(
+            "tenancy/tenants/", tenant, f"Tenant '{tenant}' not found in DCIM"
+        )
 
         overlay = await self.find_overlay(overlay_name, site)
         if overlay:
@@ -1194,28 +1204,28 @@ class NautobotWorkflowClient(BaseNautobotClient):
         membership_type: str,
     ) -> IBPKeyPartition:
         """Create or reuse a Nautobot overlay and its InfiniBand PKey record."""
-        location_id = await self.lookup_id_by_name("dcim/locations/", location_name)
-        if not location_id:
-            raise ApplicationError(
-                f"Location '{location_name}' not found in DCIM", non_retryable=True
-            )
+        location_id = await self._require_id_by_name(
+            "dcim/locations/",
+            location_name,
+            f"Location '{location_name}' not found in DCIM",
+            non_retryable=True,
+        )
 
         tenant_id: str | None = None
         if tenant_name:
-            tenant_id = await self.lookup_id_by_name("tenancy/tenants/", tenant_name)
-            if not tenant_id:
-                raise ApplicationError(
-                    f"Tenant '{tenant_name}' not found in DCIM", non_retryable=True
-                )
-
-        status_id = await self.lookup_id_by_name(
-            "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
-        )
-        if not status_id:
-            raise ApplicationError(
-                f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+            tenant_id = await self._require_id_by_name(
+                "tenancy/tenants/",
+                tenant_name,
+                f"Tenant '{tenant_name}' not found in DCIM",
                 non_retryable=True,
             )
+
+        status_id = await self._require_id_by_name(
+            "extras/statuses/",
+            _SPECTRUM_X_DEFAULT_STATUS_NAME,
+            f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+            non_retryable=True,
+        )
 
         overlay = await self.find_overlay(partition_name, location_id)
         if overlay:
@@ -1274,14 +1284,12 @@ class NautobotWorkflowClient(BaseNautobotClient):
         if orphan_pkeys:
             pkey_id = str(orphan_pkeys[0]["id"])
         else:
-            status_id = await self.lookup_id_by_name(
-                "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+            status_id = await self._require_id_by_name(
+                "extras/statuses/",
+                _SPECTRUM_X_DEFAULT_STATUS_NAME,
+                f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+                non_retryable=True,
             )
-            if not status_id:
-                raise ApplicationError(
-                    f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
-                    non_retryable=True,
-                )
             pkey_record = await self.post(
                 f"{OVERLAYS_PLUGIN_BASE}/pkeys/",
                 data={"name": f"PKey-{pkey}", "pkey": pkey, "status": status_id},
@@ -1340,14 +1348,12 @@ class NautobotWorkflowClient(BaseNautobotClient):
         assignments: list[tuple[str, str, str]],
     ) -> list[str]:
         """Create or update PKey membership assignments for the supplied interfaces."""
-        status_id = await self.lookup_id_by_name(
-            "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+        status_id = await self._require_id_by_name(
+            "extras/statuses/",
+            _SPECTRUM_X_DEFAULT_STATUS_NAME,
+            f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+            non_retryable=True,
         )
-        if not status_id:
-            raise ApplicationError(
-                f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
-                non_retryable=True,
-            )
         assignment_ids: list[str] = []
         for interface_id, guid, membership_type in assignments:
             existing = await self._find_ib_pkey_assignment(overlay_id, interface_id)
@@ -1413,14 +1419,12 @@ class NautobotWorkflowClient(BaseNautobotClient):
         desired_assignments: list[tuple[str, str, str]],
     ) -> tuple[list[str], list[str], list[str]]:
         """Reconcile PKey assignments to a normalized desired interface membership list."""
-        status_id = await self.lookup_id_by_name(
-            "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+        status_id = await self._require_id_by_name(
+            "extras/statuses/",
+            _SPECTRUM_X_DEFAULT_STATUS_NAME,
+            f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+            non_retryable=True,
         )
-        if not status_id:
-            raise ApplicationError(
-                f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
-                non_retryable=True,
-            )
         current_assignments = await self.get_ib_pkey_assignments(overlay_id)
         current_by_interface = {
             assignment.interface_id: assignment for assignment in current_assignments
@@ -1471,12 +1475,13 @@ class NautobotWorkflowClient(BaseNautobotClient):
     @staticmethod
     def _normalize_ib_pkey(value: str) -> str:
         """Canonicalize an InfiniBand PKey to four lowercase hexadecimal digits."""
-        if not value or not _IB_PKEY_VALUE_PATTERN.match(value):
+        canonical_value = _canonicalize_pkey_value(value)
+        if canonical_value is None:
             raise ApplicationError(
                 f"pkey {value!r} does not match required format (e.g. '0x8001')",
                 non_retryable=True,
             )
-        return f"0x{int(value, 16):04x}"
+        return canonical_value
 
     @staticmethod
     def _walk_ib_location_chain(location: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -1506,9 +1511,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
             for overlay in location.get("overlays") or []:
                 for pkey_record in overlay.get("pkeys") or []:
                     stored = str(pkey_record.get("pkey") or "")
-                    if not _IB_PKEY_VALUE_PATTERN.match(stored):
-                        continue
-                    if f"0x{int(stored, 16):04x}" == canonical_pkey:
+                    if _canonicalize_pkey_value(stored) == canonical_pkey:
                         matches.append((location, overlay, pkey_record))
         return matches
 
@@ -1609,14 +1612,12 @@ class NautobotWorkflowClient(BaseNautobotClient):
         location_id = str(location["id"])
         overlay = await self.find_overlay(overlay_name, location_id)
         if overlay is None:
-            status_id = await self.lookup_id_by_name(
-                "extras/statuses/", _SPECTRUM_X_DEFAULT_STATUS_NAME
+            status_id = await self._require_id_by_name(
+                "extras/statuses/",
+                _SPECTRUM_X_DEFAULT_STATUS_NAME,
+                f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
+                non_retryable=True,
             )
-            if not status_id:
-                raise ApplicationError(
-                    f"Status '{_SPECTRUM_X_DEFAULT_STATUS_NAME}' not found in DCIM",
-                    non_retryable=True,
-                )
             overlay = cast(
                 dict[str, Any],
                 await self.create_overlay(
@@ -1719,7 +1720,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
         try:
             await self.delete(path)
         except NautobotException as error:
-            if "returned 404" not in str(error):
+            if error.status_code != 404:
                 raise
             logger.info("%s already absent in Nautobot; treating as cleaned", description)
 

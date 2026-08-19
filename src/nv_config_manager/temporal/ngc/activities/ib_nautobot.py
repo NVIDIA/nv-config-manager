@@ -31,7 +31,7 @@ from pydantic import BaseModel, field_validator
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from nv_config_manager.dcim import DCIMError, create_dcim_workflow_client
+from nv_config_manager.dcim import DCIMError, create_dcim_client
 from nv_config_manager.temporal.common.mixins.stage import StageOutput
 
 log = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ _PKEY_PATTERN = re.compile(r"^0[xX][0-9a-fA-F]{1,4}$")
 @asynccontextmanager
 async def _dcim_workflow_client() -> AsyncIterator[Any]:
     """Yield the configured client and translate provider errors for Temporal."""
-    client = create_dcim_workflow_client()
+    client = create_dcim_client()
     try:
         async with client:
             yield client

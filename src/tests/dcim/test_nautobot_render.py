@@ -82,6 +82,32 @@ def test_bgp_peer_requires_source_interface_for_nautobot_vrf_association():
         )
 
 
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [("WAN neighbor", "WAN neighbor"), ("", "spine-1"), (None, "spine-1")],
+)
+def test_bgp_peer_uses_endpoint_description_with_device_name_fallback(description, expected):
+    """Configured peer descriptions are optional and preserve the historical fallback."""
+    peer = _bgp_peer(
+        {
+            "peer": {
+                "description": description,
+                "source_interface": {"name": "swp1", "ip_addresses": []},
+                "routing_instance": {
+                    "device": {"name": "spine-1", "role": {"name": "Spine"}},
+                    "status": {"name": "Active"},
+                    "autonomous_system": {"asn": 65001},
+                },
+            }
+        },
+        "leaf-1",
+    )
+
+    assert peer is not None
+    assert peer.name == "spine-1"
+    assert peer.description == expected
+
+
 def test_overlay_inventory_is_scoped_to_device_vlans_and_vrfs():
     """Global Nautobot VXLAN results retain only records used by one device."""
     payload = {
