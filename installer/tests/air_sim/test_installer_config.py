@@ -191,7 +191,9 @@ def test_demo_template_plugin_is_static_and_public_named() -> None:
     assert (plugin_dir / "pyproject.toml").is_file()
     assert not (plugin_dir / "scripts").exists()
 
-    plugin_text = "\n".join(path.read_text() for path in plugin_dir.rglob("*") if path.is_file())
+    source_files = [plugin_dir / "pyproject.toml"]
+    source_files.extend(path for path in (plugin_dir / "src").rglob("*") if path.is_file())
+    plugin_text = "\n".join(path.read_text(encoding="utf-8") for path in source_files)
     assert "generate_template_plugin" not in plugin_text
     assert "kiwi" not in plugin_text.lower()
     assert 'dhcp_servers("nvcm", true)' in plugin_text

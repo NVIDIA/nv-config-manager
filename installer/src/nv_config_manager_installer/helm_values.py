@@ -215,6 +215,11 @@ _STRING_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
         "docker.io/library/python",
         "3.13-alpine",
     ),
+    "dcimProviderInstaller": (
+        ("dcim", "providerPackages", "installerImage"),
+        "docker.io/library/python",
+        "3.13-bookworm",
+    ),
     "envoyProxy": (
         ("gateway", "envoyProxy", "image"),
         "docker.io/envoyproxy/envoy",

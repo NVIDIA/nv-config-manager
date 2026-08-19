@@ -262,6 +262,7 @@ class KubernetesSecretsConfig(BaseModel):
     # ``dcim`` is the canonical provider token group. ``nautobot`` remains
     # available for the built-in provider's compatibility credentials.
     dcim: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
+    nats: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     nautobot: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     redis: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
     postgres: K8sSecretGroup = Field(default_factory=K8sSecretGroup)
@@ -923,6 +924,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("spiffeHelper", "ghcr.io/spiffe/spiffe-helper"),
     ("oidcProxy", "quay.io/oauth2-proxy/oauth2-proxy"),
     ("templatePluginInstaller", "docker.io/library/python"),
+    ("dcimProviderInstaller", "docker.io/library/python"),
     ("envoyGateway", "docker.io/envoyproxy/gateway"),
     ("envoyRatelimit", "docker.io/envoyproxy/ratelimit"),
     ("envoyProxy", "docker.io/envoyproxy/envoy"),
@@ -1070,6 +1072,13 @@ class NVConfigManagerInstallConfig(BaseModel):
                 raise ValueError(
                     "secrets.vault.paths.dcim.enabled must be true for an external DCIM provider with ESO"
                 )
+        elif not self.services.nautobot and not (
+            self.dcim.server or self.services.external_nautobot_url
+        ):
+            raise ValueError(
+                "dcim.server or services.external_nautobot_url is required when "
+                "services.nautobot=false and dcim.provider=nautobot-2x"
+            )
 
         if not self.services.nautobot and self.content.requires_local_nautobot:
             msg = (

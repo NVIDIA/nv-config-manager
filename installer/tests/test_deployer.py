@@ -218,6 +218,7 @@ class TestDeployerInit:
     def test_revalidates_tui_config_before_deployment(self):
         config = _make_config()
         config.services.nautobot = False
+        config.services.external_nautobot_url = "https://nb.example.com"
         config.content.run_after_deploy = [PostDeployJob(job="jobs.bootstrap.SiteBootstrap")]
 
         with pytest.raises(ValueError, match="post-deploy jobs require a local Nautobot"):
@@ -869,6 +870,7 @@ class TestKindImageLoading:
     def test_external_dcim_excludes_nautobot_from_local_images(self):
         config = _make_config()
         config.services.nautobot = False
+        config.dcim = DCIMConfig(provider="synthetic", server="https://synthetic.example")
         deployer = Deployer(config, DeployOptions(), RecordingCallback())
 
         image_names = {build[0] for build in deployer._local_image_builds()}
@@ -880,6 +882,7 @@ class TestKindImageLoading:
         logged_commands: list[list[str]] = []
         config = _make_config()
         config.services.nautobot = False
+        config.dcim = DCIMConfig(provider="synthetic", server="https://synthetic.example")
         monkeypatch.setattr(
             "nv_config_manager_installer.deployer._run_logged",
             lambda cmd, *_args, **_kwargs: logged_commands.append(cmd),

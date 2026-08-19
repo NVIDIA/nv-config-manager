@@ -287,7 +287,10 @@ class TestGenerateHelmValues:
 
     def test_nautobot_disabled(self):
         config = _make_config(
-            services=ServicesConfig(nautobot=False),
+            services=ServicesConfig(
+                nautobot=False,
+                external_nautobot_url="https://nb.example.com",
+            ),
             content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
@@ -1087,6 +1090,10 @@ class TestImagesInHelmValues:
         assert (
             values["renderService"]["templatePlugins"]["installerImage"]
             == "registry.example.com/nv-config-manager/library/python:3.13-alpine"
+        )
+        assert (
+            values["dcim"]["providerPackages"]["installerImage"]
+            == "registry.example.com/nv-config-manager/library/python:3.13-bookworm"
         )
         assert (
             values["gateway"]["envoyProxy"]["image"]

@@ -82,7 +82,11 @@ provider's documented secret references, not in `dcim.options`.
 For an airgapped deployment, the image in each `provider_packages` entry must
 be included in the bundle. Pass a file containing that OCI image reference to
 `create-airgapped.sh --extra-images-file`; the bundle builder cannot infer
-site-specific provider packages from an installer configuration.
+site-specific provider packages from an installer configuration. The standard
+provider-wheel installer image is included in the bundle and is automatically
+mapped to `images.registry`. To use a different installer image, configure
+`images.overrides.dcimProviderInstaller` so it follows the same registry and
+airgap handling as other third-party images.
 
 ## File storage with OS images
 

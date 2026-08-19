@@ -793,7 +793,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
         patch_data = await self.patch(path=f"dcim/interfaces/{interface_id}/", data=data)
         return interface_from_nautobot_graphql(patch_data)
 
-    async def assign_vrf_to_interface(self, interface_id: str, vrf_id: str) -> None:
+    async def assign_vrf_to_interface(self, interface_id: str, vrf_id: str | None) -> None:
         """Assign a VRF by translating the intent to a Nautobot interface update."""
         await self.update_interface(interface_id, data={"vrf": vrf_id})
 

@@ -122,7 +122,13 @@ def _generate_core_k8s_secrets(
     else:
         state["dcim_token"] = _v("dcim", "token") or _generate_token(40)
 
-    nats_password = _v("nautobot", "natsPassword") or _generate_nats_config_password()
+    if config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER:
+        nats_password = _v("nautobot", "natsPassword")
+    else:
+        # Keep the legacy Nautobot key as a compatibility fallback for early
+        # external-provider configurations while making NATS independently owned.
+        nats_password = _v("nats", "password") or _v("nautobot", "natsPassword")
+    nats_password = nats_password or _generate_nats_config_password()
     state["nats_password"] = _validate_nats_config_password(nats_password)
     state["redis_password"] = _v("redis", "password") or _generate_url_safe_password()
     if config.services.nautobot:

@@ -354,6 +354,17 @@ class TestNVConfigManagerInstallConfig:
         assert config.services.nautobot is False
         assert config.services.external_nautobot_url == "https://nb.example.com"
 
+    def test_external_nautobot_requires_server(self):
+        with pytest.raises(ValueError, match="dcim.server or services.external_nautobot_url"):
+            NVConfigManagerInstallConfig(services=ServicesConfig(nautobot=False))
+
+        config = NVConfigManagerInstallConfig(
+            dcim=DCIMConfig(server="https://nb.example.com"),
+            services=ServicesConfig(nautobot=False),
+        )
+
+        assert config.dcim.server == "https://nb.example.com"
+
     def test_external_dcim_requires_disabled_nautobot_and_server(self):
         with pytest.raises(ValueError, match="services.nautobot=false"):
             NVConfigManagerInstallConfig(
