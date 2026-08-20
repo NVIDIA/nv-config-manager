@@ -79,9 +79,16 @@ class NautobotClient(BaseNautobotClient):
         )
 
     async def graphql_query(
-        self, query: str, variables: dict[str, Any] | None = None, timeout: int | None = 10
+        self, query: str, variables: dict[str, Any] | None = None, timeout: int | None = None
     ) -> dict[str, Any]:
-        """Execute a graphql query with Temporal-specific error handling."""
+        """Execute a graphql query with Temporal-specific error handling.
+
+        Args:
+            query: GraphQL query string
+            variables: Query variables
+            timeout: Request timeout in seconds. ``None`` uses the client
+                timeout from INI / :attr:`DEFAULT_TIMEOUT`.
+        """
         logger.info(
             "%s: Sending graphql query with variables %s",
             self.graphql_endpoint,
