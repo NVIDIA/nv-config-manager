@@ -112,7 +112,9 @@ def _junos_list(container: dict[str, Any], key: str) -> list[dict[str, Any]]:
     value = container.get(key, [])
     if isinstance(value, dict):
         return [value]
-    return list(value) if value else []
+    if isinstance(value, list):
+        return list(value)
+    return []
 
 
 class NetworkDeviceException(ApplicationError):
@@ -2433,6 +2435,11 @@ class JuniperConnection(NetworkConnection):
     # TCP/NETCONF open deadline separate from per-RPC timeout.
     _CONN_OPEN_TIMEOUT_SECONDS = 30
 
+    # Substring of the RpcError Junos raises for get-ethernet-switching-table-information
+    # on a device with no bridging (e.g. a pure backbone router). Any other RPC failure
+    # (auth, connection, timeout) must propagate rather than read as an empty MAC table.
+    _MAC_TABLE_UNSUPPORTED_MESSAGE = "l2-learning subsystem is not running"
+
     def __init__(
         self,
         host: str,
@@ -2726,11 +2733,16 @@ class JuniperConnection(NetworkConnection):
 
     def get_interface_connections(self) -> DeviceNeighborData:
         """Get all interface connections from LLDP."""
-        neighbors = {}
+        neighbors: dict[str, InterfaceNeighborData] = {}
         for entry in self._get_lldp_neighbor_entries():
             interface = _junos_string(entry, "lldp-local-port-id")
-            if interface:
-                neighbors[interface] = InterfaceNeighborData.from_junos(entry)
+            if not interface:
+                continue
+            if interface in neighbors:
+                raise NetworkDeviceException(
+                    f"Received multiple LLDP neighbors on interface {interface} from {self._host}"
+                )
+            neighbors[interface] = InterfaceNeighborData.from_junos(entry)
 
         return DeviceNeighborData(
             neighbors=neighbors, link_states=self._get_interface_link_states()
@@ -2740,7 +2752,10 @@ class JuniperConnection(NetworkConnection):
         """Get the device MAC table."""
         try:
             data = self._rpc("get-ethernet-switching-table-information")
-        except NetworkDeviceException:
+        except NetworkDeviceException as error:
+            cause_message = getattr(error.__cause__, "message", None) or str(error)
+            if self._MAC_TABLE_UNSUPPORTED_MESSAGE not in cause_message:
+                raise
             logger.debug(
                 "No Ethernet switching table on %s; treating the MAC table as empty.",
                 self._host,

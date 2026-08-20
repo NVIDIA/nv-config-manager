@@ -39,6 +39,7 @@ from nv_config_manager.temporal.client.device import (
     MockNetworkConnection,
     NetworkConnection,
     NetworkDeviceException,
+    _junos_list,
 )
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -964,6 +965,29 @@ def test_run_diagnostic_command_unsupported_junos_raises_network_exception(junip
         juniper_conn.run_diagnostic_command("show_bgp_summary")
 
 
+class TestJunosList:
+    """Tests for the _junos_list Junos-JSON normalization helper."""
+
+    def test_missing_key_returns_empty_list(self):
+        """A key absent from the container returns an empty list, not an error."""
+        assert _junos_list({}, "mac-table-entry") == []
+
+    def test_wraps_a_bare_dict_as_a_single_item_list(self):
+        """Junos omits the list wrapper entirely when there is exactly one element."""
+        entry = {"mac-address": [{"data": "00:11:22:33:44:55"}]}
+        assert _junos_list({"mac-table-entry": entry}, "mac-table-entry") == [entry]
+
+    def test_preserves_an_actual_list(self):
+        """A real list of entries is returned as-is."""
+        entries = [{"a": 1}, {"b": 2}]
+        assert _junos_list({"mac-table-entry": entries}, "mac-table-entry") == entries
+
+    @pytest.mark.parametrize("scalar", ["some-string", 5, 1.5, True])
+    def test_scalar_value_returns_empty_list_instead_of_iterating_it(self, scalar):
+        """A stray string/number under a repeatable key must not be iterated character-by-character."""
+        assert _junos_list({"mac-table-entry": scalar}, "mac-table-entry") == []
+
+
 def _lldp_neighbor_entry(local_port: str, remote_port: str, remote_system: str) -> dict:
     """Build one lldp-neighbor-information entry as PyEZ returns it in JSON."""
     return {
@@ -1059,6 +1083,23 @@ def test_get_interface_connections_handles_no_neighbors(juniper_conn):
     assert result.link_states == {"ge-0/0/0": True}
 
 
+def test_get_interface_connections_raises_on_multiple_neighbors_for_one_interface(juniper_conn):
+    """A hub/fan-in on one port must raise here too, not silently keep the last neighbor."""
+    lldp_data = {
+        "lldp-neighbors-information": [
+            {
+                "lldp-neighbor-information": [
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/1", "device-a"),
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/2", "device-b"),
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=lldp_data):
+        with pytest.raises(NetworkDeviceException, match="multiple LLDP neighbors"):
+            juniper_conn.get_interface_connections()
+
+
 def test_get_mac_table_parses_switching_table_entries(juniper_conn):
     """get_mac_table parses mac-table-entry rows, keyed by physical interface."""
     data = {
@@ -1086,9 +1127,16 @@ def test_get_mac_table_parses_switching_table_entries(juniper_conn):
     assert result.by_interface["ge-0/0/0"] == [mac]
 
 
+def _raise_unsupported_switching_table(*_args: object, **_kwargs: object) -> None:
+    """Raise the RpcError Junos actually returns for a backbone router with no bridging."""
+    cause = Exception()
+    cause.message = "the l2-learning subsystem is not running"  # matches jnpr RpcError.message
+    raise NetworkDeviceException("RPC get-ethernet-switching-table-information failed") from cause
+
+
 def test_get_mac_table_returns_empty_when_switching_unsupported(juniper_conn):
     """A backbone router without bridging rejects the RPC; treat that as an empty table."""
-    with patch.object(juniper_conn, "_rpc", side_effect=NetworkDeviceException("unsupported RPC")):
+    with patch.object(juniper_conn, "_rpc", side_effect=_raise_unsupported_switching_table):
         result = juniper_conn.get_mac_table()
     assert result.by_mac == {}
     assert result.by_interface == {}
