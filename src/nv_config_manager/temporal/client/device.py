@@ -113,7 +113,7 @@ def _junos_list(container: dict[str, Any], key: str) -> list[dict[str, Any]]:
     if isinstance(value, dict):
         return [value]
     if isinstance(value, list):
-        return list(value)
+        return cast(list[dict[str, Any]], list(value))
     return []
 
 
