@@ -162,6 +162,18 @@ class SimOrchestrator:
         """Return the provider installer's remote deployment command."""
         return build_deploy_command(cfg)
 
+    def _run_provider_pre_deploy(
+        self,
+        manager: AirSimulationManager,
+        host: str,
+        port: int,
+    ) -> None:
+        """Install provider-owned services before NVIDIA Config Manager deploys."""
+
+    def _provider_gateway_hostnames(self, cfg: SimConfig) -> tuple[str, ...]:
+        """Return provider-owned UI hostnames routed through the simulation gateway."""
+        return ()
+
     def _run_provider_post_deploy(
         self,
         manager: AirSimulationManager,
@@ -193,7 +205,11 @@ class SimOrchestrator:
         oob_gateway: str | None,
     ) -> None:
         """Run common post-deploy setup, with a hook for provider-owned behavior."""
-        manager.configure_etc_hosts(host, port)
+        manager.configure_etc_hosts(
+            host,
+            port,
+            additional_hostnames=self._provider_gateway_hostnames(cfg),
+        )
         resolved_iface = manager.resolve_iface_by_mac(host, port, internal_mac)
         manager.configure_nat_rules(
             host,
@@ -401,6 +417,7 @@ class SimOrchestrator:
 
         self._step("run-deploy", StepStatus.RUNNING)
         self._cb.on_deploy_started(host, port)
+        self._run_provider_pre_deploy(manager, host, port)
         deploy_cmd = self._build_deploy_command(cfg)
         self._log(f"Running deploy command:\n  {deploy_cmd}")
         deploy_ok = manager.run_deploy(host, port, deploy_cmd, timeout=cfg.deploy_timeout)

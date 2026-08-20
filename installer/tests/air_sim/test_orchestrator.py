@@ -104,10 +104,22 @@ def test_monitor_setup_command_uses_password_placeholder() -> None:
 
 
 def test_derived_orchestrator_replaces_provider_post_deploy_behavior() -> None:
+    pre_deploy_calls: list[tuple[str, int]] = []
     calls: list[tuple[str, int]] = []
     config_waits: list[int] = []
 
     class ProviderOrchestrator(SimOrchestrator):
+        def _run_provider_pre_deploy(
+            self,
+            manager: AirSimulationManager,
+            host: str,
+            port: int,
+        ) -> None:
+            pre_deploy_calls.append((host, port))
+
+        def _provider_gateway_hostnames(self, cfg: SimConfig) -> tuple[str, ...]:
+            return ("netbox.nvcm.air",)
+
         def _run_provider_post_deploy(
             self,
             manager: AirSimulationManager,
@@ -133,6 +145,7 @@ def test_derived_orchestrator_replaces_provider_post_deploy_behavior() -> None:
     manager = Mock(spec=AirSimulationManager)
     builder = SimpleNamespace(relay_return_prefixes=[], devices={})
 
+    orchestrator._run_provider_pre_deploy(manager, "worker.example", 17117)
     orchestrator._run_post_deploy(
         manager,
         cfg,
@@ -144,9 +157,15 @@ def test_derived_orchestrator_replaces_provider_post_deploy_behavior() -> None:
         "192.0.2.1",
     )
 
+    assert pre_deploy_calls == [("worker.example", 17117)]
     assert calls == [("worker.example", 17117)]
     assert config_waits == [0]
     assert orchestrator._build_deploy_command(cfg) == "run-netbox-installer"
+    manager.configure_etc_hosts.assert_called_once_with(
+        "worker.example",
+        17117,
+        additional_hostnames=("netbox.nvcm.air",),
+    )
     manager.create_nautobot_demo_user.assert_not_called()
     manager.wait_for_intended_configs.assert_not_called()
     manager.ensure_temporal_search_attributes.assert_called_once_with("worker.example", 17117)

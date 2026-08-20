@@ -278,6 +278,53 @@ class TestGatewayClassReuse:
 
 
 class TestStepSequencing:
+    def test_derived_provider_hooks_wrap_helm_install(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+
+        class ProviderDeployer(Deployer):
+            def _run_provider_pre_helm_install(self) -> None:
+                calls.append("provider-pre")
+
+            def _helm_install(self) -> None:
+                calls.append("helm")
+
+            def _run_provider_post_helm_install(self) -> None:
+                calls.append("provider-post")
+
+        deployer = ProviderDeployer(_make_config(), DeployOptions(), RecordingCallback())
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.find_project_root", lambda _explicit: tmp_path
+        )
+        monkeypatch.setattr(
+            "nv_config_manager_installer.deployer.pin_kubeconfig_to_current_context", lambda: None
+        )
+        monkeypatch.setattr(deployer, "_validate_project_paths", lambda _root: None)
+        for method_name in (
+            "_check_prerequisites",
+            "_detect_existing_state",
+            "_build_images",
+            "_load_kind",
+            "_install_crds",
+            "_create_namespace",
+            "_create_secrets",
+            "_populate_vault",
+            "_setup_jobs_pvc",
+            "_setup_templates_pvc",
+            "_setup_ztp_pvc",
+            "_generate_values",
+            "_patch_gateway",
+            "_restart_nautobot",
+            "_restart_render_service",
+            "_run_post_deploy_jobs",
+            "_refresh_caches",
+            "_run_integration_tests",
+        ):
+            monkeypatch.setattr(deployer, method_name, lambda: None)
+        monkeypatch.setattr(deployer, "_collect_endpoints", lambda: [])
+
+        assert deployer.run() is True
+        assert calls == ["provider-pre", "helm", "provider-post"]
+
     @patch("nv_config_manager_installer.deployer.shutil.which", return_value=None)
     def test_prereqs_fail_when_kubectl_missing(self, mock_which):
         config = _make_config()

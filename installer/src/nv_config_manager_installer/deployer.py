@@ -1232,7 +1232,9 @@ class Deployer:
             self._setup_templates_pvc()
             self._setup_ztp_pvc()
             self._generate_values()
+            self._run_provider_pre_helm_install()
             self._helm_install()
+            self._run_provider_post_helm_install()
             self._patch_gateway()
             self._restart_nautobot()
             self._restart_render_service()
@@ -1268,6 +1270,21 @@ class Deployer:
                     os.environ.pop("KUBECONFIG", None)
 
     # -- Step implementations ------------------------------------------------
+
+    def _run_provider_pre_helm_install(self) -> None:
+        """Run provider-owned deployment steps before the umbrella Helm release.
+
+        Derived installers can insert provider-specific ``DeployStep`` entries
+        through :meth:`create_steps` and execute them here without replacing the
+        common deployment sequence.
+        """
+
+    def _run_provider_post_helm_install(self) -> None:
+        """Run provider-owned deployment steps after the umbrella Helm release.
+
+        This is intended for provider readiness checks and bootstrap work that
+        depends on NVIDIA Config Manager services being installed.
+        """
 
     def _check_prerequisites(self) -> None:
         step = self._start_step("prereqs")
