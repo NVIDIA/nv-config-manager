@@ -27,7 +27,11 @@ import pytest
 import requests
 from nv_config_manager_dcim_nautobot_2x.provider import NautobotProvider
 
-pytestmark = [pytest.mark.integration, pytest.mark.ci_only]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.ci_only,
+    pytest.mark.dcim_provider("nautobot-2x"),
+]
 
 _REPRESENTED_EVENT_TYPES = frozenset(
     {

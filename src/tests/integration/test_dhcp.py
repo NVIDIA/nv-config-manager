@@ -29,6 +29,8 @@ from typing import Any, cast
 import pytest
 import requests
 
+from tests.integration.dcim_adapter import DCIMIntegrationAdapter
+
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
 
@@ -381,7 +383,7 @@ class TestDHCPAPI:
         """Wait for DHCP to have subnets or reservations populated.
 
         After job execution, the DHCP service needs to run its first refresh
-        to populate subnets and reservations from Nautobot.
+        to populate subnets and reservations from the selected DCIM.
 
         Returns the DHCP config once data is available.
         """
@@ -897,38 +899,6 @@ class TestDHCPAPI:
         finally:
             _set_kea_dhcp4_config(config_manager_namespace, dhcp_pod, original_dhcp4)
 
-    # GraphQL query to get all ZTP-enabled devices and explicitly reserved addresses
-    ZTP_DEVICES_QUERY = """
-    query {
-        config_manager_devices(ztp_enabled: true) {
-            id
-            device {
-                id
-                name
-                serial
-                role {
-                    name
-                }
-                primary_ip4 {
-                    address
-                }
-                interfaces {
-                    name
-                    mac_address
-                    mgmt_only
-                }
-            }
-        }
-        reserved_ips: ip_addresses(tags: ["dhcp-reserve"]) {
-            interfaces {
-                device {
-                    id
-                }
-            }
-        }
-    }
-    """
-
     # SMN roles use DHCP pools on /31 subnets, not reservations
     SMN_ROLES = {"SMN-Core", "SMN-Spine", "SMN-Leaf", "SMN-Aggleaf", "SMN-ZTPLeaf"}
 
@@ -937,42 +907,24 @@ class TestDHCPAPI:
         self,
         dhcp_api_url: str,
         dhcp_client: requests.Session,
-        nautobot_url: str,
-        nautobot_client: requests.Session,
+        dcim_adapter: DCIMIntegrationAdapter,
     ) -> None:
         """Test that every explicitly reserved ZTP device has a DHCP reservation.
 
         This test verifies that:
-        1. Devices with ztp_enabled=true and an IP tagged dhcp-reserve in Nautobot
+        1. Devices with ztp_enabled=true and an IP tagged dhcp-reserve in the DCIM
         2. Have a corresponding DHCP reservation in the KEA config
         3. The reservation matches by MAC address (hw-address) or serial (client-id)
         """
         print("\n=== Verifying ZTP devices have DHCP reservations ===")
 
-        # Get all ZTP-enabled devices from Nautobot
-        gql_response = nautobot_client.post(
-            f"{nautobot_url}/api/graphql/",
-            json={"query": self.ZTP_DEVICES_QUERY},
-            timeout=30,
-        )
-        gql_response.raise_for_status()
-        gql_data = gql_response.json()
-
-        if "errors" in gql_data:
-            pytest.fail(f"GraphQL query failed: {gql_data['errors']}")
-
-        devices = gql_data.get("data", {}).get("config_manager_devices", [])
-        print(f"Found {len(devices)} ZTP-enabled devices in Nautobot")
+        devices = dcim_adapter.list_devices(ztp_enabled=True, include_interfaces=True)
+        print(f"Found {len(devices)} ZTP-enabled devices in the DCIM")
 
         if not devices:
-            pytest.skip("No ZTP-enabled devices found in Nautobot")
+            pytest.skip("No ZTP-enabled devices found in the DCIM")
 
-        reserved_device_ids = {
-            interface["device"]["id"]
-            for reserved_ip in gql_data.get("data", {}).get("reserved_ips", [])
-            for interface in reserved_ip.get("interfaces", [])
-            if interface.get("device")
-        }
+        reserved_device_ids = {device["id"] for device in devices if device["dhcp_reserved"]}
 
         # Get DHCP config
         dhcp_response = dhcp_client.get(
@@ -1015,11 +967,10 @@ class TestDHCPAPI:
 
         pool_backed_devices: list[str] = []
 
-        for managed_device in devices:
-            device = managed_device.get("device", {})
+        for device in devices:
             device_name = device.get("name", "unknown")
             device_serial = device.get("serial", "")
-            device_role = device.get("role", {}).get("name", "")
+            device_role = device.get("role", "")
             interfaces = device.get("interfaces", [])
 
             # Devices without a dhcp-reserve address intentionally bootstrap from pools.
@@ -1102,8 +1053,7 @@ class TestDHCPAPI:
         self,
         dhcp_api_url: str,
         dhcp_client: requests.Session,
-        nautobot_url: str,
-        nautobot_client: requests.Session,
+        dcim_adapter: DCIMIntegrationAdapter,
     ) -> None:
         """Test that SMN devices have DHCP subnets with pools and correct options.
 
@@ -1112,54 +1062,19 @@ class TestDHCPAPI:
         """
         print("\n=== Verifying SMN devices have DHCP pools ===")
 
-        # Get SMN devices with their uplink interfaces
-        smn_query = """
-        query {
-            config_manager_devices(ztp_enabled: true) {
-                device {
-                    name
-                    role {
-                        name
-                    }
-                    interfaces {
-                        name
-                        role {
-                            name
-                        }
-                        ip_addresses {
-                            address
-                        }
-                    }
-                }
-            }
-        }
-        """
-        gql_response = nautobot_client.post(
-            f"{nautobot_url}/api/graphql/",
-            json={"query": smn_query},
-            timeout=30,
-        )
-        gql_response.raise_for_status()
-        gql_data = gql_response.json()
-
-        if "errors" in gql_data:
-            pytest.fail(f"GraphQL query failed: {gql_data['errors']}")
-
         # Filter to SMN devices and collect their uplink /31 subnets
         smn_uplink_subnets: dict[str, str] = {}  # subnet -> device name
-        devices = gql_data.get("data", {}).get("config_manager_devices", [])
+        devices = dcim_adapter.list_devices(ztp_enabled=True, include_interfaces=True)
 
-        for managed_device in devices:
-            device = managed_device.get("device", {})
+        for device in devices:
             device_name = device.get("name", "")
-            device_role = device.get("role", {}).get("name", "")
+            device_role = device.get("role", "")
 
             if device_role not in self.SMN_ROLES:
                 continue
 
             for iface in device.get("interfaces", []):
-                iface_role = iface.get("role", {})
-                if iface_role and iface_role.get("name") == "Uplink":
+                if iface.get("role") == "Uplink":
                     for ip_addr in iface.get("ip_addresses", []):
                         addr = ip_addr.get("address", "")
                         if "/31" in addr:
