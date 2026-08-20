@@ -501,6 +501,19 @@ class TestLoadCustomFields:
 
 
 class TestLoadPlatforms:
+    def test_bundled_platforms_include_juniper_junos(self):
+        mod = _import_module()
+        data_path = Path(mod.__file__).resolve().parents[1] / "data" / "platforms.yaml"
+
+        platforms = yaml.safe_load(data_path.read_text())
+
+        assert {
+            "name": "Juniper Junos",
+            "manufacturer": "Juniper",
+            "description": "Juniper Networks Junos OS",
+            "napalm_driver": "junos",
+        } in platforms
+
     def test_creates_platform_with_manufacturer(self, tmp_path):
         mod = _import_module()
         from nautobot.dcim.models import Manufacturer, Platform
