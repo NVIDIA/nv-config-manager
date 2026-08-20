@@ -240,8 +240,17 @@ class DeviceMacEntry(BaseModel):
         if not (mac and interface):
             return None
         vlan = _junos_string(data, "mac-vlan")
+        try:
+            mac_std = str(netaddr.EUI(mac))
+        except netaddr.core.AddrFormatError:
+            logger.warning("Invalid MAC %r in Junos MAC table entry, skipping: %s", mac, data)
+            return None
+        # get-ethernet-switching-table-information has no per-entry last-seen time,
+        # unlike Arista/Cumulus. sys.maxsize as a shared age means a duplicate MAC
+        # always loses the tie-break in get_mac_table, so the later entry in
+        # response order wins rather than either side being picked at random.
         return DeviceMacEntry(
-            mac=str(netaddr.EUI(mac)),
+            mac=mac_std,
             interface=interface.split(".")[0],
             vlan=int(vlan) if vlan and vlan.isdigit() else None,
             age=sys.maxsize,
@@ -332,8 +341,12 @@ class DeviceArpTable(BaseModel):
             if not (ip and mac and interface):
                 logger.warning("ARP entry missing data, skipping: %s", entry)
                 continue
-            ip_std = str(ipaddress.ip_address(ip))
-            mac_std = str(netaddr.EUI(mac))
+            try:
+                ip_std = str(ipaddress.ip_address(ip))
+                mac_std = str(netaddr.EUI(mac))
+            except (ValueError, netaddr.core.AddrFormatError):
+                logger.warning("Invalid IP/MAC in Junos ARP entry, skipping: %s", entry)
+                continue
             result._add_ip_mac_mapping(ip_std, mac_std)
             result._add_interface_mac_mapping(interface.split(".")[0], mac_std)
         return result

@@ -1127,6 +1127,34 @@ def test_get_mac_table_parses_switching_table_entries(juniper_conn):
     assert result.by_interface["ge-0/0/0"] == [mac]
 
 
+def test_get_mac_table_skips_entry_with_invalid_mac(juniper_conn):
+    """A malformed MAC in one entry is skipped rather than aborting the whole table."""
+    data = {
+        "ethernet-switching-table-information": [
+            {
+                "ethernet-switching-table": [
+                    {
+                        "mac-table-entry": [
+                            {
+                                "mac-address": [{"data": "not-a-mac"}],
+                                "mac-interfaces-list": [{"data": "ge-0/0/0.0"}],
+                            },
+                            {
+                                "mac-address": [{"data": "00:11:22:33:44:55"}],
+                                "mac-interfaces-list": [{"data": "ge-0/0/1.0"}],
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_mac_table()
+    assert list(result.by_mac.keys()) == ["00-11-22-33-44-55"]
+    assert result.by_interface == {"ge-0/0/1": ["00-11-22-33-44-55"]}
+
+
 def _raise_unsupported_switching_table(*_args: object, **_kwargs: object) -> None:
     """Raise the RpcError Junos actually returns for a backbone router with no bridging."""
     cause = Exception()
@@ -1180,6 +1208,37 @@ def test_get_arp_table_skips_incomplete_entries(juniper_conn):
         result = juniper_conn.get_arp_table()
     assert result.ip_to_mac == {}
     assert result.mac_to_ip == {}
+
+
+def test_get_arp_table_skips_entries_with_invalid_ip_or_mac(juniper_conn):
+    """A malformed IP or MAC in one entry is skipped rather than aborting the whole table."""
+    data = {
+        "arp-table-information": [
+            {
+                "arp-table-entry": [
+                    {
+                        "ip-address": [{"data": "not-an-ip"}],
+                        "mac-address": [{"data": "00:11:22:33:44:55"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                    {
+                        "ip-address": [{"data": "10.0.0.1"}],
+                        "mac-address": [{"data": "not-a-mac"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                    {
+                        "ip-address": [{"data": "10.0.0.2"}],
+                        "mac-address": [{"data": "00:11:22:33:44:66"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_arp_table()
+    assert result.ip_to_mac == {"10.0.0.2": ["00-11-22-33-44-66"]}
+    assert result.mac_to_ip == {"00-11-22-33-44-66": ["10.0.0.2"]}
 
 
 def test_get_arp_table_returns_empty_for_empty_reply(juniper_conn):
