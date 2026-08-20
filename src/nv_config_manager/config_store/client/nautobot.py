@@ -117,18 +117,26 @@ class NautobotClient(BaseNautobotClient):
     specific device metadata queries.
     """
 
-    def __init__(self, nautobot_url: str, token: str, verify: bool | str = True) -> None:
+    def __init__(
+        self,
+        nautobot_url: str,
+        token: str,
+        verify: bool | str = True,
+        timeout: int | None = None,
+    ) -> None:
         """Initialize the Nautobot client.
 
         Args:
             nautobot_url: Base URL for Nautobot instance
             token: API token for authentication
             verify: SSL verification - True (default), False (disable), or str (path to CA cert)
+            timeout: Request timeout in seconds. ``None`` uses the base default.
         """
         super().__init__(
             nautobot_url=nautobot_url,
             token=token,
             verify=verify,
+            timeout=timeout,
         )
 
     @classmethod
@@ -148,6 +156,7 @@ class NautobotClient(BaseNautobotClient):
             nautobot_url=config.get("nautobot", "server"),
             token=config.get("nautobot", "token"),
             verify=parse_verify_param(config["nautobot"]),
+            timeout=cls.timeout_from_config(config),
         )
 
     async def get_device(self, device_id: str) -> DeviceMetadata | None:

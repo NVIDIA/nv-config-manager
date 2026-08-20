@@ -75,6 +75,7 @@ class NautobotClient(BaseNautobotClient):
             nautobot_url=config["nautobot"]["server"],
             token=config["nautobot"]["token"],
             verify=parse_verify_param(config["nautobot"]),
+            timeout=self.timeout_from_config(config),
         )
 
     async def graphql_query(

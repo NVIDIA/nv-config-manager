@@ -493,6 +493,11 @@ externalServices:
     version: 2.3.5
     maxWorkers: 8
     retries: 3
+    # Client HTTP/GraphQL timeout in seconds for services that talk to Nautobot
+    # (dhcp-refresh, render, config-store, ztp, temporal). DHCP GraphQL on large
+    # aggregate cells regularly takes ~60s; 120 leaves headroom without waiting
+    # on a hung Nautobot. Override per cell if needed (e.g. 180 on agg-prod).
+    timeout: 120
     # SSL verification: true (default, use system CAs), false (disable), or path to CA cert
     verify: true
     cacheRefreshInterval: 300

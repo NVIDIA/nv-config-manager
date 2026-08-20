@@ -229,11 +229,15 @@ class NautobotClient(BaseNautobotClient):
     methods for loading DHCP configuration data from Nautobot.
     """
 
+    # GraphQL for site options / DHCP contexts is large; 30s is too tight.
+    DEFAULT_TIMEOUT = 60
+
     def __init__(
         self,
         nautobot_url: str,
         token: str,
         verify: bool | str = True,
+        timeout: int | None = None,
     ) -> None:
         """Initialize Nautobot client.
 
@@ -241,12 +245,15 @@ class NautobotClient(BaseNautobotClient):
             nautobot_url: Base URL for Nautobot instance
             token: API token for authentication
             verify: SSL verification - True (default), False (disable), or str (path to CA cert)
+            timeout: Request timeout in seconds. ``None`` uses
+                :attr:`DEFAULT_TIMEOUT` (60s) unless ``[nautobot] timeout``
+                is set in INI via :meth:`from_config`.
         """
         super().__init__(
             nautobot_url=nautobot_url,
             token=token,
             verify=verify,
-            timeout=60,  # DHCP queries can be slow
+            timeout=timeout,
         )
 
     async def load_site_dhcp_options(self) -> Any:
