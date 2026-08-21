@@ -212,7 +212,7 @@ untrusted `pull-request/*` builds. Never protect `pull-request/*` refs.
 | `NVCM_BUILD_TRIGGER_TOKEN` | Starts the secret-free build on `pull-request/<n>`. Two steps: create a token under **Settings → CI/CD → Pipeline triggers**, then store its value as this variable under **Settings → CI/CD → Variables** with protected + masked set, expand off. A job token cannot trigger a pipeline in its own project (GitLab returns HTTP 422), and a trigger token can only start pipelines, nothing else |
 | `NVCM_TEST_ENV_TARGETS` | One record per env: `env\|env_branch\|namespace\|release_name\|baseline_values\|state_dir` (see `scripts/test_env_config.sh`) |
 | `NVCM_CHART_REPO` | Helm repo URL ArgoCD reads the promoted chart from, e.g. `https://helm.ngc.nvidia.com/nvidian/cfa` (must match the `ngc` target in `NVCM_CHART_TARGETS`); written into deploy-state as `chartRepo` |
-| `NVCM_UPSTREAM_GITHUB_REPO` | Optional override for the upstream GitHub repo checked by the stale-HEAD guard (default `NVIDIA/nv-config-manager`) |
+| `NVCM_UPSTREAM_GITHUB_REPO` | Optional override for the upstream GitHub repo checked by the stale-HEAD guard (default `dsx-ai-factory/nv-config-manager`) |
 | `NVCM_BUILD_POLL_INTERVAL` / `NVCM_BUILD_POLL_TIMEOUT` | Optional build-pipeline poll tuning (seconds; defaults 30 / 5400) |
 
 Runbooks (run pipeline on the default branch):
