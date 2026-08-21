@@ -920,8 +920,13 @@ gateway:
     baseEjectionTime: 30s
     # Envoy admits an ejection when (active_ejections + 1) / endpoints is <=
     # this, so the default of 10 cannot eject even one endpoint from a pool
-    # smaller than ten - it leaves everything above configured but inert. 50
-    # permits one of three or three of six, always keeping a majority serving.
+    # smaller than ten - it leaves everything above configured but inert.
+    #
+    # 50 keeps at least half the pool serving, which is not the same as a
+    # majority: an even pool can lose exactly half, so three of six may be
+    # ejected. Deliberately not 49, which reads safer but rounds the wrong way
+    # for the pool this most often applies to - the two-replica oidc proxy,
+    # where one ejection is 50% and nothing could ever be ejected at 49.
     maxEjectionPercent: 50
     # Required, not merely advisable: Envoy only counts local-origin failures
     # separately when this is set, and consecutiveLocalOriginFailures above is
