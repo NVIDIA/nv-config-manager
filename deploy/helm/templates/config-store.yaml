@@ -10,7 +10,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $configStoreName }}
-    component: api
+    component: config-store-api
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: config-store
 spec:
@@ -18,13 +18,13 @@ spec:
   selector:
     matchLabels:
       app: {{ $configStoreName }}
-      component: api
+      component: config-store-api
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
         app: {{ $configStoreName }}
-        component: api
+        component: config-store-api
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -112,7 +112,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $configStoreName }}
-    component: api
+    component: config-store-api
 spec:
   type: ClusterIP
   ports:
@@ -122,7 +122,7 @@ spec:
     name: http
   selector:
     app: {{ $configStoreName }}
-    component: api
+    component: config-store-api
 ---
 # Config Store Database Migration Job
 apiVersion: batch/v1

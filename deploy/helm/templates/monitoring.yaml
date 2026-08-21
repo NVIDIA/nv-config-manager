@@ -457,7 +457,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $configStoreName }}
-      component: api
+      component: config-store-api
   podMetricsEndpoints:
     - port: http
       path: /metrics
@@ -491,7 +491,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $mcpName }}
-      component: api
+      component: mcp-api
   podMetricsEndpoints:
     - port: http
       path: /metrics
@@ -662,7 +662,7 @@ spec:
   selector:
     matchLabels:
       app: {{ $temporalName }}
-      component: api
+      component: temporal-api
   podMetricsEndpoints:
     - port: http
       path: /metrics

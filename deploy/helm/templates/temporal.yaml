@@ -330,19 +330,19 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}
-    component: worker
+    component: config-manager-worker
 spec:
   replicas: {{ .Values.temporal.configManagerWorker.replicas }}
   selector:
     matchLabels:
       app: {{ $temporalName }}
-      component: worker
+      component: config-manager-worker
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
         app: {{ $temporalName }}
-        component: worker
+        component: config-manager-worker
         app.kubernetes.io/component: nv-config-manager-worker
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
@@ -448,19 +448,19 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}
-    component: api
+    component: temporal-api
 spec:
   replicas: {{ .Values.temporal.api.replicas }}
   selector:
     matchLabels:
       app: {{ $temporalName }}
-      component: api
+      component: temporal-api
   {{- include "nv-config-manager.deploymentStrategy" (dict "root" .) | nindent 2 }}
   template:
     metadata:
       labels:
         app: {{ $temporalName }}
-        component: api
+        component: temporal-api
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -547,7 +547,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}
-    component: api
+    component: temporal-api
 spec:
   type: ClusterIP
   ports:
@@ -557,7 +557,7 @@ spec:
     name: http
   selector:
     app: {{ $temporalName }}
-    component: api
+    component: temporal-api
 ---
 # NVIDIA Config Manager Temporal Scheduler Deployment (for backup scheduling)
 {{- if .Values.temporal.scheduler.enabled }}
@@ -732,6 +732,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $temporalName }}-web
+    component: temporal-web
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: temporal-web
 spec:
@@ -744,6 +745,7 @@ spec:
     metadata:
       labels:
         app: {{ $temporalName }}-web
+        component: temporal-web
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
       annotations:
         {{- include "nv-config-manager.authIniChecksum" . | nindent 8 }}

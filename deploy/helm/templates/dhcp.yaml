@@ -10,6 +10,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $dhcpName }}
+    component: network-dhcp
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: network-dhcp
 spec:
@@ -22,6 +23,7 @@ spec:
     metadata:
       labels:
         app: {{ $dhcpName }}
+        component: network-dhcp
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
@@ -234,6 +236,7 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     app: {{ $dhcpName }}-refresh
+    component: network-dhcp-refresh
     app.kubernetes.io/name: nv-config-manager
     app.kubernetes.io/component: network-dhcp-refresh
 spec:
@@ -247,6 +250,7 @@ spec:
     metadata:
       labels:
         app: {{ $dhcpName }}-refresh
+        component: network-dhcp-refresh
         {{- include "nv-config-manager.spiffe.podLabels" . | nindent 8 }}
         {{- include "nv-config-manager.customPodLabels" . | nindent 8 }}
       annotations:
