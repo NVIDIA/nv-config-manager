@@ -138,8 +138,25 @@ class TestPynautobotClient:
         for protocol in ("http://", "https://"):
             adapter = connection.http_session.get_adapter(protocol)
             assert isinstance(adapter, TimeoutHTTPAdapter)
-            assert adapter.timeout == 10
+            assert adapter.timeout == 30
             assert adapter.max_retries.total == 3
+
+    def test_uses_nautobot_timeout_from_ini(self):
+        config = ConfigParser()
+        config["nautobot"] = {
+            "server": "http://nautobot",
+            "token": "test-token",
+            "retries": "3",
+            "timeout": "120",
+        }
+
+        with patch("nv_config_manager.common.config.load_config", return_value=config):
+            connection = pynautobot_client()
+
+        for protocol in ("http://", "https://"):
+            adapter = connection.http_session.get_adapter(protocol)
+            assert isinstance(adapter, TimeoutHTTPAdapter)
+            assert adapter.timeout == 120
 
 
 class TestGetInternalAuthHeaders:

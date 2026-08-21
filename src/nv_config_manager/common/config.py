@@ -669,13 +669,14 @@ def pynautobot_client() -> Any:
     if "ca_cert_path" in nb_config:
         kwargs["verify"] = nb_config["ca_cert_path"]
 
+    timeout = NautobotClient.timeout_from_config(config)
     connection = pynautobot.api(**kwargs)
     for protocol in ("http://", "https://"):
         existing_adapter = cast(HTTPAdapter, connection.http_session.get_adapter(protocol))
         retry_policy = existing_adapter.max_retries
         connection.http_session.mount(
             protocol,
-            TimeoutHTTPAdapter(timeout=10, max_retries=retry_policy),
+            TimeoutHTTPAdapter(timeout=timeout, max_retries=retry_policy),
         )
     return connection
 

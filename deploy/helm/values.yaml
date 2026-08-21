@@ -497,6 +497,10 @@ externalServices:
     # (dhcp-refresh, render, config-store, ztp, temporal). DHCP GraphQL on large
     # aggregate cells regularly takes ~60s; 120 leaves headroom without waiting
     # on a hung Nautobot. Override per cell if needed (e.g. 180 on agg-prod).
+    # Stay below the Nautobot ingress read timeout or the gateway 504s first.
+    # External Cerebro Nautobot (nautobot.cerebro.ngc.nvmetal.net) is Envoy
+    # requestTimeout 1200s and nginx uwsgi_read_timeout 300s (tightest). This
+    # chart's bundled Nautobot nginx is 1200s.
     timeout: 120
     # SSL verification: true (default, use system CAs), false (disable), or path to CA cert
     verify: true
