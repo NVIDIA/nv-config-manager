@@ -50,6 +50,30 @@ retry:
       maxInterval: {{ dig "backOff" "maxInterval" "1s" $r | quote }}
 {{- end -}}
 {{- end }}
+{{- /* -----------------------------------------------------------------------
+  Passive health check (outlier detection), emitted into every policy below for
+  the same reason as the retry: a policy targeting a route or a route rule
+  replaces the Gateway-level one rather than merging with it, so anything set
+  only globally would be lost on the routes that have their own policy.
+  ----------------------------------------------------------------------- */}}
+{{- define "nv-config-manager.gatewayPassiveHealthCheck" -}}
+{{- $root := .root | default . -}}
+{{- $p := $root.Values.gateway.passiveHealthCheck | default dict -}}
+{{- if $p.enabled -}}
+healthCheck:
+  passive:
+    {{- /* dig rather than `default`, as with numRetries: 0 is a meaningful
+         value for a threshold and `default` would silently rewrite it. */}}
+    consecutiveLocalOriginFailures: {{ dig "consecutiveLocalOriginFailures" 1 $p | int }}
+    consecutive5XxErrors: {{ dig "consecutive5XxErrors" 5 $p | int }}
+    interval: {{ dig "interval" "3s" $p | quote }}
+    baseEjectionTime: {{ dig "baseEjectionTime" "30s" $p | quote }}
+    maxEjectionPercent: {{ dig "maxEjectionPercent" 50 $p | int }}
+    {{- /* Envoy ignores consecutiveLocalOriginFailures unless this is true, so
+         it is defaulted on rather than left to the CRD default of false. */}}
+    splitExternalLocalOriginErrors: {{ dig "splitExternalLocalOriginErrors" true $p }}
+{{- end -}}
+{{- end }}
 {{- if and .Values.gateway.enabled (eq (include "nv-config-manager.gatewayControllerType" .) "envoyGateway") }}
 {{- if .Values.gateway.create }}
 {{- $policyName := include "nv-config-manager.componentName" (dict "root" . "component" "global-traffic-policy") }}
@@ -76,6 +100,7 @@ spec:
     tcp:
       connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
   {{- include "nv-config-manager.gatewayRetry" . | nindent 2 }}
+  {{- include "nv-config-manager.gatewayPassiveHealthCheck" . | nindent 2 }}
   
   {{- if .Values.gateway.rateLimit.enabled }}
   rateLimit:
@@ -125,6 +150,7 @@ spec:
     tcp:
       connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
   {{- include "nv-config-manager.gatewayRetry" . | nindent 2 }}
+  {{- include "nv-config-manager.gatewayPassiveHealthCheck" . | nindent 2 }}
 {{- if and .Values.oidc.enabled (.Values.networkZtp.gateway.svcHostname | default "") }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -148,6 +174,7 @@ spec:
     tcp:
       connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
   {{- include "nv-config-manager.gatewayRetry" . | nindent 2 }}
+  {{- include "nv-config-manager.gatewayPassiveHealthCheck" . | nindent 2 }}
 {{- end }}
 {{- end }}
 {{- /* -----------------------------------------------------------------------
@@ -217,6 +244,7 @@ spec:
     tcp:
       connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
   {{- include "nv-config-manager.gatewayRetry" (dict "root" . "statusCodes" true) | nindent 2 }}
+  {{- include "nv-config-manager.gatewayPassiveHealthCheck" . | nindent 2 }}
 {{- end }}
 {{- if .Values.networkZtp.enabled }}
 {{- $ztpName := include "nv-config-manager.componentName" (dict "root" . "component" "ztp") }}
@@ -242,6 +270,7 @@ spec:
     tcp:
       connectTimeout: {{ .Values.gateway.timeout.connectTimeout | default "10s" }}
   {{- include "nv-config-manager.gatewayRetry" (dict "root" . "statusCodes" true) | nindent 2 }}
+  {{- include "nv-config-manager.gatewayPassiveHealthCheck" . | nindent 2 }}
 {{- end }}
 {{- end }}
 {{- end }}

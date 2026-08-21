@@ -874,6 +874,38 @@ gateway:
         - HEAD
       httpStatusCodes:
         - 502
+  # Passive health checking, i.e. Envoy outlier detection. Complements the
+  # retry above rather than duplicating it: a retry saves the request that
+  # failed, while ejection saves the requests behind it, by pulling a failing
+  # endpoint out of the pool instead of letting every later request rediscover
+  # it for itself.
+  #
+  # Off by default, unlike the retry. The thresholds below are only meaningful
+  # against a known replica count and a known churn pattern, and neither is
+  # knowable from inside this chart. Turning it on without that context risks
+  # either never ejecting or ejecting healthy endpoints.
+  passiveHealthCheck:
+    enabled: false
+    # Transport-level failures: connection refused, connect timeout, reset —
+    # cases where no response ever came back. Envoy's default is 5; 1 ejects on
+    # the first, which is what a terminating pod actually produces, because the
+    # retry is steered elsewhere and any success resets the counter. A
+    # threshold of 2 is rarely reached before the pod is gone.
+    consecutiveLocalOriginFailures: 1
+    # Real 5xx responses from the application, deliberately less sensitive: an
+    # app can return one 500 without being unhealthy.
+    consecutive5XxErrors: 5
+    interval: 3s
+    baseEjectionTime: 30s
+    # Envoy admits an ejection when (active_ejections + 1) / endpoints is <=
+    # this, so the default of 10 cannot eject even one endpoint from a pool
+    # smaller than ten - it leaves everything above configured but inert. 50
+    # permits one of three or three of six, always keeping a majority serving.
+    maxEjectionPercent: 50
+    # Required, not merely advisable: Envoy only counts local-origin failures
+    # separately when this is set, and consecutiveLocalOriginFailures above is
+    # ignored entirely when it is false.
+    splitExternalLocalOriginErrors: true
   # CORS configuration
   cors:
     enabled: true
