@@ -2,8 +2,11 @@
   kgateway's retry, driven by the same gateway.retry values as the Envoy
   Gateway policy but a different schema: attempts rather than numRetries,
   retryOn as a flat list, and statusCodes as a sibling rather than nested under
-  retryOn. maxInterval has no equivalent - kgateway caps the backoff at 10x the
-  base interval, which is what Envoy does with our Envoy Gateway values anyway.
+  retryOn. maxInterval has no equivalent here: kgateway sends no cap and Envoy
+  falls back to 10x the base interval. That matches the values shipped in
+  values.yaml, where maxInterval is exactly 10x baseInterval, but the two
+  controllers diverge on any other value - raising maxInterval alone would take
+  effect under Envoy Gateway and be ignored here.
 
   Accepts the root context, or a dict of `root` plus `statusCodes` to add the
   status-code retry for safe methods.
