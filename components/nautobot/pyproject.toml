@@ -40,7 +40,8 @@ dependencies = [
     # Security: Fix pyasn1 resource-exhaustion issues
     # (GHSA-jr27-m4p2-rc6r, GHSA-63vm-454h-vhhq, GHSA-hm4w-wwcw-mr6r, GHSA-8ppf-4f7h-5ppj)
     "pyasn1>=0.6.4",
-    # Security: Fix selector-parser ReDoS issues (GHSA-836r-79rf-4m37, GHSA-2wc2-fm75-p42x)
+    # Security: Fix selector-parser resource-exhaustion issues (ReDoS and memory exhaustion)
+    # (GHSA-836r-79rf-4m37, GHSA-2wc2-fm75-p42x)
     "soupsieve>=2.8.4",
     # Multi-provider JWT validation (external IdPs, Azure AD, SPIFFE JWT-SVIDs)
     # cryptography is already a transitive dep of nautobot but pin for JWKS key support
