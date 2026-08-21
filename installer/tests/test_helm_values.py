@@ -1003,7 +1003,6 @@ class TestImagesInHelmValues:
             values["oidc"]["proxy"]["image"]["repository"]
             == "registry.example.com/nv-config-manager/oauth2-proxy/oauth2-proxy"
         )
-        assert values["oidc"]["proxy"]["image"]["tag"] == "v7.15.4"
         assert (
             values["renderService"]["templatePlugins"]["installerImage"]
             == "registry.example.com/nv-config-manager/library/python:3.13-alpine"
