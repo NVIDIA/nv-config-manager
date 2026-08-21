@@ -16,17 +16,12 @@ check:
   rules:
     broken-links: error
 
+navbar-links:
+  - type: github
+    value: https://github.com/dsx-ai-factory/nv-config-manager
+
 settings:
   folder-title-source: frontmatter
-
-layout:
-  searchbar-placement: header
-  switcher-placement: header
-  page-width: 1376px
-  sidebar-width: 248px
-  content-width: 812px
-  tabs-placement: header
-  hide-feedback: true
 
 redirects:
   - source: /switch-infrastructure
