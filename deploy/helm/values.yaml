@@ -884,6 +884,14 @@ gateway:
   # against a known replica count and a known churn pattern, and neither is
   # knowable from inside this chart. Turning it on without that context risks
   # either never ejecting or ejecting healthy endpoints.
+  #
+  # Worth knowing what it can see, because ejection judges whatever the gateway
+  # connects to, which is not always the component. With oidc.enabled the
+  # browser routes resolve to the shared oauth2-proxy Deployment, so on those
+  # routes this ejects an unreachable proxy replica and cannot reach the
+  # component's pods at all - they are behind the proxy, invisible here. The
+  # mTLS and auth-bypass routes, and every route when oidc is disabled, resolve
+  # to the component pods directly, which is where this does what it reads as.
   passiveHealthCheck:
     enabled: false
     # Transport-level failures: connection refused, connect timeout, reset —
@@ -892,9 +900,22 @@ gateway:
     # retry is steered elsewhere and any success resets the counter. A
     # threshold of 2 is rarely reached before the pod is gone.
     consecutiveLocalOriginFailures: 1
-    # Real 5xx responses from the application, deliberately less sensitive: an
-    # app can return one 500 without being unhealthy.
-    consecutive5XxErrors: 5
+    # Ejecting on real 5xx responses is off. Envoy tests this threshold with
+    # equality against a counter that has already been incremented, so 0 is
+    # never reached and the detector never fires.
+    #
+    # Deliberate, because a 5xx only indicts the endpoint that returned it if
+    # that endpoint is the application. Behind the oidc proxy it is not: every
+    # proxy replica forwards to the same component Service, so one failing
+    # component pod makes all of them answer 502 alike. Ejecting one would
+    # remove a healthy proxy, leave the failing pod in place, and hand the
+    # retry to a proxy that reaches it just the same - and with two proxy
+    # replicas, maxEjectionPercent below permits exactly that one ejection.
+    #
+    # Raise it, 5 is a reasonable start, where the gateway talks to component
+    # pods directly: oidc disabled, or an install whose traffic arrives on the
+    # mTLS or auth-bypass routes, which bypass the proxy regardless.
+    consecutive5XxErrors: 0
     interval: 3s
     baseEjectionTime: 30s
     # Envoy admits an ejection when (active_ejections + 1) / endpoints is <=

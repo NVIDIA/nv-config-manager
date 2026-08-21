@@ -65,7 +65,10 @@ healthCheck:
     {{- /* dig rather than `default`, as with numRetries: 0 is a meaningful
          value for a threshold and `default` would silently rewrite it. */}}
     consecutiveLocalOriginFailures: {{ dig "consecutiveLocalOriginFailures" 1 $p | int }}
-    consecutive5XxErrors: {{ dig "consecutive5XxErrors" 5 $p | int }}
+    {{- /* Falls back to 0, i.e. off, matching values.yaml: dropping the key
+         should not quietly enable a detector that misattributes failures on
+         proxied routes. */}}
+    consecutive5XxErrors: {{ dig "consecutive5XxErrors" 0 $p | int }}
     interval: {{ dig "interval" "3s" $p | quote }}
     baseEjectionTime: {{ dig "baseEjectionTime" "30s" $p | quote }}
     maxEjectionPercent: {{ dig "maxEjectionPercent" 50 $p | int }}
