@@ -669,7 +669,8 @@ def pynautobot_client() -> Any:
     if "ca_cert_path" in nb_config:
         kwargs["verify"] = nb_config["ca_cert_path"]
 
-    timeout = NautobotClient.timeout_from_config(config)
+    # Historical adapter default when [nautobot] timeout is unset.
+    timeout = NautobotClient.timeout_from_config(config, default=10)
     connection = pynautobot.api(**kwargs)
     for protocol in ("http://", "https://"):
         existing_adapter = cast(HTTPAdapter, connection.http_session.get_adapter(protocol))

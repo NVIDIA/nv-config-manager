@@ -138,7 +138,7 @@ class TestPynautobotClient:
         for protocol in ("http://", "https://"):
             adapter = connection.http_session.get_adapter(protocol)
             assert isinstance(adapter, TimeoutHTTPAdapter)
-            assert adapter.timeout == 30
+            assert adapter.timeout == 10
             assert adapter.max_retries.total == 3
 
     def test_uses_nautobot_timeout_from_ini(self):

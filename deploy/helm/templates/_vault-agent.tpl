@@ -278,7 +278,9 @@ nv-config-manager.ini body (consul-template): must stay in sync with vault-secre
           {{- if $root.Values.externalServices.nautobot.retries }}
           retries = {{ $root.Values.externalServices.nautobot.retries }}
           {{- end }}
-          timeout = {{ $root.Values.externalServices.nautobot.timeout | default 120 }}
+          {{- if $root.Values.externalServices.nautobot.timeout }}
+          timeout = {{ $root.Values.externalServices.nautobot.timeout }}
+          {{- end }}
           verify = {{ $root.Values.externalServices.nautobot.verify }}
           cache_refresh_interval = {{ $root.Values.externalServices.nautobot.cacheRefreshInterval }}
           cache_ttl = {{ $root.Values.externalServices.nautobot.cacheTtl }}
