@@ -118,3 +118,16 @@ def test_missing_site_aggregate_fails_edge_render() -> None:
 
     with pytest.raises(FilterException, match="Found no aggregates in role 'Site-Aggregate'"):
         renderer.render(template, nautobot_mock_data, location_mock_data)
+
+
+def test_missing_intended_firmware_yields_no_entrypoints() -> None:
+    """A device awaiting firmware assignment renders nothing instead of failing."""
+    os.environ["NV_CONFIG_MANAGER_SKIP_VAULT"] = "1"
+
+    with (NAUTOBOT_MOCK_DIR / "a09-u28-p01-bleaf-01.json").open(encoding="utf-8") as f:
+        nautobot_mock_data = json.load(f)
+    del nautobot_mock_data["data"]["device"]["config_context"]["intended-firmware"]
+
+    renderer = Renderer("test", "test")
+
+    assert renderer.list_entrypoints(nautobot_mock_data) == []

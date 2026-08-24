@@ -23,7 +23,7 @@ from nv_config_manager_templates.dataclasses.bgp import BGPLocalConfig, BGPPeer
 from nv_config_manager_templates.dataclasses.consoleport import ConsoleServerPort
 from nv_config_manager_templates.dataclasses.interface import ConnectedDevice, Interface
 from nv_config_manager_templates.dataclasses.vrf import VRF
-from nv_config_manager_templates.filters import FilterException
+from nv_config_manager_templates.filters import DeviceNotRenderableError, FilterException
 from nv_config_manager_templates.filters.ip import gateway as gateway_filter
 
 
@@ -84,7 +84,10 @@ def desired_firmware(value: dict[str, Any]) -> str:
     try:
         return value["data"]["device"]["config_context"]["intended-firmware"]["version"]
     except KeyError as exc:
-        raise FilterException("No intended firmware image set for device.") from exc
+        # The firmware version selects the template directory, so a device
+        # without one has no template set to render from. That is a device that
+        # is not ready yet, not a broken render.
+        raise DeviceNotRenderableError("No intended firmware image set for device.") from exc
 
 
 def router_id(value: dict[str, Any]) -> str:
