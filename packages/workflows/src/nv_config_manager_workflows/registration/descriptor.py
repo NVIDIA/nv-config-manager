@@ -23,7 +23,7 @@ UNKNOWN_PLUGIN_VERSION = "unknown"
 
 
 class WorkflowPluginDescriptor(BaseModel):
-    """What a ``nv_config_manager.workflows`` entry point resolves to.
+    """What an entry point may point to.
 
     An entry point may point either at a descriptor instance or at a zero-argument
     callable returning one. ``name`` must match the entry-point name it is

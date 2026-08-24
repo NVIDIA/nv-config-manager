@@ -180,7 +180,7 @@ def _require_endpoint_wellformed(workflow: type, label: str) -> None:
 
 def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
     """Require the full metadata set from workflows the API or MCP exposes."""
-    
+
     if workflow_has_complete_metadata(workflow):
         return
     missing = ", ".join(missing_metadata_attributes(workflow)) or "required metadata"
@@ -194,7 +194,7 @@ def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
 
 def _require_text(value: Any, attribute: str, label: str) -> None:
     """Reject a declared attribute that is not a non-blank string."""
-    
+
     if value is None:
         return
     if not isinstance(value, str) or not value.strip():
@@ -205,7 +205,7 @@ def _require_text(value: Any, attribute: str, label: str) -> None:
 
 def _require_activity_names_wellformed(workflow: type, label: str) -> None:
     """Reject a required-activity declaration that is not a sequence of activities."""
-    
+
     declared = declared_required_activities(workflow)
     if declared is None:
         return
@@ -247,7 +247,7 @@ def _reject_duplicates[ItemT](
 def _require_declared_activities(
     workflows: list[_OwnedWorkflow], activities: list[_OwnedActivity]
 ) -> None:
-    available = {activity_name(owned.item) for owned in activities}
+    available = {name for owned in activities if (name := activity_name(owned.item)) is not None}
     for owned in workflows:
         for required in workflow_required_activity_names(owned.item):
             if required not in available:

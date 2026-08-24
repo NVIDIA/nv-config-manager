@@ -21,34 +21,37 @@ to the real mixin unchanged once it moves into this package.
 
 Contract read from a workflow class (every attribute optional):
 
-===============================  =========================================
-``workflow_name``                human-readable name, unique across plugins
-``workflow_description``         one-line description
-``workflow_input_class``         Pydantic model accepted as workflow input
-``workflow_api_endpoint``        API path, unique across plugins
-``workflow_mcp_enabled``         expose as an MCP tool
-``workflow_required_activities`` activity functions the workflow executes
-``get_workflow_cli_name()``      CLI command name, unique across plugins
-``has_complete_metadata()``      overrides the attribute-derived answer
-===============================  =========================================
+======================================  =========================================
+``workflow_name``                       human-readable name, unique across plugins
+``workflow_description``                one-line description
+``workflow_input_class``                Pydantic model accepted as workflow input
+``workflow_api_endpoint``               API path, unique across plugins
+``workflow_mcp_enabled``                expose as an MCP tool
+``workflow_required_activities``        activity functions the workflow executes
+``get_workflow_cli_name()``             CLI command name, unique across plugins
+``get_workflow_required_activities()``  overrides the attribute above
+``has_complete_metadata()``             overrides the attribute-derived answer
+======================================  =========================================
 
 These accessors are the same ones the worker, API, CLI and MCP consumers read,
 so they live here rather than beside the checks in ``validation``.
 
-Temporal identity is read from the definitions the ``@workflow.defn`` and
-``@activity.defn`` decorators attach, so this module needs no ``temporalio``
-import.
+Temporal identity — the workflow type and the activity name — comes from the SDK's
+own definition readers rather than from the attributes ``@workflow.defn`` and
+``@activity.defn`` attach. Reading those attributes by name would make an SDK
+rename silent: every class would read as undecorated, and the name accessors
+would fall back to the Python name, leaving the duplicate checks in ``validation``
+comparing keys Temporal never sees. Importing the definitions turns that same
+rename into an import error at startup.
 """
 
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from temporalio.activity import _Definition as ActivityDefinition
+from temporalio.workflow import _Definition as WorkflowDefinition
+
 from nv_config_manager_workflows.registration.errors import WorkflowRegistrationError
-
-TEMPORAL_WORKFLOW_DEFINITION_ATTRIBUTE = "__temporal_workflow_definition"
-TEMPORAL_ACTIVITY_DEFINITION_ATTRIBUTE = "__temporal_activity_definition"
-
-_UNDECLARED = object()
 
 METADATA_ATTRIBUTES = (
     "workflow_name",
@@ -68,40 +71,42 @@ def workflow_declared_name(workflow: type) -> str | None:
     return getattr(workflow, "workflow_name", None)
 
 
-def workflow_type_name(workflow: type) -> str:
-    """Return the Temporal workflow type, falling back to the class name."""
-    name = getattr(_workflow_definition(workflow), "name", None)
-    if isinstance(name, str) and name:
-        return name
-    return workflow.__name__
+def workflow_type_name(workflow: type) -> str | None:
+    """Return the Temporal workflow type, or ``None`` when the class declares none."""
+    definition = _workflow_definition(workflow)
+    return definition.name if definition is not None else None
 
 
 def workflow_has_definition(workflow: type) -> bool:
-    """Return whether the class carries its own usable ``@workflow.defn``."""
-    return _is_usable_definition(_workflow_definition(workflow))
+    """Return whether the class carries its own ``@workflow.defn``."""
+    return _workflow_definition(workflow) is not None
 
 
 def workflow_is_dynamic(workflow: type) -> bool:
     """Return whether the class is declared as Temporal's catch-all workflow."""
-    return _is_dynamic_definition(_workflow_definition(workflow))
+    definition = _workflow_definition(workflow)
+    return definition is not None and definition.name is None
 
 
-def activity_name(activity: Callable[..., Any]) -> str:
-    """Return the Temporal activity name, falling back to the callable's name."""
-    name = getattr(_activity_definition(activity), "name", None)
-    if isinstance(name, str) and name:
-        return name
-    return getattr(activity, "__name__", repr(activity))
+def activity_name(activity: Callable[..., Any]) -> str | None:
+    """Return the Temporal activity name, or ``None`` when the callable declares none.
+
+    ``None`` is both the undecorated and the dynamic case, as for
+    :func:`workflow_type_name`.
+    """
+    definition = _activity_definition(activity)
+    return definition.name if definition is not None else None
 
 
 def activity_has_definition(activity: Callable[..., Any]) -> bool:
-    """Return whether the callable carries a usable ``@activity.defn``."""
-    return _is_usable_definition(_activity_definition(activity))
+    """Return whether the callable carries an ``@activity.defn``."""
+    return _activity_definition(activity) is not None
 
 
 def activity_is_dynamic(activity: Callable[..., Any]) -> bool:
     """Return whether the callable is declared as Temporal's catch-all activity."""
-    return _is_dynamic_definition(_activity_definition(activity))
+    definition = _activity_definition(activity)
+    return definition is not None and definition.name is None
 
 
 def workflow_api_endpoint(workflow: type) -> str | None:
@@ -110,12 +115,7 @@ def workflow_api_endpoint(workflow: type) -> str | None:
 
 
 def normalized_api_endpoint(workflow: type) -> str | None:
-    """Return the API path in the form used to compare two workflows.
-
-    A trailing slash does not make a second route, so ``/ngc/backup`` and
-    ``/ngc/backup/`` are the same endpoint for conflict purposes even though the
-    router is handed the declared spelling.
-    """
+    """Return the API path in the form used to compare two workflows."""
     endpoint = workflow_api_endpoint(workflow)
     if not isinstance(endpoint, str):
         return None
@@ -152,12 +152,7 @@ def workflow_mcp_enabled(workflow: type) -> bool:
 
 
 def workflow_mcp_tool_name(workflow: type) -> str | None:
-    """Return the MCP tool name the workflow is exposed under, if any.
-
-    The tool name comes from the endpoint's last path segment, so two workflows
-    with distinct endpoints — ``/ngc/backup`` and ``/acme/backup`` — still claim
-    the same tool.
-    """
+    """Return the MCP tool name the workflow is exposed under, if any."""
     if not workflow_mcp_enabled(workflow):
         return None
     endpoint = workflow_api_endpoint(workflow)
@@ -173,12 +168,7 @@ def mcp_tool_name_for_endpoint(endpoint: str) -> str:
 
 
 def workflow_has_complete_metadata(workflow: type) -> bool:
-    """Return whether the workflow carries every attribute the API needs.
-
-    Defers to a ``has_complete_metadata()`` classmethod when the workflow
-    defines one, so the mixin stays the single source of truth for the answer
-    the API, the CLI and MCP all branch on.
-    """
+    """Return whether the workflow carries every attribute the API needs."""
     if _has_contract_accessor(workflow, "has_complete_metadata"):
         return bool(_call_contract_accessor(workflow, "has_complete_metadata"))
     return not missing_metadata_attributes(workflow)
@@ -190,12 +180,7 @@ def missing_metadata_attributes(workflow: type) -> tuple[str, ...]:
 
 
 def workflow_required_activity_names(workflow: type) -> tuple[str, ...]:
-    """Return the Temporal activity names the workflow declares that it calls.
-
-    Entries are the activity functions themselves — the same references passed
-    to ``workflow.execute_activity`` — resolved here to their Temporal names.
-    Plain names are accepted too, for the string form of that call.
-    """
+    """Return the Temporal activity names the workflow declares that it calls."""
     declared = declared_required_activities(workflow)
     if not is_activity_sequence(declared):
         return ()
@@ -211,7 +196,11 @@ def declared_required_activities(workflow: type) -> Any:
 
 
 def required_activity_name(entry: Any) -> str | None:
-    """Resolve one required-activity entry to a Temporal activity name."""
+    """Resolve one required-activity entry to a Temporal activity name.
+
+    A callable carrying no ``@activity.defn`` resolves to ``None`` like any other
+    unusable entry, because ``workflow.execute_activity`` would reject it too.
+    """
     if callable(entry):
         return activity_name(entry)
     if isinstance(entry, str) and entry.strip():
@@ -224,39 +213,14 @@ def is_activity_sequence(declared: Any) -> bool:
     return declared is not None and not isinstance(declared, str) and isinstance(declared, Iterable)
 
 
-def _is_usable_definition(definition: Any) -> bool:
-    """Return whether a Temporal definition is one the registry can read."""
-    name = _definition_name(definition)
-    if name is _UNDECLARED:
-        return False
-    return name is None or (isinstance(name, str) and bool(name))
-
-
-def _is_dynamic_definition(definition: Any) -> bool:
-    """Return whether a Temporal definition is the ``dynamic=True`` catch-all."""
-    return _definition_name(definition) is None
-
-
-def _definition_name(definition: Any) -> Any:
-    """Return the name a Temporal definition declares, or ``_UNDECLARED``.
-
-    ``None`` is a meaningful value here — it is how Temporal spells a dynamic
-    handler — so an absent definition and an absent ``name`` need a value of
-    their own to stay distinguishable from it.
-    """
-    if definition is None:
-        return _UNDECLARED
-    return getattr(definition, "name", _UNDECLARED)
-
-
-def _workflow_definition(workflow: type) -> Any:
+def _workflow_definition(workflow: type) -> WorkflowDefinition | None:
     """Return the Temporal definition ``@workflow.defn`` attached to this class."""
-    return vars(workflow).get(TEMPORAL_WORKFLOW_DEFINITION_ATTRIBUTE)
+    return WorkflowDefinition.from_class(workflow)
 
 
-def _activity_definition(activity: Callable[..., Any]) -> Any:
+def _activity_definition(activity: Callable[..., Any]) -> ActivityDefinition | None:
     """Return the Temporal definition ``@activity.defn`` attached, if any."""
-    return getattr(activity, TEMPORAL_ACTIVITY_DEFINITION_ATTRIBUTE, None)
+    return ActivityDefinition.from_callable(activity)
 
 
 def _has_contract_accessor(workflow: type, accessor: str) -> bool:
@@ -265,13 +229,7 @@ def _has_contract_accessor(workflow: type, accessor: str) -> bool:
 
 
 def _call_contract_accessor(workflow: type, accessor: str) -> Any:
-    """Call a plugin-supplied accessor, reporting failures as our own error.
-
-    Plugin code sits on the far side of the registration boundary; a plugin that
-    declares one of these as an instance method instead of a classmethod, or
-    that raises inside it, must surface as a registration error naming the
-    workflow rather than as an unhandled ``TypeError`` from registry internals.
-    """
+    """Call a plugin-supplied accessor, reporting failures as our own error."""
     method = getattr(workflow, accessor, None)
     if not callable(method):
         return None
