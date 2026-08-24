@@ -12,6 +12,9 @@ dependencies = [
     "temporalio>=1.29.0",
 ]
 
+[project.entry-points."nv_config_manager.workflows"]
+builtin = "nv_config_manager_workflows.registration:builtin_plugin"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.3",

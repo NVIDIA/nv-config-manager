@@ -14,10 +14,10 @@
 # limitations under the License.
 """Public contract every workflow plugin entry point must return."""
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 UNKNOWN_PLUGIN_VERSION = "unknown"
 
@@ -34,18 +34,13 @@ class WorkflowPluginDescriptor(BaseModel):
     distribution that registered the entry point, which is the version the
     environment actually installed. Declare it only to report something other
     than that.
-
-    The three catalogs are tuples: a descriptor is validated once at startup and
-    read by every consumer afterwards, so ``frozen`` has to mean the contents
-    too, not just the field bindings. Plugins may pass any sequence. The model
-    is not hashable — ``metadata`` is a mapping.
     """
 
     model_config = ConfigDict(frozen=True)
 
     name: str = Field(min_length=1)
     version: str | None = Field(default=None, min_length=1)
-    workflows: tuple[type, ...] = ()
-    activities: tuple[Callable[..., Any], ...] = ()
-    schedulers: tuple[Any, ...] = ()
+    workflows: Annotated[Sequence[type], AfterValidator(tuple)] = ()
+    activities: Annotated[Sequence[Callable[..., Any]], AfterValidator(tuple)] = ()
+    schedulers: Annotated[Sequence[Any], AfterValidator(tuple)] = ()
     metadata: dict[str, Any] = Field(default_factory=dict)
