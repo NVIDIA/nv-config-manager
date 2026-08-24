@@ -1,0 +1,270 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""The checks run while the registry is built."""
+
+from collections.abc import Callable, Mapping
+from typing import Any, NamedTuple
+
+from nv_config_manager_workflows.registration.contract import (
+    activity_has_definition,
+    activity_is_dynamic,
+    activity_name,
+    declared_required_activities,
+    is_activity_sequence,
+    missing_metadata_attributes,
+    normalized_api_endpoint,
+    required_activity_name,
+    workflow_api_endpoint,
+    workflow_class_name,
+    workflow_cli_name,
+    workflow_declared_name,
+    workflow_has_complete_metadata,
+    workflow_has_definition,
+    workflow_is_dynamic,
+    workflow_mcp_enabled,
+    workflow_mcp_tool_name,
+    workflow_required_activity_names,
+    workflow_type_name,
+)
+from nv_config_manager_workflows.registration.descriptor import WorkflowPluginDescriptor
+from nv_config_manager_workflows.registration.errors import (
+    WorkflowConflictError,
+    WorkflowRegistrationError,
+    WorkflowRequiredActivityError,
+)
+
+
+class _Owned[ItemT](NamedTuple):
+    """One workflow or activity together with the plugin that contributed it."""
+
+    plugin: str
+    item: ItemT
+
+
+type _OwnedWorkflow = _Owned[type]
+type _OwnedActivity = _Owned[Callable[..., Any]]
+
+
+def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
+    """Run every registration check over the merged set of plugin descriptors.
+
+    Raises:
+        WorkflowRegistrationError: A workflow declares metadata that is present
+            but not valid, or an activity carries no Temporal definition.
+        WorkflowConflictError: Two plugins contribute the same class name,
+            workflow name, Temporal workflow type, activity name, API endpoint,
+            CLI name or MCP tool name.
+        WorkflowRequiredActivityError: A workflow requires an activity that no
+            plugin supplies.
+    """
+    workflows: list[_OwnedWorkflow] = [
+        _Owned(name, item) for name, d in plugins.items() for item in d.workflows
+    ]
+    activities: list[_OwnedActivity] = [
+        _Owned(name, item) for name, d in plugins.items() for item in d.activities
+    ]
+
+    _require_valid_metadata(workflows)
+    _require_named_workflows(workflows)
+    _require_named_activities(activities)
+
+    launchable = [owned for owned in workflows if workflow_has_complete_metadata(owned.item)]
+    mcp_enabled = [owned for owned in workflows if workflow_mcp_enabled(owned.item)]
+
+    _reject_duplicates(workflows, workflow_class_name, "workflow class name")
+    _reject_duplicates(workflows, workflow_declared_name, "workflow name")
+    _reject_duplicates(workflows, workflow_type_name, "Temporal workflow type")
+    _reject_duplicates(activities, activity_name, "activity name")
+    _reject_duplicates(workflows, normalized_api_endpoint, "workflow API endpoint")
+    _reject_duplicates(launchable, workflow_cli_name, "workflow CLI name")
+    _reject_duplicates(mcp_enabled, workflow_mcp_tool_name, "MCP tool name")
+    _require_declared_activities(workflows, activities)
+
+
+def _require_valid_metadata(workflows: list[_OwnedWorkflow]) -> None:
+    for owned in workflows:
+        label = _label(owned, "Workflow")
+        _require_text(workflow_declared_name(owned.item), "workflow_name", label)
+        _require_text(
+            getattr(owned.item, "workflow_description", None), "workflow_description", label
+        )
+        _require_input_class(owned.item, label)
+        _require_bool_mcp_flag(owned.item, label)
+        _require_activity_names_wellformed(owned.item, label)
+        _require_endpoint_wellformed(owned.item, label)
+        _require_metadata_for_exposed_surfaces(owned.item, label)
+        # Raises when the workflow declares an accessor returning an unusable name.
+        workflow_cli_name(owned.item)
+
+
+def _require_named_workflows(workflows: list[_OwnedWorkflow]) -> None:
+    """Require every workflow to declare a Temporal type of its own."""
+    for owned in workflows:
+        if workflow_is_dynamic(owned.item):
+            raise WorkflowRegistrationError(_dynamic_rejection(owned, "Workflow", "workflow"))
+        if not workflow_has_definition(owned.item):
+            raise WorkflowRegistrationError(
+                f"{_label(owned, 'Workflow')} is not decorated with @workflow.defn"
+            )
+
+
+def _require_named_activities(activities: list[_OwnedActivity]) -> None:
+    """Require every activity to declare a Temporal name of its own."""
+    for owned in activities:
+        if activity_is_dynamic(owned.item):
+            raise WorkflowRegistrationError(_dynamic_rejection(owned, "Activity", "activity"))
+        if not activity_has_definition(owned.item):
+            raise WorkflowRegistrationError(
+                f"{_label(owned, 'Activity')} is not decorated with @activity.defn"
+            )
+
+
+def _dynamic_rejection[ItemT](owned: _Owned[ItemT], kind: str, decorator: str) -> str:
+    """Explain why a plugin may not contribute a dynamic handler.
+
+    Temporal dispatches every type name no registered handler claimed to the
+    dynamic one, so a single plugin would silently receive work aimed at names
+    the other installed plugins never registered, and none of the duplicate
+    checks below can see it. The worker also permits only one, so two plugins
+    each contributing one fail worker construction naming neither of them.
+    """
+    return (
+        f"{_label(owned, kind)} is declared with @{decorator}.defn(dynamic=True); a workflow "
+        f"plugin may not contribute a dynamic {decorator} because it would receive every "
+        f"{decorator} the other installed plugins do not claim"
+    )
+
+
+def _require_input_class(workflow: type, label: str) -> None:
+    """Reject a workflow input declared as anything but a class."""
+    input_class = getattr(workflow, "workflow_input_class", None)
+    if input_class is not None and not isinstance(input_class, type):
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_input_class {input_class!r}, which is not a class"
+        )
+
+
+def _require_bool_mcp_flag(workflow: type, label: str) -> None:
+    """Reject an MCP opt-in that is not a bool."""
+    mcp_enabled = getattr(workflow, "workflow_mcp_enabled", False)
+    if not isinstance(mcp_enabled, bool):
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_mcp_enabled {mcp_enabled!r}, which is not a bool"
+        )
+
+
+def _require_endpoint_wellformed(workflow: type, label: str) -> None:
+    """Reject an API path the router could not serve."""
+    endpoint = workflow_api_endpoint(workflow)
+    if endpoint is None:
+        return
+    _require_text(endpoint, "workflow_api_endpoint", label)
+    if not endpoint.startswith("/") or any(character.isspace() for character in endpoint):
+        raise WorkflowRegistrationError(
+            f'{label} declares workflow_api_endpoint "{endpoint}", which must start with "/" '
+            f"and contain no whitespace"
+        )
+
+
+def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
+    """Require the full metadata set from workflows the API or MCP exposes."""
+    
+    if workflow_has_complete_metadata(workflow):
+        return
+    missing = ", ".join(missing_metadata_attributes(workflow)) or "required metadata"
+    if workflow_api_endpoint(workflow) is not None:
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_api_endpoint but is missing {missing}"
+        )
+    if workflow_mcp_enabled(workflow):
+        raise WorkflowRegistrationError(f"{label} enables MCP but is missing {missing}")
+
+
+def _require_text(value: Any, attribute: str, label: str) -> None:
+    """Reject a declared attribute that is not a non-blank string."""
+    
+    if value is None:
+        return
+    if not isinstance(value, str) or not value.strip():
+        raise WorkflowRegistrationError(
+            f"{label} declares {attribute} {value!r}, which is not a non-empty string"
+        )
+
+
+def _require_activity_names_wellformed(workflow: type, label: str) -> None:
+    """Reject a required-activity declaration that is not a sequence of activities."""
+    
+    declared = declared_required_activities(workflow)
+    if declared is None:
+        return
+    if not is_activity_sequence(declared):
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_required_activities {declared!r}, which is not a "
+            f"sequence of activity functions"
+        )
+    for entry in declared:
+        if required_activity_name(entry) is None:
+            raise WorkflowRegistrationError(
+                f"{label} declares required activity {entry!r}, which is neither an activity "
+                f"function nor a non-empty activity name"
+            )
+
+
+def _reject_duplicates[ItemT](
+    owned_items: list[_Owned[ItemT]],
+    key: Callable[[ItemT], str | None],
+    subject: str,
+) -> None:
+    seen: dict[str, _Owned[ItemT]] = {}
+    for owned in owned_items:
+        value = key(owned.item)
+        if value is None:
+            continue
+        previous = seen.get(value)
+        if previous is None:
+            seen[value] = owned
+            continue
+        if previous.item is owned.item:
+            # The same object listed twice is a redundant declaration, not a conflict.
+            continue
+        raise WorkflowConflictError(
+            f'Duplicate {subject} "{value}" {_contributors(previous.plugin, owned.plugin)}'
+        )
+
+
+def _require_declared_activities(
+    workflows: list[_OwnedWorkflow], activities: list[_OwnedActivity]
+) -> None:
+    available = {activity_name(owned.item) for owned in activities}
+    for owned in workflows:
+        for required in workflow_required_activity_names(owned.item):
+            if required not in available:
+                raise WorkflowRequiredActivityError(
+                    f'{_label(owned, "Workflow")} requires activity "{required}", which no '
+                    f"installed workflow plugin supplies"
+                )
+
+
+def _contributors(first: str, second: str) -> str:
+    """Name the plugins on both sides of a conflict."""
+    if first == second:
+        return f'contributed twice by workflow plugin "{first}"'
+    return f'contributed by workflow plugins "{first}" and "{second}"'
+
+
+def _label[ItemT](owned: _Owned[ItemT], kind: str) -> str:
+    """Describe a workflow or activity and the plugin that contributed it."""
+    name = getattr(owned.item, "__qualname__", None) or repr(owned.item)
+    return f'{kind} "{name}" from plugin "{owned.plugin}"'
