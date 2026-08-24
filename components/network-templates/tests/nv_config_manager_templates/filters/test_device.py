@@ -20,7 +20,7 @@ import pytest
 
 from nv_config_manager_templates.dataclasses.interface import Interface
 from nv_config_manager_templates.dataclasses.vrf import VRF
-from nv_config_manager_templates.filters import FilterException
+from nv_config_manager_templates.filters import DeviceNotRenderableError, FilterException
 from nv_config_manager_templates.filters.device import (
     asn,
     attached_vrfs,
@@ -115,11 +115,17 @@ def test_interface_has_tag(public_leaf_data: dict) -> None:
 
 
 def test_desired_firmware_missing(public_leaf_data: dict) -> None:
-    """Missing intended firmware reports a clear filter error."""
+    """Missing intended firmware is reported as not-renderable, not a bad filter input."""
     no_desired_data = deepcopy(public_leaf_data)
     del no_desired_data["data"]["device"]["config_context"]["intended-firmware"]
 
-    with pytest.raises(FilterException, match="No intended firmware image set for device."):
+    with pytest.raises(
+        DeviceNotRenderableError, match="No intended firmware image set for device."
+    ):
+        desired_firmware(no_desired_data)
+
+    # Still a FilterException so existing callers keep working.
+    with pytest.raises(FilterException):
         desired_firmware(no_desired_data)
 
 
