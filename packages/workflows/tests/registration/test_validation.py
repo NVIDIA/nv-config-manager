@@ -270,6 +270,18 @@ class TestDeclaredMetadata:
         with pytest.raises(WorkflowRegistrationError, match="which is not a class"):
             validate_plugins(installed(alpha_plugin()))
 
+    @pytest.mark.parametrize("declared", [int, object])
+    def test_workflow_input_class_must_be_a_pydantic_model(
+        self, monkeypatch: pytest.MonkeyPatch, declared: type
+    ) -> None:
+        monkeypatch.setattr(AlphaWorkflow, "workflow_input_class", declared)
+
+        with pytest.raises(
+            WorkflowRegistrationError,
+            match="not a Pydantic BaseModel subclass",
+        ):
+            validate_plugins(installed(alpha_plugin()))
+
     @pytest.mark.parametrize("declared", [1, "true", None])
     def test_mcp_opt_in_must_be_a_bool(
         self, monkeypatch: pytest.MonkeyPatch, declared: Any

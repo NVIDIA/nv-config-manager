@@ -17,6 +17,8 @@
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
+from pydantic import BaseModel
+
 from nv_config_manager_workflows.registration.contract import (
     activity_has_definition,
     activity_is_dynamic,
@@ -148,11 +150,18 @@ def _dynamic_rejection[ItemT](owned: _Owned[ItemT], kind: str, decorator: str) -
 
 
 def _require_input_class(workflow: type, label: str) -> None:
-    """Reject a workflow input declared as anything but a class."""
+    """Require workflow inputs to use a Pydantic model class."""
     input_class = getattr(workflow, "workflow_input_class", None)
-    if input_class is not None and not isinstance(input_class, type):
+    if input_class is None:
+        return
+    if not isinstance(input_class, type):
         raise WorkflowRegistrationError(
             f"{label} declares workflow_input_class {input_class!r}, which is not a class"
+        )
+    if not issubclass(input_class, BaseModel):
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_input_class {input_class!r}, which is not a "
+            f"Pydantic BaseModel subclass"
         )
 
 
