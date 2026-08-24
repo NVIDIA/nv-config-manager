@@ -19,7 +19,7 @@ check, so it works for any class that declares the attributes — the workflow
 metadata mixin, a plugin's own base class, or a test double. The accessors bind
 to the real mixin unchanged once it moves into this package.
 
-Contract read from a workflow class (every attribute optional):
+The attributes this module reads from a workflow class (each one optional):
 
 ======================================  =========================================
 ``workflow_name``                       human-readable name, unique across plugins
@@ -30,7 +30,6 @@ Contract read from a workflow class (every attribute optional):
 ``workflow_required_activities``        activity functions the workflow executes
 ``get_workflow_cli_name()``             CLI command name, unique across plugins
 ``get_workflow_required_activities()``  overrides the attribute above
-``has_complete_metadata()``             overrides the attribute-derived answer
 ======================================  =========================================
 
 These accessors are the same ones the worker, API, CLI and MCP consumers read,
@@ -122,27 +121,12 @@ def normalized_api_endpoint(workflow: type) -> str | None:
     return endpoint.rstrip("/") or "/"
 
 
-def workflow_cli_name(workflow: type) -> str | None:
-    """Return the CLI command name for the workflow, or ``None`` if it has none.
+def workflow_cli_name(workflow: type) -> Any:
+    """Read the declared CLI command name without interpreting it.
 
-    Raises:
-        WorkflowRegistrationError: The workflow declares the accessor but does
-            not return a usable name; a silently dropped CLI command is the
-            failure mode the registry exists to replace.
+    ``validation`` rejects a declaration that is not a usable name, so a
+    silently dropped CLI command stays impossible.
     """
-    if not _has_contract_accessor(workflow, "get_workflow_cli_name"):
-        return None
-    name = declared_cli_name(workflow)
-    if not isinstance(name, str) or not name.strip():
-        raise WorkflowRegistrationError(
-            f'Workflow "{workflow.__name__}" returns CLI name {name!r} from '
-            f"get_workflow_cli_name(), which is not a non-empty string"
-        )
-    return name
-
-
-def declared_cli_name(workflow: type) -> Any:
-    """Read the declared CLI name without interpreting it."""
     return _call_contract_accessor(workflow, "get_workflow_cli_name")
 
 
@@ -169,8 +153,6 @@ def mcp_tool_name_for_endpoint(endpoint: str) -> str:
 
 def workflow_has_complete_metadata(workflow: type) -> bool:
     """Return whether the workflow carries every attribute the API needs."""
-    if _has_contract_accessor(workflow, "has_complete_metadata"):
-        return bool(_call_contract_accessor(workflow, "has_complete_metadata"))
     return not missing_metadata_attributes(workflow)
 
 

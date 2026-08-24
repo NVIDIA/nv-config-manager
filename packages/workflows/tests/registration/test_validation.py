@@ -323,6 +323,20 @@ class TestDeclaredMetadata:
             raised.value
         )
 
+    def test_completeness_accessor_cannot_hide_missing_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(AlphaWorkflow, "workflow_description", None)
+        monkeypatch.setattr(
+            AlphaWorkflow,
+            "has_complete_metadata",
+            classmethod(lambda cls: True),
+            raising=False,
+        )
+
+        with pytest.raises(WorkflowRegistrationError, match="missing workflow_description"):
+            validate_plugins(installed(alpha_plugin()))
+
     def test_an_mcp_workflow_must_declare_the_whole_metadata_set(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -335,13 +349,27 @@ class TestDeclaredMetadata:
         assert "enables MCP but is missing" in str(raised.value)
         assert "workflow_description, workflow_api_endpoint" in str(raised.value)
 
+    @pytest.mark.parametrize("declared", ["", "   ", None, 42])
     def test_a_declared_cli_accessor_must_return_a_usable_name(
+        self, monkeypatch: pytest.MonkeyPatch, declared: Any
+    ) -> None:
+        """A silently dropped CLI command is the failure the registry replaces."""
+        monkeypatch.setattr(
+            AlphaWorkflow, "get_workflow_cli_name", classmethod(lambda cls: declared)
+        )
+
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(installed(alpha_plugin()))
+
+        assert "get_workflow_cli_name()" in str(raised.value)
+        assert '"alpha-plugin"' in str(raised.value)
+
+    def test_a_workflow_may_decline_to_declare_a_cli_name(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(AlphaWorkflow, "get_workflow_cli_name", classmethod(lambda cls: ""))
+        monkeypatch.delattr(AlphaWorkflow, "get_workflow_cli_name")
 
-        with pytest.raises(WorkflowRegistrationError, match="get_workflow_cli_name"):
-            validate_plugins(installed(alpha_plugin()))
+        validate_plugins(installed(alpha_plugin()))
 
     @pytest.mark.parametrize("declared", [42, "collect_facts"])
     def test_required_activities_must_be_a_sequence(

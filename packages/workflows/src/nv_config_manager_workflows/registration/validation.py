@@ -107,8 +107,7 @@ def _require_valid_metadata(workflows: list[_OwnedWorkflow]) -> None:
         _require_activity_names_wellformed(owned.item, label)
         _require_endpoint_wellformed(owned.item, label)
         _require_metadata_for_exposed_surfaces(owned.item, label)
-        # Raises when the workflow declares an accessor returning an unusable name.
-        workflow_cli_name(owned.item)
+        _require_cli_name(owned.item, label)
 
 
 def _require_named_workflows(workflows: list[_OwnedWorkflow]) -> None:
@@ -199,6 +198,18 @@ def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
         )
     if workflow_mcp_enabled(workflow):
         raise WorkflowRegistrationError(f"{label} enables MCP but is missing {missing}")
+
+
+def _require_cli_name(workflow: type, label: str) -> None:
+    """Reject a declared CLI accessor that does not return a usable name."""
+    if not callable(getattr(workflow, "get_workflow_cli_name", None)):
+        return
+    name = workflow_cli_name(workflow)
+    if not isinstance(name, str) or not name.strip():
+        raise WorkflowRegistrationError(
+            f"{label} returns CLI name {name!r} from get_workflow_cli_name(), "
+            f"which is not a non-empty string"
+        )
 
 
 def _require_text(value: Any, attribute: str, label: str) -> None:

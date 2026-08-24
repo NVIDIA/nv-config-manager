@@ -21,7 +21,6 @@ from temporalio import activity, workflow
 
 from nv_config_manager_workflows.registration.contract import (
     METADATA_ATTRIBUTES,
-    declared_cli_name,
     declared_required_activities,
     is_activity_sequence,
     mcp_tool_name_for_endpoint,
@@ -132,31 +131,6 @@ class DiagnosingCliNameWorkflow:
         raise WorkflowRegistrationError("the plugin's own diagnosis")
 
 
-class ClaimingCompleteWorkflow:
-    """Answers for itself, so the attributes it leaves unset do not decide."""
-
-    @classmethod
-    def has_complete_metadata(cls) -> bool:
-        return True
-
-
-class WithholdingWorkflow:
-    workflow_name = "Withholding"
-    workflow_description = "Declares everything but opts out of being exposed"
-    workflow_input_class = GoldenConfigInput
-    workflow_api_endpoint = "/config/withholding"
-
-    @classmethod
-    def has_complete_metadata(cls) -> bool:
-        return False
-
-
-class FailingCompletenessWorkflow:
-    @classmethod
-    def has_complete_metadata(cls) -> bool:
-        raise RuntimeError("the plugin's completeness check is broken")
-
-
 class PartiallyDeclaredWorkflow:
     workflow_description = "Declares a description and nothing else"
 
@@ -224,16 +198,15 @@ class TestCliName:
         assert workflow_cli_name(FullyDeclaredWorkflow) == "apply-golden-config"
 
     @pytest.mark.parametrize(
-        "workflow_class", [BlankCliNameWorkflow, MissingCliNameWorkflow], ids=["blank", "none"]
+        ("workflow_class", "declared"),
+        [(BlankCliNameWorkflow, "   "), (MissingCliNameWorkflow, None)],
+        ids=["blank", "none"],
     )
-    def test_an_unusable_cli_name_is_rejected_rather_than_dropped(
-        self, workflow_class: type
+    def test_an_unusable_declaration_reads_back_uninterpreted(
+        self, workflow_class: type, declared: Any
     ) -> None:
-        with pytest.raises(WorkflowRegistrationError) as raised:
-            workflow_cli_name(workflow_class)
-
-        assert workflow_class.__name__ in str(raised.value)
-        assert "get_workflow_cli_name()" in str(raised.value)
+        """``validation`` rejects these; the accessor reports them as declared."""
+        assert workflow_cli_name(workflow_class) == declared
 
     def test_a_failing_accessor_is_reported_as_a_registration_failure(self) -> None:
         with pytest.raises(WorkflowRegistrationError) as raised:
@@ -245,11 +218,6 @@ class TestCliName:
     def test_a_registration_error_from_the_plugin_is_not_rewritten(self) -> None:
         with pytest.raises(WorkflowRegistrationError, match="the plugin's own diagnosis"):
             workflow_cli_name(DiagnosingCliNameWorkflow)
-
-    def test_the_raw_declaration_is_readable_without_interpretation(self) -> None:
-        assert declared_cli_name(BlankCliNameWorkflow) == "   "
-        assert declared_cli_name(MissingCliNameWorkflow) is None
-        assert declared_cli_name(BareWorkflow) is None
 
 
 class TestMcpExposure:
@@ -311,21 +279,6 @@ class TestMetadataCompleteness:
             "workflow_input_class",
             "workflow_api_endpoint",
         )
-
-    def test_a_workflow_may_claim_completeness_it_cannot_show(self) -> None:
-        assert workflow_has_complete_metadata(ClaimingCompleteWorkflow)
-        assert missing_metadata_attributes(ClaimingCompleteWorkflow) == METADATA_ATTRIBUTES
-
-    def test_a_workflow_may_withhold_completeness_it_could_show(self) -> None:
-        assert not workflow_has_complete_metadata(WithholdingWorkflow)
-        assert missing_metadata_attributes(WithholdingWorkflow) == ()
-
-    def test_a_failing_completeness_check_is_reported_as_a_registration_failure(self) -> None:
-        with pytest.raises(WorkflowRegistrationError) as raised:
-            workflow_has_complete_metadata(FailingCompletenessWorkflow)
-
-        assert "has_complete_metadata()" in str(raised.value)
-        assert isinstance(raised.value.__cause__, RuntimeError)
 
 
 class TestRequiredActivities:
