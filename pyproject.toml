@@ -186,6 +186,10 @@ dev = [
     # Utilities
     "anybadge>=1.14.0",
     "lxml>=5.3.0",
+
+    # Workflow plugin library. Dev-only until the consumers are flipped over to
+    # the registry, so `uv sync --no-dev` keeps it out of the release image.
+    "nv-config-manager-workflows",
 ]
 ipython = [
     "ipython>=8.28.0",
@@ -203,12 +207,13 @@ docs = [
 package = true
 
 [tool.uv.workspace]
-members = ["components/dcim", "components/dcim-nautobot-2x", "components/network-templates"]
+members = ["components/dcim", "components/dcim-nautobot-2x", "components/network-templates", "packages/workflows"]
 
 [tool.uv.sources]
 nv-config-manager-dcim = { workspace = true }
 nv-config-manager-dcim-nautobot-2x = { workspace = true }
 nv-config-manager-templates = { workspace = true }
+nv-config-manager-workflows = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -239,7 +244,6 @@ output = "coverage.xml"
 [tool.basedpyright]
 venvPath = "."
 venv = ".venv"
-extraPaths = ["packages/workflows/src"]
 
 [tool.mypy]
 cache_dir = ".cache/mypy_cache"
