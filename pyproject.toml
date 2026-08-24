@@ -236,6 +236,11 @@ show_missing = true
 [tool.coverage.xml]
 output = "coverage.xml"
 
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["packages/workflows/src"]
+
 [tool.mypy]
 cache_dir = ".cache/mypy_cache"
 python_version = "3.13"
