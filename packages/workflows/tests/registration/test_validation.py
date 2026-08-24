@@ -340,6 +340,18 @@ class TestDeclaredMetadata:
         with pytest.raises(WorkflowRegistrationError, match="not a sequence of activity functions"):
             validate_plugins(installed(alpha_plugin()))
 
+    def test_required_activities_cannot_be_a_one_shot_iterator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            AlphaWorkflow,
+            "workflow_required_activities",
+            iter((collect_facts,)),
+        )
+
+        with pytest.raises(WorkflowRegistrationError, match="not a sequence of activity functions"):
+            validate_plugins(installed(alpha_plugin()))
+
     @pytest.mark.parametrize("entry", [None, "", "   ", 42, undecorated_activity])
     def test_each_required_activity_must_be_identifiable(
         self, monkeypatch: pytest.MonkeyPatch, entry: Any

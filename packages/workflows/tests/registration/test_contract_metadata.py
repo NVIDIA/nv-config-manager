@@ -353,12 +353,21 @@ class TestRequiredActivities:
     def test_a_bare_string_declares_no_requirement(self) -> None:
         assert workflow_required_activity_names(StringActivitiesWorkflow) == ()
 
-    @pytest.mark.parametrize(
-        "declared", [(), [], {"collect_facts"}, {"collect_facts": None}, iter(())]
-    )
+    @pytest.mark.parametrize("declared", [(), [], (collect_facts,)])
     def test_sequences_are_accepted(self, declared: Any) -> None:
         assert is_activity_sequence(declared)
 
-    @pytest.mark.parametrize("declared", [None, "collect_facts", 42, collect_facts])
+    @pytest.mark.parametrize(
+        "declared",
+        [
+            None,
+            "collect_facts",
+            42,
+            collect_facts,
+            iter((collect_facts,)),
+            {collect_facts},
+            {"collect_facts": None},
+        ],
+    )
     def test_non_sequences_are_rejected(self, declared: Any) -> None:
         assert not is_activity_sequence(declared)

@@ -45,7 +45,7 @@ comparing keys Temporal never sees. Importing the definitions turns that same
 rename into an import error at startup.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from temporalio.activity import _Definition as ActivityDefinition
@@ -210,7 +210,7 @@ def required_activity_name(entry: Any) -> str | None:
 
 def is_activity_sequence(declared: Any) -> bool:
     """Return whether a required-activity declaration is a usable sequence."""
-    return declared is not None and not isinstance(declared, str) and isinstance(declared, Iterable)
+    return not isinstance(declared, str) and isinstance(declared, Sequence)
 
 
 def _workflow_definition(workflow: type) -> WorkflowDefinition | None:
