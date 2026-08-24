@@ -143,6 +143,15 @@ class UndecoratedWorkflow:
     async def run(self) -> None: ...
 
 
+class UndecoratedMisdeclaredWorkflow:
+    """Undecorated, and what metadata it declares is unusable as well."""
+
+    workflow_name = 42
+
+    @workflow.run
+    async def run(self) -> None: ...
+
+
 def plugin(
     name: str,
     *,
@@ -223,6 +232,15 @@ class TestTemporalDefinitionRequired:
             validate_plugins(installed(plugin("greedy-plugin", activities=(catch_all_activity,))))
 
         assert "dynamic=True" in str(raised.value)
+
+    def test_a_missing_definition_is_reported_ahead_of_unusable_metadata(self) -> None:
+        """A class the worker could not register at all is the root cause to report."""
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(
+                installed(plugin("broken-plugin", workflows=(UndecoratedMisdeclaredWorkflow,)))
+            )
+
+        assert "not decorated with @workflow.defn" in str(raised.value)
 
 
 class TestDeclaredMetadata:

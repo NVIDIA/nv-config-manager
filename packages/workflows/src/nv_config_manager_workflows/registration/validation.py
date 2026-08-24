@@ -76,9 +76,9 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
         _Owned(name, item) for name, d in plugins.items() for item in d.activities
     ]
 
-    _require_valid_metadata(workflows)
     _require_named_workflows(workflows)
     _require_named_activities(activities)
+    _require_valid_metadata(workflows)
 
     launchable = [owned for owned in workflows if workflow_has_complete_metadata(owned.item)]
     mcp_enabled = [owned for owned in workflows if workflow_mcp_enabled(owned.item)]
