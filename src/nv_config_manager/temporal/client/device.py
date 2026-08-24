@@ -97,6 +97,26 @@ def format_mac(mac: str) -> str:
     return mac.replace("-", ":").lower()
 
 
+def _junos_string(container: dict[str, Any], key: str) -> str | None:
+    """Return a string value (or None) from a Junos JSON response."""
+    value = container.get(key)
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if isinstance(value, dict):
+        value = value.get("data")
+    return str(value) if value is not None else None
+
+
+def _junos_list(container: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """Return a repeatable Junos JSON element as a list, however it was wrapped."""
+    value = container.get(key, [])
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list):
+        return cast(list[dict[str, Any]], list(value))
+    return []
+
+
 class NetworkDeviceException(ApplicationError):
     """Exception when interacting with a network device."""
 
@@ -210,6 +230,32 @@ class DeviceMacEntry(BaseModel):
             ),
         )
 
+    @staticmethod
+    def from_junos(data: dict[str, Any]) -> DeviceMacEntry | None:
+        """Return a MAC address from a Junos response."""
+        mac = _junos_string(data, "mac-address")
+        interface = _junos_string(data, "mac-interfaces-list") or _junos_string(
+            data, "mac-interface"
+        )
+        if not (mac and interface):
+            return None
+        vlan = _junos_string(data, "mac-vlan")
+        try:
+            mac_std = str(netaddr.EUI(mac))
+        except netaddr.core.AddrFormatError:
+            logger.warning("Invalid MAC %r in Junos MAC table entry, skipping: %s", mac, data)
+            return None
+        # get-ethernet-switching-table-information has no per-entry last-seen time,
+        # unlike Arista/Cumulus. sys.maxsize as a shared age means a duplicate MAC
+        # always loses the tie-break in get_mac_table, so the later entry in
+        # response order wins rather than either side being picked at random.
+        return DeviceMacEntry(
+            mac=mac_std,
+            interface=interface.split(".")[0],
+            vlan=int(vlan) if vlan and vlan.isdigit() else None,
+            age=sys.maxsize,
+        )
+
 
 class DeviceArpTable(BaseModel):
     """Device ARP Table."""
@@ -282,6 +328,27 @@ class DeviceArpTable(BaseModel):
                 else:
                     logger.warning("ARP entry missing data, skipping: %s %s", ipaddr, ip_data)
 
+        return result
+
+    @staticmethod
+    def from_junos(entries: list[dict[str, Any]]) -> DeviceArpTable:
+        """ARP table from a Junos get-arp-table-information reply."""
+        result = DeviceArpTable()
+        for entry in entries:
+            ip = _junos_string(entry, "ip-address")
+            mac = _junos_string(entry, "mac-address")
+            interface = _junos_string(entry, "interface-name")
+            if not (ip and mac and interface):
+                logger.warning("ARP entry missing data, skipping: %s", entry)
+                continue
+            try:
+                ip_std = str(ipaddress.ip_address(ip))
+                mac_std = str(netaddr.EUI(mac))
+            except (ValueError, netaddr.core.AddrFormatError):
+                logger.warning("Invalid IP/MAC in Junos ARP entry, skipping: %s", entry)
+                continue
+            result._add_ip_mac_mapping(ip_std, mac_std)
+            result._add_interface_mac_mapping(interface.split(".")[0], mac_std)
         return result
 
 
@@ -357,6 +424,15 @@ class InterfaceNeighborData(BaseModel):
                 if is_mac_address(data[device]["port"]["name"])
                 else data[device]["port"]["name"]
             ),
+        )
+
+    @staticmethod
+    def from_junos(entry: dict[str, Any]) -> InterfaceNeighborData:
+        """Produce InterfaceNeighborData from a Junos LLDP neighbor entry."""
+        name = _junos_string(entry, "lldp-remote-port-id")
+        return InterfaceNeighborData(
+            device_name=_junos_string(entry, "lldp-remote-system-name"),
+            name=str(netaddr.EUI(name)) if name and is_mac_address(name) else name,
         )
 
 
@@ -2372,6 +2448,11 @@ class JuniperConnection(NetworkConnection):
     # TCP/NETCONF open deadline separate from per-RPC timeout.
     _CONN_OPEN_TIMEOUT_SECONDS = 30
 
+    # Substring of the RpcError Junos raises for get-ethernet-switching-table-information
+    # on a device with no bridging (e.g. a pure backbone router). Any other RPC failure
+    # (auth, connection, timeout) must propagate rather than read as an empty MAC table.
+    _MAC_TABLE_UNSUPPORTED_MESSAGE = "l2-learning subsystem is not running"
+
     def __init__(
         self,
         host: str,
@@ -2629,6 +2710,99 @@ class JuniperConnection(NetworkConnection):
             return int(uptime["attributes"]["junos:seconds"])
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise NetworkDeviceException(f"Unable to determine uptime on {self._host}.") from error
+
+    def _get_lldp_neighbor_entries(self) -> list[dict[str, Any]]:
+        """Return raw lldp-neighbor-information entries from the device."""
+        data = self._rpc("get-lldp-neighbors-information")
+        root = _junos_list(data, "lldp-neighbors-information")
+        return _junos_list(root[0], "lldp-neighbor-information") if root else []
+
+    def get_lldp_data(self, interface_name: str) -> InterfaceNeighborData | None:
+        """Get the raw LLDP data for a given interface."""
+        entries = [
+            entry
+            for entry in self._get_lldp_neighbor_entries()
+            if _junos_string(entry, "lldp-local-port-id") == interface_name
+        ]
+        if len(entries) > 1:
+            raise NetworkDeviceException(
+                f"Received multiple LLDP neighbors on interface {interface_name} from {self._host}"
+            )
+        return InterfaceNeighborData.from_junos(entries[0]) if entries else None
+
+    def _get_interface_link_states(self) -> dict[str, bool]:
+        """Return physical interface oper-status keyed by interface name."""
+        data = self._rpc("get-interface-information", {"terse": True})
+        root = _junos_list(data, "interface-information")
+        if not root:
+            return {}
+        link_states = {}
+        for physical in _junos_list(root[0], "physical-interface"):
+            name = _junos_string(physical, "name")
+            oper_status = _junos_string(physical, "oper-status")
+            if name and oper_status:
+                link_states[name] = oper_status == "up"
+        return link_states
+
+    def get_interface_connections(self) -> DeviceNeighborData:
+        """Get all interface connections from LLDP."""
+        neighbors: dict[str, InterfaceNeighborData] = {}
+        for entry in self._get_lldp_neighbor_entries():
+            interface = _junos_string(entry, "lldp-local-port-id")
+            if not interface:
+                continue
+            if interface in neighbors:
+                raise NetworkDeviceException(
+                    f"Received multiple LLDP neighbors on interface {interface} from {self._host}"
+                )
+            neighbors[interface] = InterfaceNeighborData.from_junos(entry)
+
+        return DeviceNeighborData(
+            neighbors=neighbors, link_states=self._get_interface_link_states()
+        )
+
+    def get_mac_table(self) -> DeviceMacTable:
+        """Get the device MAC table."""
+        try:
+            data = self._rpc("get-ethernet-switching-table-information")
+        except NetworkDeviceException as error:
+            cause_message = getattr(error.__cause__, "message", None) or str(error)
+            if self._MAC_TABLE_UNSUPPORTED_MESSAGE not in cause_message:
+                raise
+            logger.debug(
+                "No Ethernet switching table on %s; treating the MAC table as empty.",
+                self._host,
+            )
+            return DeviceMacTable()
+
+        result = DeviceMacTable()
+        root = _junos_list(data, "ethernet-switching-table-information")
+        table = _junos_list(root[0], "ethernet-switching-table") if root else []
+        entries = _junos_list(table[0], "mac-table-entry") if table else []
+        for raw_entry in entries:
+            mac_entry = DeviceMacEntry.from_junos(raw_entry)
+            if mac_entry is None:
+                continue
+            if mac_entry.mac in result.by_mac:
+                logger.warning(
+                    "Duplicate MAC address %s on device %s: using newest entry",
+                    mac_entry.mac,
+                    self._host,
+                )
+                if mac_entry.age > result.by_mac[mac_entry.mac].age:
+                    continue
+            result.by_mac[mac_entry.mac] = mac_entry
+            result.by_interface.setdefault(mac_entry.interface, [])
+            if mac_entry.mac not in result.by_interface[mac_entry.interface]:
+                result.by_interface[mac_entry.interface].append(mac_entry.mac)
+        return result
+
+    def get_arp_table(self) -> DeviceArpTable:
+        """Get the device ARP table."""
+        data = self._rpc("get-arp-table-information")
+        root = _junos_list(data, "arp-table-information")
+        entries = _junos_list(root[0], "arp-table-entry") if root else []
+        return DeviceArpTable.from_junos(entries)
 
     # ------------------------------------------------------------------
     # Configuration operations.
