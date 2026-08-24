@@ -77,6 +77,7 @@ class NautobotClient(BaseNautobotClient):
             nautobot_url=nautobot_url or config["nautobot"]["server"],
             token=token or config["nautobot"]["token"],
             verify=parse_verify_param(config["nautobot"]),
+            timeout=self.timeout_from_config(config),
         )
 
     async def get_device_data(self, device_id: str) -> DeviceData:

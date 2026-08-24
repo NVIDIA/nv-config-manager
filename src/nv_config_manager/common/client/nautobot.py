@@ -49,12 +49,14 @@ class NautobotClient:
             result = await client.graphql_query(query, variables)
     """
 
+    DEFAULT_TIMEOUT = 30
+
     def __init__(
         self,
         nautobot_url: str,
         token: str = "",
         verify: bool | str = True,
-        timeout: int = 30,
+        timeout: int | None = None,
         headers: dict[str, str] | Callable[[], dict[str, str]] | None = None,
     ) -> None:
         """Initialize the Nautobot client.
@@ -63,18 +65,30 @@ class NautobotClient:
             nautobot_url: Base URL for Nautobot instance
             token: API token for authentication
             verify: SSL verification - True (default), False (disable), or str (path to CA cert)
-            timeout: Default request timeout in seconds
+            timeout: Default request timeout in seconds. ``None`` uses
+                :attr:`DEFAULT_TIMEOUT` (30s, or 60s on the DHCP subclass).
             headers: Static dict or callable returning fresh headers per-request.
                 If set, these headers take precedence over token auth.
         """
         self.nautobot_url = nautobot_url.rstrip("/") + "/"
         self.token = token
         self._verify = verify
-        self._timeout = timeout
+        self._timeout = self.DEFAULT_TIMEOUT if timeout is None else timeout
         self._headers = headers
         self.graphql_endpoint = f"{self.nautobot_url}api/graphql/"
         self.rest_endpoint = f"{self.nautobot_url}api/"
         self._session: aiohttp.ClientSession | None = None
+
+    @classmethod
+    def timeout_from_config(cls, config: ConfigParser, default: int | None = None) -> int:
+        """Read ``[nautobot] timeout`` from INI, falling back when unset or blank."""
+        fallback = cls.DEFAULT_TIMEOUT if default is None else default
+        if not config.has_section("nautobot"):
+            return fallback
+        raw = config.get("nautobot", "timeout", fallback="").strip()
+        if not raw:
+            return fallback
+        return config.getint("nautobot", "timeout")
 
     @classmethod
     def from_config(cls, config: ConfigParser) -> Self:
@@ -82,7 +96,7 @@ class NautobotClient:
 
         Args:
             config: ConfigParser with 'nautobot' section containing
-                   'server', 'token', and optionally 'verify'
+                   'server', 'token', and optionally 'verify' and 'timeout'
 
         Returns:
             Configured NautobotClient instance
@@ -95,6 +109,7 @@ class NautobotClient:
             nautobot_url=nautobot_config["server"],
             token=nautobot_config["token"],
             verify=parse_verify_param(nautobot_config),
+            timeout=cls.timeout_from_config(config),
         )
 
     @classmethod

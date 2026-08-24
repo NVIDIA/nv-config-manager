@@ -493,6 +493,11 @@ externalServices:
     version: 2.3.5
     maxWorkers: 8
     retries: 3
+    # Optional client HTTP/GraphQL timeout in seconds. When unset, each client
+    # keeps its built-in default (30s general, 60s DHCP, 10s render). Override
+    # per cell when a longer budget is needed; stay below the Nautobot ingress
+    # read timeout or the gateway 504s first.
+    # timeout: 120
     # SSL verification: true (default, use system CAs), false (disable), or path to CA cert
     verify: true
     cacheRefreshInterval: 300
