@@ -168,6 +168,19 @@ nv set system aaa user admin password $6$newpassword"""
         assert len(result.invalid_lines) == 2
         assert len(result.valid_lines) == 0
 
+    def test_junos_header_only_diff_fails(self):
+        """Test that a diff with only the user authentication edit stanza header fails.
+
+        A header with no +/- body lines produces empty valid_lines and empty
+        invalid_lines; this must not be treated as a validated password change.
+        """
+        diff = "[edit system login user admin authentication]"
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 0
+        assert len(result.valid_lines) == 0
+
 
 class TestGetPasswordMappings:
     """Test password mapping retrieval."""

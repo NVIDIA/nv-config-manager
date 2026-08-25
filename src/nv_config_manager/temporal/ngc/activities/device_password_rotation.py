@@ -194,6 +194,7 @@ def _validate_cumulus_diff(diff: str, username: str) -> ValidatePasswordDiffOutp
             error_message=error_msg,
         )
 
+
 _JUNOS_EDIT_HEADER_RE = re.compile(r"^\[edit\s+(.+)\]$")
 _JUNOS_PASSWORD_LINE_RE = re.compile(
     r'^[+-]\s*encrypted-password\s+"\$[0-9]\$\S+";(\s*##\s*SECRET-DATA)?$'
@@ -221,21 +222,25 @@ def _validate_junos_diff(diff: str, username: str) -> ValidatePasswordDiffOutput
             valid_lines.append(line)
         else:
             invalid_lines.append(line)
-            activity.logger.warning(f"Unexpected line in diff: {line}")
+            activity.logger.warning("Unexpected line found outside target password stanza")
 
-    if not invalid_lines:
+    if not invalid_lines and valid_lines:
         activity.logger.info(f"Junos password diff validation successful for user {username}")
         return ValidatePasswordDiffOutput(
             is_valid=True, invalid_lines=[], valid_lines=valid_lines, error_message=None
         )
-    else:
-        error_msg = f"Diff contains non-password changes for user '{username}'"
+    if not invalid_lines and not valid_lines:
+        error_msg = f"Diff contains no password changes for user '{username}'"
         return ValidatePasswordDiffOutput(
-            is_valid=False,
-            invalid_lines=invalid_lines,
-            valid_lines=valid_lines,
-            error_message=error_msg,
+            is_valid=False, invalid_lines=[], valid_lines=[], error_message=error_msg
         )
+    error_msg = f"Diff contains non-password changes for user '{username}'"
+    return ValidatePasswordDiffOutput(
+        is_valid=False,
+        invalid_lines=invalid_lines,
+        valid_lines=valid_lines,
+        error_message=error_msg,
+    )
 
 
 class FormatPasswordRotationResultsInput(BaseModel):
