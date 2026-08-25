@@ -363,7 +363,7 @@
         "type": "object"
       },
       "IBPKeyCreationInput": {
-        "description": "InfiniBand PKey Creation Workflow Input.\n\nBy default, auto-assigns the next available PKey. Pass an explicit\n``pkey`` value only when a specific partition key is required.\n\n``site`` is optional. When omitted, the workflow resolves the device's\nSite-typed Nautobot location from ``host`` and uses that as the UFM\ncredential lookup key. Pass ``site`` explicitly to override the\nauto-resolved value (e.g. for API callers that want to skip the\nNautobot round-trip).",
+        "description": "InfiniBand PKey Creation Workflow Input.\n\nBy default, auto-assigns the next available PKey. Pass an explicit\n``pkey`` value only when a specific partition key is required.\n\n``site`` is optional. When omitted, the workflow resolves the device's\nSite-typed DCIM location from ``host`` and uses that as the UFM\ncredential lookup key. Pass ``site`` explicitly to override the\nauto-resolved value (e.g. for API callers that want to skip the\nDCIM round-trip).",
         "properties": {
           "host": {
             "description": "Hostname of the UFM server managing the InfiniBand fabric.",
@@ -480,7 +480,7 @@
         "type": "object"
       },
       "IBPKeyMemberDeleteInput": {
-        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via Nautobot) or\n``guids`` directly, but not both. Site and Overlay are resolved\nserver-side from ``host`` and ``pkey``.",
+        "description": "InfiniBand PKey Member Delete Workflow Input.\n\nProvide either ``interfaces`` (resolved to GUIDs via the DCIM) or\n``guids`` directly, but not both. Site and Overlay are resolved\nserver-side from ``host`` and ``pkey``.",
         "properties": {
           "guids": {
             "default": [],

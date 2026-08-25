@@ -239,7 +239,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         if not result.devices:
-            platform_names = [p.dcim_name for p in SUPPORTED_PLATFORMS]
+            platform_names = [platform.value for platform in SUPPORTED_PLATFORMS]
             display = (
                 "No devices found matching the specified filters "
                 f"(location={stage_input.site}, roles={stage_input.roles}, "

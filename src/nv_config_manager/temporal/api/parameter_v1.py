@@ -14,6 +14,7 @@
 # limitations under the License.
 """Parameter Routes for populating Workflow UI Forms."""
 
+from collections.abc import Mapping
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -331,7 +332,7 @@ async def get_device_secrets(device_id: str) -> list[Secret]:
         secret_versions = await client.get_device_secret_versions(device_id)
 
     secrets = []
-    if isinstance(secret_versions, dict):
+    if isinstance(secret_versions, Mapping):
         for secret_name, version in secret_versions.items():
             # Format as "secret_name_version" (e.g., "tacacs_key_r1")
             formatted_name = f"{secret_name}_{version}"

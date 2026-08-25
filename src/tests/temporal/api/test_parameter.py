@@ -12,7 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from unittest.mock import patch
+from types import MappingProxyType
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from aioresponses import aioresponses
 from fastapi.testclient import TestClient
@@ -124,6 +125,25 @@ SPX_OVERLAYS = {
         {"id": "overlay-uuid-1", "name": "overlay-a"},
     ],
 }
+
+
+def test_device_secrets_accepts_mapping() -> None:
+    """Provider implementations may return any read-only Mapping."""
+    dcim_client = MagicMock()
+    dcim_client.__aenter__ = AsyncMock(return_value=dcim_client)
+    dcim_client.__aexit__ = AsyncMock(return_value=None)
+    dcim_client.get_device_secret_versions = AsyncMock(
+        return_value=MappingProxyType({"tacacs_key": "r1"})
+    )
+
+    with patch(
+        "nv_config_manager.temporal.api.parameter_v1.create_dcim_client",
+        return_value=dcim_client,
+    ):
+        response = TestClient(app).get("/v1/parameter/device/device-1/secrets")
+
+    assert response.status_code == 200
+    assert response.json() == [{"name": "tacacs_key_r1", "description": "tacacs_key version r1"}]
 
 
 def test_site_v2():
