@@ -16,9 +16,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 
 type FileFingerprint = tuple[int, int, int, int, int]
+
+DEFAULT_CONFIG_PATH = "/etc/vault/nv-config-manager.ini"
+
+
+def config_path() -> str:
+    """Return the path of the unified INI file this process reads.
+
+    Returns:
+        NV_CONFIG_MANAGER_INI when set, otherwise the packaged default
+    """
+    return os.getenv("NV_CONFIG_MANAGER_INI", DEFAULT_CONFIG_PATH)
 
 
 def file_fingerprint(path: str | None) -> FileFingerprint | None:
@@ -43,3 +55,27 @@ def file_fingerprint(path: str | None) -> FileFingerprint | None:
         stat_result.st_mtime_ns,
         stat_result.st_ctime_ns,
     )
+
+
+def file_digest(path: str | None) -> str | None:
+    """Return a hash of the file's contents.
+
+    A fingerprint reports that the file was rewritten, which is what a parse
+    cache needs. Deciding to restart a process needs the stronger question of
+    whether anything actually changed, because Kubernetes and Vault Agent both
+    rewrite these files on their own schedules with identical contents.
+
+    Args:
+        path: File to hash
+
+    Returns:
+        Hex digest of the contents, or None when the file cannot be read
+    """
+    if not path:
+        return None
+
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except OSError:
+        return None

@@ -53,6 +53,7 @@ class LogCategory:
     API = "api"  # Deprecated: use per-service variants (RENDER_API, etc.)
     NATS = "nats"
     CACHE = "cache"
+    CONFIG = "config"
 
 
 # =============================================================================

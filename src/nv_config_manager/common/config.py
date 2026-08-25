@@ -54,7 +54,7 @@ from nv_config_manager.common.client import (
 # =============================================================================
 # LOGGING (re-exported from nv_config_manager.common.log to avoid circular imports)
 # =============================================================================
-from nv_config_manager.common.ini import FileFingerprint, file_fingerprint
+from nv_config_manager.common.ini import FileFingerprint, config_path, file_fingerprint
 from nv_config_manager.common.log import (  # noqa: F401, E402
     LogCategory,
     configure_logging,
@@ -109,8 +109,8 @@ def load_config() -> ConfigParser:
     Returns:
         Loaded ConfigParser instance for the current file version
     """
-    config_path = os.getenv("NV_CONFIG_MANAGER_INI", "/etc/vault/nv-config-manager.ini")
-    return _load_config(config_path, file_fingerprint(config_path))
+    path = config_path()
+    return _load_config(path, file_fingerprint(path))
 
 
 def clear_config_cache() -> None:
