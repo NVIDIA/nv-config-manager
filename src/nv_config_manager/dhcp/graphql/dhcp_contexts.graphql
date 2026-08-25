@@ -1,9 +1,13 @@
-query dhcp_contexts($is_aggregate_managed: Boolean) {
-  config_manager_devices(ztp_enabled: true, is_aggregate_managed: $is_aggregate_managed) {
+query dhcp_contexts($is_aggregate_managed: Boolean, $limit: Int!, $offset: Int!) {
+  config_manager_devices(
+    ztp_enabled: true
+    is_aggregate_managed: $is_aggregate_managed
+    limit: $limit
+    offset: $offset
+  ) {
     device {
       id
       config_context
     }
   }
 }
-
