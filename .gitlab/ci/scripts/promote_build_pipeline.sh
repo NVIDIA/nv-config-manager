@@ -36,7 +36,7 @@ if ! printf '%s' "$NVCM_PROMOTE_PR" | grep -Eq '^[0-9]+$'; then
     exit 1
 fi
 
-github_repo="${NVCM_UPSTREAM_GITHUB_REPO:-NVIDIA/nv-config-manager}"
+github_repo="${NVCM_UPSTREAM_GITHUB_REPO:-dsx-ai-factory/nv-config-manager}"
 api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
 poll_interval="${NVCM_BUILD_POLL_INTERVAL:-30}"
 poll_timeout="${NVCM_BUILD_POLL_TIMEOUT:-5400}"

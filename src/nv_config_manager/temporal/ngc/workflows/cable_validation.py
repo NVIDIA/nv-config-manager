@@ -100,7 +100,12 @@ CLONE_SEARCH_ATTRS = [
     EXECUTE_ROLES_SEARCH_ATTRIBUTE,
 ]
 
-SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX, Platform.ARISTA_EOS, Platform.NV_OS]
+SUPPORTED_PLATFORMS = [
+    Platform.CUMULUS_LINUX,
+    Platform.ARISTA_EOS,
+    Platform.NV_OS,
+    Platform.JUNIPER_JUNOS,
+]
 DEVICE_CABLE_VALIDATION_DEVICE_DESCRIPTION = (
     "Preloaded data for the target network device, if available."
 )
@@ -234,10 +239,12 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         if not result.devices:
+            platform_names = [p.dcim_name for p in SUPPORTED_PLATFORMS]
             display = (
                 "No devices found matching the specified filters "
                 f"(location={stage_input.site}, roles={stage_input.roles}, "
-                f"status={stage_input.status}, tenant={stage_input.tenant})."
+                f"status={stage_input.status}, tenant={stage_input.tenant}, "
+                f"platforms={platform_names})."
             )
         else:
             display = self.markdown_table(result.devices)
