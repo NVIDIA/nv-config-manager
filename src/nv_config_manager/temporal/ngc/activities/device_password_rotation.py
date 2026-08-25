@@ -88,6 +88,8 @@ async def validate_password_diff(
 
     if platform in ["cumulus", "nvos"]:
         return _validate_cumulus_diff(diff, username)
+    elif platform == "junos":
+        return _validate_junos_diff(diff, username)
     else:
         error_msg = f"No diff parser available for platform: {platform}"
         activity.logger.error(error_msg)
@@ -142,6 +144,7 @@ async def validate_platform_support(
     platform_map = {
         Platform.CUMULUS_LINUX: "cumulus",
         Platform.NV_OS: "nvos",
+        Platform.JUNIPER_JUNOS: "junos",
     }
 
     slugified_platform = platform_map.get(platform)
@@ -179,6 +182,49 @@ def _validate_cumulus_diff(diff: str, username: str) -> ValidatePasswordDiffOutp
 
     if is_valid:
         activity.logger.info(f"Cumulus password diff validation successful for user {username}")
+        return ValidatePasswordDiffOutput(
+            is_valid=True, invalid_lines=[], valid_lines=valid_lines, error_message=None
+        )
+    else:
+        error_msg = f"Diff contains non-password changes for user '{username}'"
+        return ValidatePasswordDiffOutput(
+            is_valid=False,
+            invalid_lines=invalid_lines,
+            valid_lines=valid_lines,
+            error_message=error_msg,
+        )
+
+_JUNOS_EDIT_HEADER_RE = re.compile(r"^\[edit\s+(.+)\]$")
+_JUNOS_PASSWORD_LINE_RE = re.compile(
+    r'^[+-]\s*encrypted-password\s+"\$[0-9]\$\S+";(\s*##\s*SECRET-DATA)?$'
+)
+
+
+def _validate_junos_diff(diff: str, username: str) -> ValidatePasswordDiffOutput:
+    """Validate a Junos hierarchical diff touches only the target user's encrypted-password."""
+    expected_path = f"system login user {username} authentication"
+    valid_lines: list[str] = []
+    invalid_lines: list[str] = []
+    current_path: str | None = None
+
+    for raw_line in diff.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        header_match = _JUNOS_EDIT_HEADER_RE.match(line)
+        if header_match:
+            current_path = header_match.group(1)
+            continue
+
+        if current_path == expected_path and _JUNOS_PASSWORD_LINE_RE.match(line):
+            valid_lines.append(line)
+        else:
+            invalid_lines.append(line)
+            activity.logger.warning(f"Unexpected line in diff: {line}")
+
+    if not invalid_lines:
+        activity.logger.info(f"Junos password diff validation successful for user {username}")
         return ValidatePasswordDiffOutput(
             is_valid=True, invalid_lines=[], valid_lines=valid_lines, error_message=None
         )
