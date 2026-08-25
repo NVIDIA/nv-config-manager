@@ -33,6 +33,31 @@ logger = get_logger(__name__, category=LogCategory.DHCP_DATA)
 
 QUERY_PATH = f"{pathlib.Path(__file__).parent.resolve()}/graphql"
 
+# Match config-store's GraphQL page size. DHCP still needs a full snapshot;
+# paging only splits the Nautobot request so a large cell cannot 504 one query.
+GRAPHQL_PAGE_SIZE = 100
+_MAX_GRAPHQL_OFFSET = 1_000_000
+
+
+def _read_query(name: str) -> str:
+    """Load a GraphQL query file from the dhcp/graphql directory."""
+    with open(f"{QUERY_PATH}/{name}.graphql", encoding="utf-8") as f:
+        return f.read()
+
+
+def _dedupe_keep_first(items: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """Drop later rows that repeat ``key`` (offset paging can overlap on a moving set)."""
+    seen: set[Any] = set()
+    unique: list[dict[str, Any]] = []
+    for item in items:
+        value = item.get(key)
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(item)
+    return unique
+
+
 # Fields that must be present for a device to be eligible for ZTP
 NV_CONFIG_MANAGER_MANAGED_VLANS = [
     "vlan13",
@@ -249,10 +274,48 @@ class NautobotClient(BaseNautobotClient):
             timeout=60,  # DHCP queries can be slow
         )
 
+    async def _iter_graphql_pages(
+        self,
+        query: str,
+        result_key: str,
+        variables: dict[str, Any] | None = None,
+        page_size: int = GRAPHQL_PAGE_SIZE,
+    ) -> list[Any]:
+        """Fetch every page of a Nautobot GraphQL list field.
+
+        Stops on an empty or short page. Raises if offset grows without bound,
+        which would mean the server keeps returning full pages (or a mock that
+        ignores limit/offset).
+        """
+        collected: list[Any] = []
+        extra = dict(variables or {})
+        offset = 0
+        while True:
+            if offset > _MAX_GRAPHQL_OFFSET:
+                raise QueryException(
+                    f"GraphQL pagination for {result_key} exceeded offset {_MAX_GRAPHQL_OFFSET}"
+                )
+            page_vars = {**extra, "limit": page_size, "offset": offset}
+            rsp = await self.graphql_query(query=query, variables=page_vars)
+            page = (rsp.get("data") or {}).get(result_key) or []
+            if not page:
+                break
+            collected.extend(page)
+            if len(page) < page_size:
+                break
+            offset += len(page)
+            logger.info(
+                "Fetched %d %s at offset %d (%d total)",
+                len(page),
+                result_key,
+                offset - len(page),
+                len(collected),
+            )
+        return collected
+
     async def load_site_dhcp_options(self) -> Any:
         """Load site DHCP options."""
-        with open(f"{QUERY_PATH}/site_dhcp_options.graphql", encoding="utf-8") as f:
-            query = f.read()
+        query = _read_query("site_dhcp_options")
         rsp = await self.graphql_query(query=query)
         config_contexts = rsp["data"].get("config_contexts", [])
         if config_contexts:
@@ -260,41 +323,66 @@ class NautobotClient(BaseNautobotClient):
         return {}
 
     async def load_dhcp_contexts(
-        self, is_aggregate_managed: bool | None = None
+        self,
+        is_aggregate_managed: bool | None = None,
+        page_size: int = GRAPHQL_PAGE_SIZE,
     ) -> dict[str, dict[str, Any]]:
         """Load all devices eligible for ZTP, filtered by aggregate management."""
-        with open(f"{QUERY_PATH}/dhcp_contexts.graphql", encoding="utf-8") as f:
-            query = f.read()
-
-        variables: dict[str, Any] = {}
-        variables["is_aggregate_managed"] = is_aggregate_managed
-        rsp = await self.graphql_query(query=query, variables=variables)
-        return {
-            entry["device"]["id"]: entry["device"]["config_context"]
-            for entry in rsp["data"]["config_manager_devices"]
-        }
+        query = _read_query("dhcp_contexts")
+        entries = await self._iter_graphql_pages(
+            query,
+            "config_manager_devices",
+            variables={"is_aggregate_managed": is_aggregate_managed},
+            page_size=page_size,
+        )
+        contexts: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            device = entry.get("device")
+            if not device:
+                continue
+            contexts[device["id"]] = device["config_context"]
+        return contexts
 
     async def load_static_data(self) -> list[dict[str, Any]]:
         """Load static data from config contexts."""
-        with open(f"{QUERY_PATH}/static_dhcp_data.graphql", encoding="utf-8") as f:
-            query = f.read()
+        query = _read_query("static_dhcp_data")
         rsp = await self.graphql_query(query=query)
         return [entry["data"] for entry in rsp["data"].get("config_contexts", [])]
 
     async def load_auto_dhcp_subnets(
-        self, family: int = 4, is_aggregate_managed: bool | None = None
+        self,
+        family: int = 4,
+        is_aggregate_managed: bool | None = None,
+        page_size: int = GRAPHQL_PAGE_SIZE,
     ) -> list[dict[str, Any]]:
-        """Load DHCP subnets using single combined query and join in code."""
-        with open(f"{QUERY_PATH}/auto_dhcp_subnets.graphql", encoding="utf-8") as f:
-            query = f.read()
-        rsp = await self.graphql_query(query=query)
-
-        prefixes = rsp["data"].get("prefixes", [])
+        """Load DHCP subnets, paging prefixes and IPs independently then joining."""
+        prefixes = _dedupe_keep_first(
+            await self._iter_graphql_pages(
+                _read_query("auto_dhcp_subnets"),
+                "prefixes",
+                page_size=page_size,
+            ),
+            "id",
+        )
         if not prefixes:
             return []
 
-        all_pool_ips = rsp["data"].get("pool_ips", [])
-        all_reserved_ips = rsp["data"].get("reserved_ips", [])
+        all_pool_ips = _dedupe_keep_first(
+            await self._iter_graphql_pages(
+                _read_query("auto_dhcp_subnets_pool_ips"),
+                "pool_ips",
+                page_size=page_size,
+            ),
+            "address",
+        )
+        all_reserved_ips = _dedupe_keep_first(
+            await self._iter_graphql_pages(
+                _read_query("auto_dhcp_subnets_reserved_ips"),
+                "reserved_ips",
+                page_size=page_size,
+            ),
+            "address",
+        )
 
         subnets = []
         for prefix_entry in prefixes:
