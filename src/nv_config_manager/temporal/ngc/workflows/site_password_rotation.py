@@ -42,14 +42,14 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
     from nv_config_manager.temporal.ngc.activities.config import get_ui_base_url
-    from nv_config_manager.temporal.ngc.activities.device_password_rotation import (
-        FormatPasswordRotationResultsInput,
-        format_password_rotation_results,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDevicesInput,
         GetNetworkDevicesOutput,
         get_network_devices,
+    )
+    from nv_config_manager.temporal.ngc.activities.device_password_rotation import (
+        FormatPasswordRotationResultsInput,
+        format_password_rotation_results,
     )
     from nv_config_manager.temporal.ngc.workflows.device_password_rotation import (
         DevicePasswordRotationInput,

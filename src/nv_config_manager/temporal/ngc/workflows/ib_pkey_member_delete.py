@@ -32,7 +32,7 @@ from nv_config_manager.temporal.ngc.workflows._ib_pkey_lock import UFMHostLockMi
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
-    from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    from nv_config_manager.temporal.ngc.activities.ib_dcim import (
         CleanupEmptyPartitionInput,
         CleanupEmptyPartitionOutput,
         InterfaceRef,
@@ -62,7 +62,7 @@ with workflow.unsafe.imports_passed_through():
 class IBPKeyMemberDeleteInput(BaseModel):
     """InfiniBand PKey Member Delete Workflow Input.
 
-    Provide either ``interfaces`` (resolved to GUIDs via Nautobot) or
+    Provide either ``interfaces`` (resolved to GUIDs via the DCIM) or
     ``guids`` directly, but not both. Site and Overlay are resolved
     server-side from ``host`` and ``pkey``.
     """
@@ -154,7 +154,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
 
     # ------------------------------------------------------------------
-    # Stage 0: Resolve site / overlay / canonical pkey from Nautobot
+    # Stage 0: Resolve site / overlay / canonical pkey from the DCIM
     # ------------------------------------------------------------------
 
     class ResolveContextStageInput(StageInput):
@@ -179,7 +179,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
     async def resolve_context(
         self, stage_input: ResolveContextStageInput
     ) -> ResolveContextStageOutput:
-        """Resolve site/overlay from Nautobot and canonicalize pkey."""
+        """Resolve site/overlay from the DCIM and canonicalize pkey."""
         resolved = await call_resolve_ib_context(stage_input.host, stage_input.pkey)
 
         return self.ResolveContextStageOutput(
@@ -198,7 +198,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
 
     # ------------------------------------------------------------------
-    # Stage 1: Resolve GUIDs from Nautobot
+    # Stage 1: Resolve GUIDs from the DCIM
     # ------------------------------------------------------------------
 
     class ResolveGuidsStageInput(StageInput):
@@ -214,7 +214,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
 
     @stage_executor("resolve_guids")
     async def resolve_guids(self, stage_input: ResolveGuidsStageInput) -> ResolveGuidsStageOutput:
-        """Resolve members from interfaces or GUIDs into Nautobot interface records."""
+        """Resolve members from interfaces or GUIDs into DCIM interface records."""
         resolved, display = await resolve_members(stage_input.interfaces, stage_input.guids)
         return self.ResolveGuidsStageOutput(resolved=resolved, display=display)
 
@@ -307,7 +307,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
 
     # ------------------------------------------------------------------
-    # Stage 4: Remove OverlayAssignments in Nautobot
+    # Stage 4: Remove overlay assignments in the DCIM
     # ------------------------------------------------------------------
 
     class RemoveAssignmentsStageInput(StageInput):
@@ -326,7 +326,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
     async def remove_assignments(
         self, stage_input: RemoveAssignmentsStageInput
     ) -> RemoveAssignmentsStageOutput:
-        """Delete OverlayAssignment records in Nautobot for each interface."""
+        """Delete overlay assignment records in the DCIM for each interface."""
         result: RemovePKeyAssignmentsOutput = await workflow.execute_activity(
             remove_pkey_assignments,
             RemovePKeyAssignmentsInput(
@@ -343,7 +343,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
         )
 
     # ------------------------------------------------------------------
-    # Stage 5: Reconcile Nautobot when the partition is now empty
+    # Stage 5: Reconcile the DCIM when the partition is now empty
     # ------------------------------------------------------------------
 
     class CleanupPartitionStageInput(StageInput):
@@ -366,7 +366,7 @@ class IBPKeyMemberDeleteWorkflow(UFMHostLockMixin, WorkflowMetadataMixin, StageM
     async def cleanup_partition(
         self, stage_input: CleanupPartitionStageInput
     ) -> CleanupPartitionStageOutput:
-        """Delete the Nautobot PKey/Overlay when the partition has no members left.
+        """Delete the DCIM PKey/overlay when the partition has no members left.
 
         Mirrors UFM, which auto-removes a PKey once its last member leaves.
         """

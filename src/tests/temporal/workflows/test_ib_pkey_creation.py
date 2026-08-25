@@ -25,6 +25,7 @@ from temporalio.worker import Worker
 
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
 from nv_config_manager.temporal.ngc.activities.ib_nautobot import (
+    record_ib_pkey_in_dcim,
     record_ib_pkey_in_nautobot,
     resolve_ib_site_for_host,
 )
@@ -176,9 +177,26 @@ CREATION_ACTIVITIES = [
     validate_pkey_available,
     create_pkey_on_ufm,
     verify_pkey_created,
+    record_ib_pkey_in_dcim,
     record_ib_pkey_in_nautobot,
     publish_nats,
 ]
+
+
+def test_creation_output_accepts_legacy_pkey_identifier() -> None:
+    """Results written before the neutral alias remain deserializable."""
+    result = IBPKeyCreationWorkflowOutput.model_validate(
+        {
+            "pkey": "0x1234",
+            "auto_assigned": False,
+            "created": True,
+            "verified": True,
+            "pkey_data": {},
+            "nautobot_pkey_id": "pkey-1",
+        }
+    )
+
+    assert result.dcim_pkey_id == "pkey-1"
 
 
 @pytest.mark.asyncio
@@ -210,6 +228,7 @@ async def test_ib_pkey_creation_with_specific_pkey(mock_configs, time_skipping_e
             assert result.auto_assigned is False
             assert result.created is True
             assert result.verified is True
+            assert result.dcim_pkey_id == "pkey-1"
             assert result.nautobot_pkey_id == "pkey-1"
 
 

@@ -34,16 +34,16 @@ with workflow.unsafe.imports_passed_through():
         StageOutput,
         stage_executor,
     )
-    from nv_config_manager.temporal.ngc.activities.device import (
-        SwitchPortNeighborActivityInput,
-        load_neighbor_data_by_switch_port,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDeviceInput,
         SwitchPortByMacActivityInput,
         SwitchPortByMacActivityOutput,
         get_network_device,
         get_switch_port_by_remote_mac_address,
+    )
+    from nv_config_manager.temporal.ngc.activities.device import (
+        SwitchPortNeighborActivityInput,
+        load_neighbor_data_by_switch_port,
     )
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=3)
@@ -113,7 +113,7 @@ class PortLLDPInfoWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archi
             )
 
         if stage_input.remote_mac_address:
-            # Lookup from Nautobot
+            # Look up the device in the DCIM
             switch_port_data: SwitchPortByMacActivityOutput = await workflow.execute_activity(
                 get_switch_port_by_remote_mac_address,
                 SwitchPortByMacActivityInput(remote_mac_address=stage_input.remote_mac_address),

@@ -36,13 +36,13 @@ from nv_config_manager.temporal.common.workflow_references import (
 )
 
 with workflow.unsafe.imports_passed_through():
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        get_network_device,
+    )
     from nv_config_manager.temporal.ngc.activities.device import (
         NetworkDeviceData,
         get_device_intended_neighbors,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        get_network_device,
     )
     from nv_config_manager.temporal.ngc.activities.ufm import (
         GetUFMPortsInput,
@@ -210,7 +210,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
         primary_ip = device_result.device.host
 
         if not primary_ip:
-            raise ValueError("UFM device has no primary IP address set in Nautobot.")
+            raise ValueError("UFM device has no primary IP address set in the DCIM.")
 
         return InfinibandCableValidationWorkflow.GetUFMDeviceStageOutput(
             ufm_hostname=primary_ip,
@@ -253,7 +253,7 @@ class InfinibandCableValidationWorkflow(WorkflowMetadataMixin, StageMixin):
     ) -> GetSwitchDataStageOutput:
         """Execute switch data lookup."""
         if not stage_input.switch_device_ids:
-            raise ValueError("No switch device IDs provided for Nautobot lookup.")
+            raise ValueError("No switch device IDs provided for DCIM lookup.")
 
         switch_data: dict[str, dict] = {}
         switch_id_to_hostname: dict[str, str] = {}

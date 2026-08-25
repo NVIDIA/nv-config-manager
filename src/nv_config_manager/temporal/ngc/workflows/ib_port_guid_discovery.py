@@ -12,10 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Workflow: discover UFM port GUIDs and sync them onto Nautobot interfaces.
+"""Workflow: discover UFM port GUIDs and sync them onto DCIM interfaces.
 
 Per-UFM-host, dry-run by default. Pass dry_run=False to actually patch
-`dcim.interface.cf_ib_guid`. Uses Nautobot's cable topology to resolve
+`dcim.interface.cf_ib_guid`. Uses the DCIM provider's cable topology to resolve
 compute-side interfaces rather than relying on UFM node descriptions
 (OS hostnames on compute trays are not under our control).
 """
@@ -40,6 +40,10 @@ from nv_config_manager.temporal.common.workflow_references import (
 )
 
 with workflow.unsafe.imports_passed_through():
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        get_network_device,
+    )
     from nv_config_manager.temporal.ngc.activities.ib_guid_discovery import (
         DiscoverIBPortGuidsInput,
         DiscoverIBPortGuidsOutput,
@@ -48,10 +52,6 @@ with workflow.unsafe.imports_passed_through():
         SyncIBGuidOutput,
         discover_ib_port_guids,
         sync_ib_guid_on_interface,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        get_network_device,
     )
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(
@@ -88,7 +88,7 @@ class IBPortGuidDiscoveryResult(BaseModel):
 
 @workflow.defn
 class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
-    """Sync UFM-discovered IB port GUIDs onto matching Nautobot interfaces."""
+    """Sync UFM-discovered IB port GUIDs onto matching DCIM interfaces."""
 
     workflow_name = "InfiniBand Port GUID Discovery"
     workflow_description = (
@@ -126,7 +126,7 @@ class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
         ufm_device_id: str
 
     class ResolveUFMStageOutput(StageOutput):
-        """UFM hostname + site from Nautobot."""
+        """UFM hostname and site from the DCIM."""
 
         ufm_hostname: str
         site: str
@@ -159,7 +159,7 @@ class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
 
     @stage_executor("resolve_ufm")
     async def resolve_ufm(self, stage_input: ResolveUFMStageInput) -> ResolveUFMStageOutput:
-        """Resolve UFM device primary IP and site from Nautobot."""
+        """Resolve UFM device primary IP and site from the DCIM."""
         device_result = await workflow.execute_activity(
             get_network_device,
             GetNetworkDeviceInput(device_id=stage_input.ufm_device_id),
@@ -168,7 +168,7 @@ class IBPortGuidDiscoveryWorkflow(WorkflowMetadataMixin, StageMixin):
         )
 
         if not device_result.device.host:
-            raise ValueError("UFM device has no primary IP address set in Nautobot.")
+            raise ValueError("UFM device has no primary IP address set in the DCIM.")
 
         return IBPortGuidDiscoveryWorkflow.ResolveUFMStageOutput(
             ufm_hostname=device_result.device.host,
