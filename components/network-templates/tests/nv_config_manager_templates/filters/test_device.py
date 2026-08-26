@@ -334,6 +334,34 @@ def test_bgp_routing_instance_allows_a_vrf_without_peers() -> None:
     assert instance.peers == []
 
 
+def test_bgp_routing_instance_prefers_exact_default_vrf_match() -> None:
+    """An earlier non-default instance does not mask a later default instance."""
+    data = _render_device(
+        routing=RenderRoutingData(
+            bgp_instances=(
+                RenderBGPInstance(
+                    status="Active",
+                    asn="65001",
+                    router_id_interface="lo-blue",
+                    vrfs=("BLUE",),
+                ),
+                RenderBGPInstance(
+                    status="Active",
+                    asn="65002",
+                    router_id_interface="lo-default",
+                    vrfs=("default",),
+                ),
+            )
+        )
+    )
+
+    instance = bgp_routing_instance(data)
+
+    assert instance.asn == 65002
+    assert instance.interface == "lo-default"
+    assert instance.vrf == "default"
+
+
 def test_common_context_servers(public_leaf_data: dict) -> None:
     """Server context helpers load optional values from config context."""
     assert dns_servers(public_leaf_data) == ["192.0.2.8", "192.0.2.9"]

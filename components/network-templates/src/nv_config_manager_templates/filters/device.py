@@ -342,9 +342,11 @@ def console_server_ports(
 def bgp_routing_instance(value: DeviceRenderData, vrf: str = "default") -> BGPLocalConfig:
     """Return a local BGP configuration with its peers."""
     routing_instances = value.routing.bgp_instances
-    for instance in routing_instances:
-        if vrf not in instance.vrfs and not (vrf == "default" and len(routing_instances) == 1):
-            continue
+    instance = next((item for item in routing_instances if vrf in item.vrfs), None)
+    if instance is None and vrf == "default" and len(routing_instances) == 1:
+        instance = routing_instances[0]
+
+    if instance is not None:
         peers = tuple(peer for peer in instance.peers if peer.source_vrf == vrf)
         interface = _required(
             instance.router_id_interface,
