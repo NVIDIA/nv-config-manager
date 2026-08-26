@@ -147,9 +147,37 @@ nv set system aaa user admin password $6$newpassword"""
         assert len(result.valid_lines) == 2
 
     def test_junos_wrong_user_password_fails(self):
-        """Test that a Junos password change for a different user fails."""
+        """Test that a Junos password change for a different login user fails."""
         diff = (
-            "[edit system login user root authentication]\n"
+            "[edit system login user operator authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 2
+        assert len(result.valid_lines) == 0
+
+    def test_junos_root_platform_integration(self):
+        """Test the main validate_password_diff function rotating the root user."""
+        diff = (
+            "[edit system root-authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        input_data = ValidatePasswordDiffInput(diff=diff, username="root", platform="junos")
+
+        result = asyncio.run(validate_password_diff(input_data))
+        assert result.is_valid is True
+        assert len(result.invalid_lines) == 0
+        assert len(result.valid_lines) == 2
+
+    def test_junos_root_authentication_rejected_for_other_user(self):
+        """Test that a root-authentication change fails validation for a non-root target."""
+        diff = (
+            "[edit system root-authentication]\n"
             '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
             '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
         )

@@ -201,9 +201,16 @@ _JUNOS_PASSWORD_LINE_RE = re.compile(
 )
 
 
+def _junos_expected_path(username: str) -> str:
+    """Return the Junos config-diff path holding a user's encrypted-password."""
+    if username == "root":
+        return "system root-authentication"
+    return f"system login user {username} authentication"
+
+
 def _validate_junos_diff(diff: str, username: str) -> ValidatePasswordDiffOutput:
     """Validate a Junos hierarchical diff touches only the target user's encrypted-password."""
-    expected_path = f"system login user {username} authentication"
+    expected_path = _junos_expected_path(username)
     valid_lines: list[str] = []
     invalid_lines: list[str] = []
     current_path: str | None = None
