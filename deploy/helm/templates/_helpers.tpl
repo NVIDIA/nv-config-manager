@@ -192,6 +192,57 @@ https://{{ tpl .Values.nautobot.gateway.hostname . }}
 {{- end -}}
 
 {{/*
+Resolve the provider-neutral DCIM endpoint. External providers must state an
+endpoint directly; Nautobot inherits the historical configuration by default.
+*/}}
+{{- define "nv-config-manager.dcimServer" -}}
+{{- if .Values.dcim.server -}}
+{{- tpl .Values.dcim.server . -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
+{{- include "nv-config-manager.nautobotServer" . -}}
+{{- else -}}
+{{- fail "dcim.server is required when dcim.provider is not nautobot-2x" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimPublicUrl" -}}
+{{- if .Values.dcim.publicUrl -}}
+{{- tpl .Values.dcim.publicUrl . -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
+{{- include "nv-config-manager.nautobotPublicUrl" . -}}
+{{- else -}}
+{{- include "nv-config-manager.dcimServer" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimDisplayName" -}}
+{{- if .Values.dcim.displayName -}}
+{{- .Values.dcim.displayName -}}
+{{- else if eq (.Values.dcim.provider | default "nautobot-2x") "nautobot-2x" -}}
+Nautobot
+{{- else -}}
+{{- .Values.dcim.provider | default "DCIM" -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimVerify" -}}
+{{- $verify := .Values.dcim.verify -}}
+{{- if or (kindIs "bool" $verify) (ne $verify "") -}}
+{{- $verify -}}
+{{- else -}}
+{{- .Values.externalServices.nautobot.verify -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimCacheRefreshInterval" -}}
+{{- .Values.dcim.cacheRefreshInterval | default .Values.externalServices.nautobot.cacheRefreshInterval -}}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimCacheTtl" -}}
+{{- .Values.dcim.cacheTtl | default .Values.externalServices.nautobot.cacheTtl -}}
+{{- end -}}
+
+{{/*
 Get the Redis host based on whether local deployment is enabled
 */}}
 {{- define "nv-config-manager.redisHost" -}}
@@ -207,7 +258,7 @@ Get the Redis host based on whether local deployment is enabled
 Get the NATS server URL based on whether local deployment is enabled
 */}}
 {{- define "nv-config-manager.natsServer" -}}
-{{- if or .Values.externalServices.nats.local .Values.nautobot.enabled -}}
+{{- if or .Values.externalServices.nats.local .Values.nautobotNats.enabled -}}
 {{- $natsName := include "nv-config-manager.componentName" (dict "root" . "component" "nats") -}}
 nats://{{ $natsName }}:4222
 {{- else -}}
@@ -223,12 +274,10 @@ Nautobot common labels
 app.kubernetes.io/component: nautobot
 {{- end -}}
 
-{{/*
-Nautobot NATS common labels
-*/}}
+{{/* Bundled NATS common labels. The historical helper name is retained for compatibility. */}}
 {{- define "nv-config-manager.nautobot-nats.labels" -}}
 {{ include "nv-config-manager.labels" . }}
-app.kubernetes.io/component: nautobot-nats
+app.kubernetes.io/component: nats
 {{- end -}}
 
 {{/*
@@ -1010,6 +1059,108 @@ Usage: {{ include "nv-config-manager.templatePluginVolumes" . | nindent 6 }}
 - name: template-plugins-installed
   emptyDir: {}
 {{- end }}
+{{- end -}}
+
+{{/*
+=============================================================================
+DCIM Provider Package Helpers
+=============================================================================
+External DCIM providers are installed into an isolated shared volume. The
+provider image is the complete offline artifact: all provider and dependency
+wheels must be present under /plugin-wheels.
+=============================================================================
+*/}}
+
+{{- define "nv-config-manager.copyDCIMProviderImages" -}}
+{{- if .Values.dcim.providerPackages.enabled -}}
+{{- if not .Values.dcim.providerPackages.images -}}
+{{- fail "dcim.providerPackages.images is required when dcim.providerPackages.enabled is true" -}}
+{{- end -}}
+{{- range .Values.dcim.providerPackages.images }}
+{{- $name := required "dcim.providerPackages.images[].name is required" .name | lower | replace "_" "-" | trunc 45 | trimSuffix "-" }}
+- name: copy-dcim-provider-{{ $name }}
+  image: {{ required "dcim.providerPackages.images[].image is required" .image }}
+  imagePullPolicy: {{ .pullPolicy | default "IfNotPresent" }}
+  command: ["/bin/sh", "-c"]
+  args:
+  - |
+    set -e
+    if ! ls /plugin-wheels/*.whl >/dev/null 2>&1; then
+      echo "DCIM provider image does not contain /plugin-wheels/*.whl" >&2
+      exit 1
+    fi
+    target="/opt/dcim-provider-packages/{{ $name }}/wheels"
+    mkdir -p "$target"
+    cp -R /plugin-wheels/. "$target/"
+  volumeMounts:
+  - name: dcim-provider-packages-source
+    mountPath: /opt/dcim-provider-packages
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "nv-config-manager.installDCIMProviderPackages" -}}
+{{- if .Values.dcim.providerPackages.enabled }}
+- name: install-dcim-provider-packages
+  image: {{ .Values.dcim.providerPackages.installerImage | default "python:3.13-bookworm" }}
+  imagePullPolicy: IfNotPresent
+  command: ["/bin/sh", "-c"]
+  args:
+  - |
+    set -e
+    for package_dir in /opt/dcim-provider-packages/*; do
+      if [ ! -d "$package_dir/wheels" ]; then
+        continue
+      fi
+      echo "Installing offline DCIM provider wheels from $package_dir/wheels"
+      pip install --no-index --find-links="$package_dir/wheels" --target=/opt/dcim-providers "$package_dir"/wheels/*.whl
+    done
+    test -d /opt/dcim-providers
+  volumeMounts:
+  - name: dcim-provider-packages-source
+    mountPath: /opt/dcim-provider-packages
+    readOnly: true
+  - name: dcim-provider-packages-installed
+    mountPath: /opt/dcim-providers
+{{- end }}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimProviderPackageVolumes" -}}
+{{- if .Values.dcim.providerPackages.enabled }}
+- name: dcim-provider-packages-source
+  emptyDir: {}
+- name: dcim-provider-packages-installed
+  emptyDir: {}
+{{- end }}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimProviderPackageVolumeMount" -}}
+{{- if .Values.dcim.providerPackages.enabled }}
+- name: dcim-provider-packages-installed
+  mountPath: /opt/dcim-providers
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{- define "nv-config-manager.dcimProviderPythonPath" -}}
+{{- if .Values.dcim.providerPackages.enabled }}
+- name: PYTHONPATH
+  value: "/opt/dcim-providers:${PYTHONPATH:-}"
+{{- end }}
+{{- end -}}
+
+{{- define "nv-config-manager.pythonPluginPath" -}}
+{{- $paths := list -}}
+{{- if .Values.dcim.providerPackages.enabled -}}
+{{- $paths = append $paths "/opt/dcim-providers" -}}
+{{- end -}}
+{{- if .Values.renderService.templatePlugins.enabled -}}
+{{- $paths = append $paths "/opt/plugins" -}}
+{{- end -}}
+{{- if $paths }}
+- name: PYTHONPATH
+  value: "{{ join ":" $paths }}:${PYTHONPATH:-}"
+{{- end -}}
 {{- end -}}
 
 {{/*

@@ -20,7 +20,7 @@ import ipaddress
 import os
 import random
 import time as _time
-from typing import Any
+from typing import Any, cast
 
 import macaddress
 import netaddr
@@ -29,11 +29,11 @@ from jinja2.sandbox import SandboxedEnvironment, SecurityError
 
 from nv_config_manager.common.config import load_config
 from nv_config_manager.common.log import LogCategory, get_logger
+from nv_config_manager.dcim import DCIMClient
 from nv_config_manager.dhcp.metrics import (
     DHCP_CONFIG_GENERATION_DURATION,
     DHCP_CONFIG_GENERATION_ERRORS,
 )
-from nv_config_manager.dhcp.nautobot import NautobotClient
 from nv_config_manager.dhcp.redis import RedisClient
 
 logger = get_logger(__name__, category=LogCategory.DHCP_DATA)
@@ -314,7 +314,7 @@ def _build_subnet_config(
 
 
 async def _generate_automatic_dhcp_subnets_and_reservations(
-    nautobot_client: NautobotClient,
+    dcim_client: DCIMClient,
     dhcp_contexts: dict[str, dict[str, Any]],
     version: int = 4,
     site_dhcp_options: list[dict[str, Any]] | None = None,
@@ -322,7 +322,7 @@ async def _generate_automatic_dhcp_subnets_and_reservations(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Generate automatic DHCP subnet configurations and reservations from Nautobot data."""
     site_dhcp_options = site_dhcp_options or []
-    dhcp_subnets = await nautobot_client.load_auto_dhcp_subnets(
+    dhcp_subnets = await dcim_client.get_dhcp_auto_subnets(
         family=version, is_aggregate_managed=is_aggregate_managed
     )
 
@@ -705,7 +705,7 @@ def _extract_hooks_path(kea_config: dict[str, Any], version: int = 4) -> str:
 
 
 async def generate_config(
-    nautobot_client: NautobotClient,
+    dcim_client: DCIMClient,
     redis_client: RedisClient | None = None,
     version: int = 4,
     kea_config: dict[str, Any] | None = None,
@@ -713,7 +713,7 @@ async def generate_config(
     """Generate a KEA DHCP Configuration.
 
     Args:
-        nautobot_client: Client for fetching data from Nautobot
+        dcim_client: Provider client for fetching normalized DHCP data
         redis_client: Optional Redis client for preserving subnet IDs
         version: DHCP version (4 or 6)
         kea_config: Optional existing Kea config to extract hooks path from
@@ -725,8 +725,9 @@ async def generate_config(
     # Get hooks path from existing Kea config (architecture-specific path set at build time)
     hooks_path = _extract_hooks_path(kea_config or {}, version)
 
-    site_dhcp_options_data = await nautobot_client.load_site_dhcp_options()
-    site_dhcp_options = site_dhcp_options_data.get(f"Dhcp{version}", {}).get("option-def", [])
+    site_dhcp_options_data = await dcim_client.get_dhcp_site_options()
+    family_options = cast(dict[str, Any], site_dhcp_options_data.get(f"Dhcp{version}", {}))
+    site_dhcp_options = family_options.get("option-def", [])
     dhcp_key = f"Dhcp{version}"
     dhcp_config = {
         dhcp_key: {
@@ -754,14 +755,14 @@ async def generate_config(
         }
     }
 
-    static_data = await nautobot_client.load_static_data()
-    dhcp_contexts = await nautobot_client.load_dhcp_contexts(is_aggregate_managed=is_aggregate)
+    static_data = await dcim_client.get_dhcp_static_data()
+    dhcp_contexts = await dcim_client.get_dhcp_contexts(is_aggregate_managed=is_aggregate)
 
     (
         auto_subnets,
         auto_subnet_reservations,
     ) = await _generate_automatic_dhcp_subnets_and_reservations(
-        nautobot_client,
+        dcim_client,
         dhcp_contexts,
         version,
         site_dhcp_options,

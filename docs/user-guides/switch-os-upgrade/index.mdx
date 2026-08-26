@@ -6,6 +6,12 @@ position: 10
 
 The Switch OS Upgrade workflow upgrades a single Cumulus Linux switch to a new firmware version. It computes the version delta against the device's intended firmware in Nautobot, pauses for a human to approve the upgrade, backs up the current configuration, updates device-context state, drives the image install + reboot + ZTP cycle, and validates that the device came back on the right version. Multiple short-circuit paths exit safely when no work is required.
 
+<Note>
+The workflow uses the selected DCIM provider's normalized firmware-intent and
+device-state operations. References to Nautobot on this page describe the
+bundled provider's data mapping, not a workflow dependency.
+</Note>
+
 For NVLink switches, use [NVLink Switch Firmware Upgrade](../nvlink-switch-firmware-upgrade/index.mdx) instead.
 
 ## Prerequisites

@@ -270,6 +270,25 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
+      - name: Bundled NATS without Nautobot render
+        run: |
+          helm template test deploy/helm/ \
+            --values deploy/helm/values-ci.yaml \
+            --set-string dcim.provider=netbox \
+            --set-string dcim.server=https://netbox.example.com \
+            --set-string dcim.publicUrl=https://netbox.example.com \
+            --set nautobot.enabled=false \
+            --set externalServices.nautobot.local=false \
+            --set externalServices.nats.local=true \
+            --set-string externalServices.nats.authMethod=password \
+            --set-string secrets.vault.paths.dcim.path=nv-config-manager/ci/dcim \
+            --set-string secrets.vault.paths.nats.path=nv-config-manager/ci/nats \
+            >/tmp/nvcm-external-dcim.yaml
+          grep -q '^  name: test-nv-config-manager-nats$' /tmp/nvcm-external-dcim.yaml
+          if grep -q '^  name: test-nv-config-manager-nautobot$' /tmp/nvcm-external-dcim.yaml; then
+            echo "ERROR: Nautobot rendered for an external DCIM deployment"
+            exit 1
+          fi
       - name: Temporal codec CORS render
         run: |
           expected="cors_origins = https://ci.config-manager.example.com,https://temporal.ci.config-manager.example.com"

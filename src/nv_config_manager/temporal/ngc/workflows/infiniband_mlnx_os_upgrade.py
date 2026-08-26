@@ -33,7 +33,7 @@ from nv_config_manager.temporal.common.mixins.stage import (
 from nv_config_manager.temporal.common.workflow_references import DeviceReference
 
 with workflow.unsafe.imports_passed_through():
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDeviceInput,
         get_network_device,
     )
@@ -186,7 +186,7 @@ class InfinibandMlnxOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin):
         )
         self.define_stage(
             name="get_device_info",
-            description="Get device information from Nautobot.",
+            description="Get device information from the DCIM.",
             requires_approval=False,
             depends_on=[],
         )
@@ -261,7 +261,7 @@ class InfinibandMlnxOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin):
         )
 
         if not device_result.device.host:
-            raise ValueError("Device has no primary IP address set in Nautobot.")
+            raise ValueError("Device has no primary IP address set in the DCIM.")
 
         return InfinibandMlnxOSUpgradeWorkflow.GetDeviceInfoStageOutput(
             device_data=device_result.device,

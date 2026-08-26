@@ -174,7 +174,6 @@ async def mock_check_recorded_config_drift(activity_input: CheckRecordedConfigDr
 
 
 @pytest.mark.asyncio
-@patch("nv_config_manager.temporal.ngc.activities.nautobot.NautobotClient")
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
     "nv_config_manager.temporal.ngc.workflows.os_upgrade.DEFAULT_ACTIVITY_RETRY_POLICY",
@@ -184,7 +183,6 @@ async def mock_check_recorded_config_drift(activity_input: CheckRecordedConfigDr
 async def test_execute_workflow(
     mock_timedelta,
     mock_time,
-    mock_nb_client,
     env,
 ):
     task_queue_name = str(uuid.uuid4())
@@ -278,7 +276,6 @@ async def test_execute_workflow(
 
 
 @pytest.mark.asyncio
-@patch("nv_config_manager.temporal.ngc.activities.nautobot.NautobotClient")
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 @patch(
     "nv_config_manager.temporal.ngc.workflows.os_upgrade.DEFAULT_ACTIVITY_RETRY_POLICY",
@@ -288,7 +285,6 @@ async def test_execute_workflow(
 async def test_execute_workflow_with_config_drift(
     mock_timedelta,
     mock_time,
-    mock_nb_client,
     env,
 ):
     task_queue_name = str(uuid.uuid4())

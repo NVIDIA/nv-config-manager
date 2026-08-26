@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+
+from nv_config_manager_dcim.render import RenderVrf
 
 from nv_config_manager_templates.filters import FilterException
 
@@ -33,21 +34,17 @@ class VRF:
     import_targets: tuple[str, ...]
 
     @staticmethod
-    def from_nautobot_graphql(entry: dict[str, Any]) -> VRF | None:
-        """Craft a VRF object from Graphql."""
-        if entry["name"] == "NSV":
-            return None
-
-        vni = entry["rd"]
-        # These can be null, so we have to do the or instead of handle it in the get
-        export_targets = tuple(target["name"] for target in entry.get("export_targets") or [])
-        import_targets = tuple(target["name"] for target in entry.get("import_targets") or [])
+    def from_render_data(entry: RenderVrf) -> VRF | None:
+        """Create a VRF object from normalized render data."""
+        vni = entry.route_distinguisher
+        export_targets = tuple(target.name for target in entry.export_targets)
+        import_targets = tuple(target.name for target in entry.import_targets)
 
         if not (vni and re.match(r"^\*\:\d+$", vni)):
-            raise FilterException(f"Invalid RD set on VRF {entry['name']}.")
+            raise FilterException(f"Invalid RD set on VRF {entry.name}.")
 
         # Strip site name from VRF name (e.g., "SITE_VRFNAME" becomes "VRFNAME")
-        vrf_name = entry["name"]
+        vrf_name = entry.name
         if "_" in vrf_name:
             vrf_name = vrf_name.split("_")[1]
 

@@ -15,6 +15,7 @@
 """Location filter tests."""
 
 import pytest
+from nv_config_manager_dcim import LocationRenderData, RenderLocation
 
 from nv_config_manager_templates.filters import FilterException
 from nv_config_manager_templates.filters.location import location_has_tag, site_aggregates
@@ -31,17 +32,27 @@ def test_site_aggregates(public_location_data: dict) -> None:
 
 def test_location_has_tag() -> None:
     """Location tag helper handles missing and present location tags."""
-    assert location_has_tag({"data": {}}, "non-forge-managed") is False
     assert (
         location_has_tag(
-            {"data": {"locations": [{"tags": [{"name": "non-forge-managed"}]}]}},
+            LocationRenderData(location=RenderLocation(name="TEST-SITE", kind="Site")),
+            "non-forge-managed",
+        )
+        is False
+    )
+    assert (
+        location_has_tag(
+            LocationRenderData(
+                location=RenderLocation(name="TEST-SITE", kind="Site", tags=("non-forge-managed",))
+            ),
             "non-forge-managed",
         )
         is True
     )
     assert (
         location_has_tag(
-            {"data": {"locations": [{"tags": [{"name": "non-forge-managed"}]}]}},
+            LocationRenderData(
+                location=RenderLocation(name="TEST-SITE", kind="Site", tags=("non-forge-managed",))
+            ),
             "missing",
         )
         is False

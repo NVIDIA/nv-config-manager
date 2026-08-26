@@ -19,12 +19,16 @@ from __future__ import annotations
 from unittest.mock import Mock, patch
 
 import pytest
-from textual.widgets import Input, RadioButton
+from textual.app import ComposeResult
+from textual.containers import Container
+from textual.widgets import Input, Label, RadioButton
 
-from nv_config_manager_installer.deployer import DeployOptions
+from nv_config_manager_installer.deployer import Deployer, DeployOptions, DeployStep
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     ClusterConfig,
     ImageSource,
+    NATSAuthMethod,
     NetworkSecretEntry,
     NVConfigManagerInstallConfig,
     PasswordSource,
@@ -170,6 +174,29 @@ async def test_external_temporal_screen_revalidates_form_values():
 
 
 @pytest.mark.asyncio
+async def test_external_services_separates_nautobot_and_nats() -> None:
+    config = NVConfigManagerInstallConfig()
+    app = NVConfigManagerInstallerApp(config=config)
+
+    async with app.run_test():
+        app.switch_section("external_services")
+        screen = app._screens["external_services"]
+
+        assert not screen.query("#ext-dcim-provider")
+        screen.query_one("#ext-nautobot-enabled", LabeledSwitch).value = False
+        screen.query_one("#ext-nats-enabled", LabeledSwitch).value = True
+        screen.query_one("#ext-nats-server", Input).value = "nats://nats.example.com:4222"
+        screen.query_one("#ext-nats-auth-method").value = NATSAuthMethod.JWT.value
+        screen.write_to_config(config)
+
+        assert config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER
+        assert config.services.nautobot is True
+        assert config.external_services.nats.enabled is True
+        assert config.external_services.nats.server == "nats://nats.example.com:4222"
+        assert config.external_services.nats.auth_method == NATSAuthMethod.JWT
+
+
+@pytest.mark.asyncio
 async def test_sites_list_in_cluster_section():
     """Sites list widget should be present in the cluster section."""
     config = NVConfigManagerInstallConfig(sites=[SiteConfig(name="dc01")])
@@ -217,6 +244,7 @@ async def test_deployment_start_selects_local_image_source(
     app = NVConfigManagerInstallerApp(config=config)
     deployer = Mock()
     deployer.return_value.steps = []
+    deployer.create_steps.return_value = []
     monkeypatch.setattr("nv_config_manager_installer.tui.screens.deploy.Deployer", deployer)
     monkeypatch.setattr(DeployScreen, "_collect_deploy_options", lambda self: options)
     monkeypatch.setattr(DeployScreen, "_run_deploy", lambda self: None)
@@ -230,6 +258,62 @@ async def test_deployment_start_selects_local_image_source(
 
     assert deployed_config.images.source == ImageSource.LOCAL
     assert deployed_options is options
+
+
+@pytest.mark.asyncio
+async def test_derived_installer_can_add_screen_and_select_deployer() -> None:
+    class ProviderConfig(NVConfigManagerInstallConfig):
+        provider_setting: str = "netbox-value"
+
+    class ProviderDeployer(Deployer):
+        CONFIG_MODEL = ProviderConfig
+
+        @classmethod
+        def create_steps(cls) -> list[DeployStep]:
+            return [DeployStep("provider", "Configure external provider")]
+
+    class ProviderDeployScreen(DeployScreen):
+        def deployer_class(self) -> type[Deployer]:
+            return ProviderDeployer
+
+    class ProviderScreen(Container):
+        def __init__(self, config: NVConfigManagerInstallConfig, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+            self._config = config
+
+        def compose(self) -> ComposeResult:
+            yield Label("Provider configuration")
+
+        def get_status(self, config: NVConfigManagerInstallConfig) -> str:
+            return "[*]"
+
+    class ProviderInstallerApp(NVConfigManagerInstallerApp):
+        CONFIG_MODEL = ProviderConfig
+        SECTION_LABELS = (
+            *NVConfigManagerInstallerApp.SECTION_LABELS[:-1],
+            ("provider", "Provider"),
+            NVConfigManagerInstallerApp.SECTION_LABELS[-1],
+        )
+        SCREEN_CLASSES = {
+            **NVConfigManagerInstallerApp.SCREEN_CLASSES,
+            "provider": ProviderScreen,
+            "deploy": ProviderDeployScreen,
+        }
+
+    config = ProviderConfig()
+    app = ProviderInstallerApp(config=config)
+    async with app.run_test():
+        app.switch_section("provider")
+        assert isinstance(app._screens["provider"], ProviderScreen)
+
+        deploy_screen = app._screens["deploy"]
+        assert isinstance(deploy_screen, ProviderDeployScreen)
+        assert deploy_screen._get_initial_steps()[0].id == "provider"
+
+        deployer = deploy_screen.create_deployer(config, DeployOptions(), Mock())
+        assert isinstance(deployer, ProviderDeployer)
+        assert isinstance(deployer.config, ProviderConfig)
+        assert deployer.config.provider_setting == "netbox-value"
 
 
 @pytest.mark.asyncio

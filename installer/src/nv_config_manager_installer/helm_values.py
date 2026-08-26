@@ -29,6 +29,7 @@ import yaml
 
 from nv_config_manager_installer.accounts import build_eso_config_secrets
 from nv_config_manager_installer.schema import (
+    BUILT_IN_NAUTOBOT_PROVIDER,
     NV_CONFIG_MANAGER_IMAGE_KEYS,
     ExternalPostgresConfig,
     ImageSource,
@@ -213,6 +214,11 @@ _STRING_IMAGE_DEFAULTS: dict[str, tuple[tuple[str, ...], str, str]] = {
         ("renderService", "templatePlugins", "installerImage"),
         "docker.io/library/python",
         "3.13-alpine",
+    ),
+    "dcimProviderInstaller": (
+        ("dcim", "providerPackages", "installerImage"),
+        "docker.io/library/python",
+        "3.13-bookworm",
     ),
     "envoyProxy": (
         ("gateway", "envoyProxy", "image"),
@@ -645,8 +651,25 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
         ext["nautobot"] = {"local": True, "localServer": "http://nautobot-nv-config-manager"}
     elif svc.external_nautobot_url:
         ext["nautobot"] = {"local": False, "server": svc.external_nautobot_url}
+    elif config.dcim.provider == BUILT_IN_NAUTOBOT_PROVIDER and config.dcim.server:
+        ext["nautobot"] = {"local": False, "server": config.dcim.server}
+    elif config.dcim.provider != BUILT_IN_NAUTOBOT_PROVIDER:
+        # Retain a disabled compatibility section for templates that still
+        # carry Nautobot deployment settings but are not used by this provider.
+        ext["nautobot"] = {"local": False}
 
-    if svc.nautobot:
+    nats = es.nats
+    if nats.enabled:
+        ext["nats"] = {
+            "server": nats.server,
+            "authMethod": nats.auth_method.value,
+            "local": False,
+            "user": nats.user,
+            "secretName": nats.secret_name,
+            "externalSecretName": nats.external_secret_name,
+            "credsPath": nats.creds_path,
+        }
+    else:
         ext["nats"] = {
             "server": "nats://nv-config-manager@nats:4222",
             "authMethod": "password",
@@ -671,6 +694,47 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
         ext["slack"] = {"channel": es.slack.channel}
 
     return ext
+
+
+def _build_dcim(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
+    """Build provider-neutral chart values from the installer configuration."""
+    dcim = config.dcim
+    section: dict[str, Any] = {
+        "provider": dcim.provider,
+        "tokenSecret": {
+            "name": dcim.token_secret_name,
+            "key": dcim.token_secret_key,
+        },
+    }
+    if dcim.server:
+        section["server"] = dcim.server
+    if dcim.public_url:
+        section["publicUrl"] = dcim.public_url
+    if dcim.display_name:
+        section["displayName"] = dcim.display_name
+    if dcim.verify != "":
+        section["verify"] = dcim.verify
+    if dcim.cache_refresh_interval:
+        section["cacheRefreshInterval"] = dcim.cache_refresh_interval
+    if dcim.cache_ttl:
+        section["cacheTtl"] = dcim.cache_ttl
+    if dcim.event_stream or dcim.event_subject:
+        section["events"] = {"stream": dcim.event_stream, "subject": dcim.event_subject}
+    if dcim.options:
+        section["options"] = dict(dcim.options)
+    if dcim.provider_packages:
+        section["providerPackages"] = {
+            "enabled": True,
+            "images": [
+                {
+                    "name": package.name,
+                    "image": package.image,
+                    "pullPolicy": package.pull_policy,
+                }
+                for package in dcim.provider_packages
+            ],
+        }
+    return section
 
 
 def _build_config_secrets(config: NVConfigManagerInstallConfig, values: dict[str, Any]) -> None:
@@ -913,6 +977,7 @@ def build_values(
     }
 
     _build_oidc(config, values)
+    values["dcim"] = _build_dcim(config)
     values["externalServices"] = _build_external_services(config)
 
     render_section: dict[str, Any] = {
@@ -964,22 +1029,18 @@ def build_values(
     values["temporal"] = temporal_section
     values["rbac"] = _build_rbac(config)
     values["configStore"] = {"enabled": svc.config_store, "client": {"useInternalEndpoint": True}}
-    has_nautobot = svc.nautobot or bool(svc.external_nautobot_url)
     mcp_forward_resource = config.sso.provider != SSOProvider.AZURE
     values["mcp"] = {
-        "enabled": has_nautobot and svc.temporal and svc.config_store and svc.dhcp,
+        "enabled": svc.temporal and svc.config_store and svc.dhcp,
         "auth": {"oauth": {"forwardResourceParameter": mcp_forward_resource}},
     }
     values["nautobot"] = _build_nautobot(config)
 
-    nats: dict[str, Any] = {"enabled": False}
-    if svc.nautobot:
-        nats = {
-            "enabled": True,
-            "jetstream": {"enabled": True},
-            "natsReady": {"enabled": True, "useNatsCli": True},
-        }
-    values["nautobotNats"] = nats
+    values["nautobotNats"] = {
+        "enabled": not config.external_services.nats.enabled,
+        "jetstream": {"enabled": True},
+        "natsReady": {"enabled": True, "useNatsCli": True},
+    }
 
     values["cnpg"] = _build_cnpg(config)
 

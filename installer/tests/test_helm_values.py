@@ -26,6 +26,9 @@ from nv_config_manager_installer.schema import (
     NV_CONFIG_MANAGER_IMAGE_KEYS,
     ClusterConfig,
     ContentConfig,
+    DCIMConfig,
+    DCIMProviderPackage,
+    ExternalNATSConfig,
     ExternalServicesConfig,
     ExternalTemporalConfig,
     GatewayType,
@@ -43,6 +46,7 @@ from nv_config_manager_installer.schema import (
     LBProvider,
     LoadBalancerConfig,
     MonitoringConfig,
+    NATSAuthMethod,
     NVConfigManagerInstallConfig,
     RBACConfig,
     RedfishConfig,
@@ -113,6 +117,7 @@ class TestGenerateHelmValues:
         assert values["global"]["baseDomain"] == "test.example.com"
         assert values["global"]["environment"] == "prod"
         assert values["secrets"]["method"] == "kubernetes"
+        assert values["dcim"]["provider"] == "nautobot-2x"
 
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is True
@@ -282,15 +287,18 @@ class TestGenerateHelmValues:
 
     def test_nautobot_disabled(self):
         config = _make_config(
-            services=ServicesConfig(nautobot=False),
+            services=ServicesConfig(
+                nautobot=False,
+                external_nautobot_url="https://nb.example.com",
+            ),
             content=ContentConfig(jobs=[]),
         )
         values = _gen(config)
 
         assert values["nautobot"]["enabled"] is False
         assert "admin" not in values["nautobot"]
-        assert values["nautobotNats"]["enabled"] is False
-        assert "server" not in values["externalServices"].get("nats", {})
+        assert values["nautobotNats"]["enabled"] is True
+        assert values["externalServices"]["nats"]["local"] is True
 
     def test_cnpg_per_database_clusters(self):
         values = _gen(_make_config())
@@ -801,9 +809,85 @@ class TestGenerateHelmValues:
         ext = values["externalServices"]
         assert ext["nautobot"]["local"] is False
         assert ext["nautobot"]["server"] == "https://nb.prod.example.com"
-        assert "server" not in ext.get("nats", {})
+        assert ext["nats"]["local"] is True
         assert ext["redis"]["local"] is True
         assert ext["postgres"]["temporal"]["host"] == "cluster-temporal-rw"
+        assert values["mcp"]["enabled"] is True
+
+    def test_external_nats_is_independent_of_bundled_nautobot(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                nats=ExternalNATSConfig(
+                    enabled=True,
+                    server="nats://nats.prod.example.com:4222",
+                    auth_method=NATSAuthMethod.JWT,
+                    creds_path="/etc/nats/prod.creds",
+                )
+            )
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["nautobot"]["local"] is True
+        assert values["externalServices"]["nats"] == {
+            "server": "nats://nats.prod.example.com:4222",
+            "authMethod": "JWT",
+            "local": False,
+            "user": "nv-config-manager",
+            "secretName": "",
+            "externalSecretName": "",
+            "credsPath": "/etc/nats/prod.creds",
+        }
+        assert values["nautobotNats"]["enabled"] is False
+
+    def test_external_dcim_values_use_generic_configuration(self):
+        config = _make_config(
+            dcim=DCIMConfig(
+                provider="synthetic",
+                server="https://synthetic.example",
+                public_url="https://synthetic-ui.example",
+                display_name="Synthetic DCIM",
+                event_stream="synthetic-dcim",
+                event_subject="synthetic.change",
+                options={"tenant": "lab"},
+                token_secret_name="synthetic-dcim-token",
+                token_secret_key="access-token",
+                provider_packages=[
+                    DCIMProviderPackage(
+                        name="synthetic",
+                        image="registry.example/synthetic-provider:1.0",
+                    )
+                ],
+            ),
+            services=ServicesConfig(nautobot=False),
+            content=ContentConfig(jobs=[]),
+        )
+
+        values = _gen(config)
+
+        assert values["dcim"] == {
+            "provider": "synthetic",
+            "server": "https://synthetic.example",
+            "publicUrl": "https://synthetic-ui.example",
+            "displayName": "Synthetic DCIM",
+            "events": {"stream": "synthetic-dcim", "subject": "synthetic.change"},
+            "tokenSecret": {"name": "synthetic-dcim-token", "key": "access-token"},
+            "options": {"tenant": "lab"},
+            "providerPackages": {
+                "enabled": True,
+                "images": [
+                    {
+                        "name": "synthetic",
+                        "image": "registry.example/synthetic-provider:1.0",
+                        "pullPolicy": "IfNotPresent",
+                    }
+                ],
+            },
+        }
+        assert values["externalServices"]["nautobot"] == {"local": False}
+        assert values["externalServices"]["nats"]["local"] is True
+        assert values["nautobotNats"]["enabled"] is True
+        assert values["nautobot"]["enabled"] is False
         assert values["mcp"]["enabled"] is True
 
 
@@ -1006,6 +1090,10 @@ class TestImagesInHelmValues:
         assert (
             values["renderService"]["templatePlugins"]["installerImage"]
             == "registry.example.com/nv-config-manager/library/python:3.13-alpine"
+        )
+        assert (
+            values["dcim"]["providerPackages"]["installerImage"]
+            == "registry.example.com/nv-config-manager/library/python:3.13-bookworm"
         )
         assert (
             values["gateway"]["envoyProxy"]["image"]

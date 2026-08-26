@@ -14,4 +14,4 @@
 # limitations under the License.
 """NVIDIA Config Manager Network Template Library."""
 
-__all__ = ["render", "nautobot", "filters", "cli"]
+__all__ = ["cli", "filters", "models", "render"]

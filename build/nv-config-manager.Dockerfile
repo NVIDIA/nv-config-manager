@@ -45,6 +45,10 @@ ARG TEMPLATE_ENGINE_VERSION=""
 COPY pyproject.toml uv.lock README.md /code/nv-config-manager/
 COPY src/nv_config_manager/ /code/nv-config-manager/src/nv_config_manager/
 COPY src/tests/ /code/nv-config-manager/src/tests/
+COPY components/dcim/pyproject.toml components/dcim/README.md /code/nv-config-manager/components/dcim/
+COPY components/dcim/src/ /code/nv-config-manager/components/dcim/src/
+COPY components/dcim-nautobot-2x/pyproject.toml components/dcim-nautobot-2x/README.md /code/nv-config-manager/components/dcim-nautobot-2x/
+COPY components/dcim-nautobot-2x/src/ /code/nv-config-manager/components/dcim-nautobot-2x/src/
 COPY components/network-templates/pyproject.toml components/network-templates/README.md /code/nv-config-manager/components/network-templates/
 COPY components/network-templates/src/ /code/nv-config-manager/components/network-templates/src/
 COPY db/migrations/ /code/nv-config-manager/db/migrations/

@@ -74,18 +74,18 @@ with workflow.unsafe.imports_passed_through():
         validate_device_neighbors,
     )
     from nv_config_manager.temporal.ngc.activities.config import build_workflow_url, get_ui_base_url
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        GetNetworkDevicesInput,
+        get_network_device,
+        get_network_devices,
+    )
     from nv_config_manager.temporal.ngc.activities.device import (
         get_device_actual_neighbors,
         get_device_arp_table,
         get_device_intended_neighbors,
         get_device_mac_table,
         validate_hostname,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        GetNetworkDevicesInput,
-        get_network_device,
-        get_network_devices,
     )
 
 
@@ -223,7 +223,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
     async def get_devices_to_validate(
         self, stage_input: SiteCableValidationWorkflow.GetDevicesStageInput
     ) -> SiteCableValidationWorkflow.GetDevicesStageOutput:
-        """Get all devices to validate from nautobot."""
+        """Get all devices to validate from the DCIM."""
         result = await workflow.execute_activity(
             get_network_devices,
             GetNetworkDevicesInput(
@@ -239,7 +239,7 @@ class SiteCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         if not result.devices:
-            platform_names = [p.dcim_name for p in SUPPORTED_PLATFORMS]
+            platform_names = [platform.value for platform in SUPPORTED_PLATFORMS]
             display = (
                 "No devices found matching the specified filters "
                 f"(location={stage_input.site}, roles={stage_input.roles}, "
@@ -496,13 +496,13 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
         )
         self.define_stage(
             name="validate_device_hostname",
-            description="Ensure device hostnames match nautobot",
+            description="Ensure device hostnames match the DCIM",
             requires_approval=False,
             depends_on=["get_device_data"],
         )
         self.define_stage(
             name="get_device_intended_neighbors",
-            description="Get the list of intended connected interfaces from nautobot",
+            description="Get the list of intended connected interfaces from the DCIM",
             requires_approval=False,
             depends_on=["validate_device_hostname"],
         )
@@ -544,7 +544,7 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     async def get_device_intended_neighbors(
         self, stage_input: IntendedNeighborStageInput
     ) -> IntendedNeighborStageOutput:
-        """Get intended connections from nautobot."""
+        """Get intended connections from the DCIM."""
         result = await workflow.execute_activity(
             get_device_intended_neighbors,
             stage_input.device,
@@ -574,7 +574,7 @@ class DeviceCableValidationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMix
     async def get_device_data(
         self, stage_input: NetworkDeviceDataStageInput
     ) -> NetworkDeviceDataStageOutput:
-        """Get device data from nautobot."""
+        """Get device data from the DCIM."""
         if stage_input.device:
             # When called from another workflow, this may already be present
             device = stage_input.device

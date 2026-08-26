@@ -35,6 +35,10 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.client.device import DiffValidationError
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        get_network_device,
+    )
     from nv_config_manager.temporal.ngc.activities.deploy import (
         ConfigApplyActivityInput,
         DiffActivityInput,
@@ -50,10 +54,6 @@ with workflow.unsafe.imports_passed_through():
         get_password_mappings,
         validate_password_diff,
         validate_platform_support,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        get_network_device,
     )
     from nv_config_manager.temporal.ngc.workflows.backup import (
         BackupInput,
@@ -145,7 +145,7 @@ class DevicePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMi
             start_to_close_timeout=timedelta(minutes=1),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
-        # Add device search attributes the first time we pull them from nautobot
+        # Add device search attributes the first time we pull them from the DCIM
         DeviceMixin.attach_device_search_attributes(result.device)
 
         # Load the intended configuration

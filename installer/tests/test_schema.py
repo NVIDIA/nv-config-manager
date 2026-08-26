@@ -26,6 +26,7 @@ from nv_config_manager_installer.schema import (
     ClusterConfig,
     CNPGBackupConfig,
     ContentConfig,
+    DCIMConfig,
     DeploySize,
     ExternalPostgresConfig,
     ExternalRedisConfig,
@@ -70,6 +71,7 @@ class TestNVConfigManagerInstallConfig:
         assert config.secrets.method == SecretsMethod.KUBERNETES
         assert config.secrets.config_manager_service_username == "nv-config-manager"
         assert config.services.render is True
+        assert config.dcim.provider == "nautobot-2x"
 
     def test_external_temporal_mtls_requires_address_and_secret(self):
         with pytest.raises(ValueError, match="requires an address"):
@@ -351,6 +353,44 @@ class TestNVConfigManagerInstallConfig:
         )
         assert config.services.nautobot is False
         assert config.services.external_nautobot_url == "https://nb.example.com"
+
+    def test_external_nautobot_requires_server(self):
+        with pytest.raises(ValueError, match="dcim.server or services.external_nautobot_url"):
+            NVConfigManagerInstallConfig(services=ServicesConfig(nautobot=False))
+
+        config = NVConfigManagerInstallConfig(
+            dcim=DCIMConfig(server="https://nb.example.com"),
+            services=ServicesConfig(nautobot=False),
+        )
+
+        assert config.dcim.server == "https://nb.example.com"
+
+    def test_external_dcim_requires_disabled_nautobot_and_server(self):
+        with pytest.raises(ValueError, match="services.nautobot=false"):
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic", server="https://dcim")
+            )
+
+        with pytest.raises(ValueError, match="dcim.server is required"):
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic"),
+                services=ServicesConfig(nautobot=False),
+            )
+
+        config = NVConfigManagerInstallConfig(
+            dcim=DCIMConfig(provider="synthetic", server="https://synthetic.example"),
+            services=ServicesConfig(nautobot=False),
+        )
+
+        assert config.dcim.provider == "synthetic"
+
+    def test_external_dcim_eso_requires_provider_secret_path(self):
+        with pytest.raises(ValueError, match="paths.dcim.enabled"):
+            NVConfigManagerInstallConfig(
+                dcim=DCIMConfig(provider="synthetic", server="https://synthetic.example"),
+                services=ServicesConfig(nautobot=False),
+                secrets=SecretsConfig(method=SecretsMethod.ESO),
+            )
 
 
 class TestImagesConfig:

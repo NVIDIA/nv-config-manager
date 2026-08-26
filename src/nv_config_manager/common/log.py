@@ -48,6 +48,7 @@ class LogCategory:
     TEMPORAL_ACTIVITY = "temporal.activity"
     TEMPORAL_API = "temporal.api"
     TEMPORAL_AUDIT = "temporal.audit"
+    DCIM = "dcim"
     NAUTOBOT = "nautobot"
     AUTH = "auth"
     API = "api"  # Deprecated: use per-service variants (RENDER_API, etc.)

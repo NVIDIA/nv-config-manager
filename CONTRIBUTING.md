@@ -8,6 +8,7 @@ Thank you for your interest in contributing to NVIDIA Config Manager! This docum
 - [Cryptographically Signing Commits](#cryptographically-signing-commits)
 - [Getting Started](#getting-started)
 - [How to Contribute](#how-to-contribute)
+- [Contributing a DCIM Provider](#contributing-a-dcim-provider)
 - [Pull Request Process](#pull-request-process)
 - [Coding Standards](#coding-standards)
 - [License](#license)
@@ -199,6 +200,13 @@ force-pushing it.
 3. Update documentation if applicable
 4. Sign off all commits as described above
 5. Submit a pull request
+
+### Contributing a DCIM Provider
+
+DCIM providers are standalone packages that depend on the provider-neutral SDK
+rather than on Config Manager service code. Follow the [DCIM provider
+contribution guide](docs/development/contributing-dcim-provider.mdx) for the
+entry-point, Pydantic model, event, render-data, and test contract.
 
 ## Pull Request Process
 

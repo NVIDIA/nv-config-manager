@@ -45,14 +45,14 @@ with workflow.unsafe.imports_passed_through():
         persist_config_backup,
         record_backup_config_manager_plugin,
     )
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        get_network_device,
+    )
     from nv_config_manager.temporal.ngc.activities.deploy import (
         DiffActivityInput,
         load_intended_configuration,
         perform_candidate_diff,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        get_network_device,
     )
     from nv_config_manager.temporal.ngc.activities.slack import (
         SlackMessageInput,
@@ -150,7 +150,7 @@ class BackupWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, ArchiveMixi
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,
         )
         # Add device search attributes the first time we pull
-        # them from nautobot
+        # them from the DCIM
         DeviceMixin.attach_device_search_attributes(device_data.device)
 
         running_config: str = await workflow.execute_activity(

@@ -15,6 +15,7 @@
 """Tests for device password rotation activities."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from temporalio.exceptions import ApplicationError
@@ -31,6 +32,15 @@ from nv_config_manager.temporal.ngc.activities.device_password_rotation import (
     validate_password_diff,
     validate_platform_support,
 )
+
+
+def _password_mapping_client(usernames: set[str]) -> MagicMock:
+    """Build a selected-provider client that exposes password mapping users."""
+    client = MagicMock()
+    client.get_device_password_mapping_users = AsyncMock(return_value=usernames)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    return client
 
 
 class TestValidatePasswordDiff:
@@ -134,20 +144,15 @@ class TestGetPasswordMappings:
             deploy_enabled=True,
             backup_enabled=True,
             ztp_enabled=True,
-            config_context={
-                "password_mappings": {
-                    "cumulus": {
-                        "password": "root_password",
-                        "role": "system-admin",
-                        "rotation": "r1",
-                    }
-                }
-            },
         )
 
         input_data = GetPasswordMappingsInput(device=device, username="cumulus")
 
-        result = asyncio.run(get_password_mappings(input_data))
+        with patch(
+            "nv_config_manager.temporal.ngc.activities.device_password_rotation.create_dcim_client",
+            return_value=_password_mapping_client({"cumulus"}),
+        ):
+            result = asyncio.run(get_password_mappings(input_data))
         assert result.username == "cumulus"
 
     def test_get_password_mappings_multiple_users(self):
@@ -167,25 +172,15 @@ class TestGetPasswordMappings:
             deploy_enabled=True,
             backup_enabled=True,
             ztp_enabled=True,
-            config_context={
-                "password_mappings": {
-                    "cumulus": {
-                        "password": "root_password",
-                        "role": "system-admin",
-                        "rotation": "r1",
-                    },
-                    "admin": {
-                        "password": "admin-password",
-                        "role": "system-admin",
-                        "rotation": "r1",
-                    },
-                }
-            },
         )
 
         input_data = GetPasswordMappingsInput(device=device, username="admin")
 
-        result = asyncio.run(get_password_mappings(input_data))
+        with patch(
+            "nv_config_manager.temporal.ngc.activities.device_password_rotation.create_dcim_client",
+            return_value=_password_mapping_client({"cumulus", "admin"}),
+        ):
+            result = asyncio.run(get_password_mappings(input_data))
         assert result.username == "admin"
 
     def test_get_password_mappings_missing_config(self):
@@ -205,12 +200,17 @@ class TestGetPasswordMappings:
             deploy_enabled=True,
             backup_enabled=True,
             ztp_enabled=True,
-            config_context={},
         )
 
         input_data = GetPasswordMappingsInput(device=device, username="cumulus")
 
-        with pytest.raises(ApplicationError) as exc_info:
+        with (
+            patch(
+                "nv_config_manager.temporal.ngc.activities.device_password_rotation.create_dcim_client",
+                return_value=_password_mapping_client(set()),
+            ),
+            pytest.raises(ApplicationError) as exc_info,
+        ):
             asyncio.run(get_password_mappings(input_data))
         assert "No password mappings found" in str(exc_info.value)
 
