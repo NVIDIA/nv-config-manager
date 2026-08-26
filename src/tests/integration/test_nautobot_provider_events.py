@@ -31,6 +31,10 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.ci_only,
     pytest.mark.dcim_provider("nautobot-2x"),
+    # These tests perform multiple mutate/render/restore cycles. Their polling
+    # helpers retain a 180-second deadline so a stuck queue still fails with a
+    # useful diagnostic instead of the repository-wide 30-second timeout.
+    pytest.mark.timeout(660),
 ]
 
 _REPRESENTED_EVENT_TYPES = frozenset(
