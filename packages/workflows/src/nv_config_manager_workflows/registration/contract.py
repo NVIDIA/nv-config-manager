@@ -14,10 +14,11 @@
 # limitations under the License.
 """The attribute contract the registry reads from workflows and activities.
 
-Workflows are read through this contract rather than through an ``isinstance``
-check, so it works for any class that declares the attributes — the workflow
-metadata mixin, a plugin's own base class, or a test double. The accessors bind
-to the real mixin unchanged once it moves into this package.
+Every registered workflow must inherit
+:class:`nv_config_manager_workflows.stage.StageMixin` and
+:class:`nv_config_manager_workflows.metadata.WorkflowMetadataMixin`. This module
+centralizes how registration and its consumers read the optional declarations
+provided by the metadata mixin.
 
 The attributes this module reads from a workflow class (each one optional):
 

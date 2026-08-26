@@ -14,11 +14,12 @@
 # limitations under the License.
 """The checks run while the registry is built."""
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, NamedTuple
 
 from pydantic import BaseModel
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.contract import (
     activity_has_definition,
     activity_is_dynamic,
@@ -47,6 +48,9 @@ from nv_config_manager_workflows.registration.errors import (
     WorkflowRegistrationError,
     WorkflowRequiredActivityError,
 )
+from nv_config_manager_workflows.stage import StageMixin
+
+REQUIRED_WORKFLOW_BASES = (StageMixin, WorkflowMetadataMixin)
 
 
 class _Owned[ItemT](NamedTuple):
@@ -80,6 +84,7 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
     ]
 
     _require_named_workflows(workflows)
+    _require_plugin_workflow_bases(workflows)
     _require_named_activities(activities)
     _require_valid_metadata(workflows)
 
@@ -94,6 +99,13 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
     _reject_duplicates(api_enabled, workflow_cli_name, "workflow CLI name")
     _reject_duplicates(mcp_enabled, workflow_mcp_tool_name, "MCP tool name")
     _require_declared_activities(workflows, activities)
+
+
+def validate_workflow_bases(workflows: Sequence[type]) -> None:
+    """Require every workflow in a concrete runtime catalog to use the shared bases."""
+    for workflow in workflows:
+        name = getattr(workflow, "__qualname__", None) or repr(workflow)
+        _require_workflow_bases(workflow, f'Workflow "{name}"')
 
 
 def _require_valid_metadata(workflows: list[_OwnedWorkflow]) -> None:
@@ -121,6 +133,18 @@ def _require_named_workflows(workflows: list[_OwnedWorkflow]) -> None:
             raise WorkflowRegistrationError(
                 f"{_label(owned, 'Workflow')} is not decorated with @workflow.defn"
             )
+
+
+def _require_plugin_workflow_bases(workflows: list[_OwnedWorkflow]) -> None:
+    """Require plugin workflows to inherit every mandatory workflow base."""
+    for owned in workflows:
+        _require_workflow_bases(owned.item, _label(owned, "Workflow"))
+
+
+def _require_workflow_bases(workflow: type, label: str) -> None:
+    missing = [base.__name__ for base in REQUIRED_WORKFLOW_BASES if not issubclass(workflow, base)]
+    if missing:
+        raise WorkflowRegistrationError(f"{label} does not inherit {', '.join(missing)}")
 
 
 def _require_named_activities(activities: list[_OwnedActivity]) -> None:

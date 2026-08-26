@@ -12,11 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Deprecated import path for workflow metadata declarations.
+"""Metadata and locking declarations shared by Temporal workflows."""
 
-Import from :mod:`nv_config_manager_workflows.metadata` in new code.
-"""
+from nv_config_manager_workflows.metadata.lock import (
+    LOCK_RENEW_BUFFER_SECONDS,
+    WorkflowLockSpec,
+    build_workflow_lock_key,
+)
+from nv_config_manager_workflows.metadata.mixin import WorkflowMetadataMixin
 
-from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
-
-__all__ = ["WorkflowMetadataMixin"]
+__all__ = [
+    "LOCK_RENEW_BUFFER_SECONDS",
+    "WorkflowLockSpec",
+    "WorkflowMetadataMixin",
+    "build_workflow_lock_key",
+]

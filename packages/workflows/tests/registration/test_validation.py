@@ -21,13 +21,19 @@ from pydantic import BaseModel
 from temporalio import activity, workflow
 from temporalio.common import RawValue
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.descriptor import WorkflowPluginDescriptor
 from nv_config_manager_workflows.registration.errors import (
     WorkflowConflictError,
     WorkflowRegistrationError,
     WorkflowRequiredActivityError,
 )
-from nv_config_manager_workflows.registration.validation import validate_plugins
+from nv_config_manager_workflows.registration.validation import (
+    REQUIRED_WORKFLOW_BASES,
+    validate_plugins,
+    validate_workflow_bases,
+)
+from nv_config_manager_workflows.stage import StageMixin
 
 
 class DeviceInput(BaseModel):
@@ -58,7 +64,7 @@ async def undecorated_activity() -> None: ...
 
 
 @workflow.defn
-class AlphaWorkflow:
+class AlphaWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Alpha"
     workflow_description = "The reference workflow: complete and fully exposed"
     workflow_input_class = DeviceInput
@@ -68,7 +74,7 @@ class AlphaWorkflow:
     workflow_required_activities = (collect_facts,)
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -76,7 +82,7 @@ class AlphaWorkflow:
 
 
 @workflow.defn
-class BetaWorkflow:
+class BetaWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Beta"
     workflow_description = "A second plugin's workflow, disjoint from Alpha"
     workflow_input_class = DeviceInput
@@ -86,7 +92,7 @@ class BetaWorkflow:
     workflow_required_activities = (push_config,)
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -94,15 +100,15 @@ class BetaWorkflow:
 
 
 @workflow.defn
-class BareWorkflow:
+class BareWorkflow(WorkflowMetadataMixin, StageMixin):
     """Declares no metadata: registrable by the worker, exposed nowhere else."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 @workflow.defn
-class InternalWorkflow:
+class InternalWorkflow(WorkflowMetadataMixin, StageMixin):
     """Complete invocation metadata, but no public API endpoint."""
 
     workflow_name = "Internal"
@@ -110,23 +116,23 @@ class InternalWorkflow:
     workflow_input_class = DeviceInput
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 @workflow.defn(name="AlphaWorkflow")
-class AlphaTypeTwinWorkflow:
+class AlphaTypeTwinWorkflow(WorkflowMetadataMixin, StageMixin):
     """A different class claiming the Temporal type Alpha already registers."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 @workflow.defn(name="AlphaNameTwinType")
-class AlphaNameTwinWorkflow:
+class AlphaNameTwinWorkflow(WorkflowMetadataMixin, StageMixin):
     """A second distribution's class that happens to share Alpha's Python name."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 # Temporal requires the run method's qualified name to match the class declaring
@@ -135,11 +141,11 @@ AlphaNameTwinWorkflow.__name__ = "AlphaWorkflow"
 
 
 @workflow.defn
-class UnlaunchableCliWorkflow:
+class UnlaunchableCliWorkflow(WorkflowMetadataMixin, StageMixin):
     """Claims Alpha's CLI name, but has no metadata to be launched with."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -164,6 +170,42 @@ class UndecoratedMisdeclaredWorkflow:
 
     @workflow.run
     async def run(self) -> None: ...
+
+
+@workflow.defn
+class MissingBothBasesWorkflow:
+    @workflow.run
+    async def run(self) -> None: ...
+
+
+@workflow.defn
+class MissingStageMixinWorkflow(WorkflowMetadataMixin):
+    @workflow.run
+    async def run(self) -> None: ...
+
+
+@workflow.defn
+class MissingMetadataMixinWorkflow(StageMixin):
+    @workflow.run
+    async def run(self, workflow_input: BaseModel) -> None: ...
+
+
+@workflow.defn
+class MissingBasesWithBadMetadataWorkflow:
+    workflow_name = 42
+
+    @workflow.run
+    async def run(self) -> None: ...
+
+
+class AdditionalWorkflowMixin:
+    """An optional plugin-owned workflow capability."""
+
+
+@workflow.defn
+class ExtendedWorkflow(AdditionalWorkflowMixin, WorkflowMetadataMixin, StageMixin):
+    @workflow.run
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 def plugin(
@@ -203,6 +245,9 @@ class TestAcceptedPlugins:
 
     def test_an_api_disabled_workflow_may_omit_its_endpoint(self) -> None:
         validate_plugins(installed(plugin("internal-plugin", workflows=(InternalWorkflow,))))
+
+    def test_a_workflow_may_inherit_additional_bases(self) -> None:
+        validate_plugins(installed(plugin("extended-plugin", workflows=(ExtendedWorkflow,))))
 
     def test_plugins_with_disjoint_catalogs_are_valid(self) -> None:
         validate_plugins(installed(alpha_plugin(), beta_plugin()))
@@ -258,6 +303,49 @@ class TestTemporalDefinitionRequired:
             )
 
         assert "not decorated with @workflow.defn" in str(raised.value)
+
+
+class TestRequiredWorkflowBases:
+    def test_the_required_bases_are_the_two_public_mixins(self) -> None:
+        assert REQUIRED_WORKFLOW_BASES == (StageMixin, WorkflowMetadataMixin)
+
+    @pytest.mark.parametrize(
+        ("workflow_class", "missing"),
+        [
+            (MissingBothBasesWorkflow, "StageMixin, WorkflowMetadataMixin"),
+            (MissingStageMixinWorkflow, "StageMixin"),
+            (MissingMetadataMixinWorkflow, "WorkflowMetadataMixin"),
+        ],
+    )
+    def test_a_plugin_workflow_must_inherit_every_required_base(
+        self, workflow_class: type, missing: str
+    ) -> None:
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(installed(plugin("broken-plugin", workflows=(workflow_class,))))
+
+        assert f"does not inherit {missing}" in str(raised.value)
+        assert 'plugin "broken-plugin"' in str(raised.value)
+
+    def test_missing_bases_are_reported_before_bad_metadata(self) -> None:
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(
+                installed(
+                    plugin(
+                        "broken-plugin",
+                        workflows=(MissingBasesWithBadMetadataWorkflow,),
+                    )
+                )
+            )
+
+        assert "does not inherit StageMixin, WorkflowMetadataMixin" in str(raised.value)
+        assert "workflow_name" not in str(raised.value)
+
+    def test_runtime_catalogs_use_the_same_base_validation(self) -> None:
+        with pytest.raises(
+            WorkflowRegistrationError,
+            match="does not inherit StageMixin, WorkflowMetadataMixin",
+        ):
+            validate_workflow_bases((MissingBothBasesWorkflow,))
 
 
 class TestDeclaredMetadata:

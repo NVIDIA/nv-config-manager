@@ -21,6 +21,7 @@ import pytest
 from pydantic import BaseModel
 from temporalio import activity, workflow
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration import registry as registry_module
 from nv_config_manager_workflows.registration.descriptor import (
     UNKNOWN_PLUGIN_VERSION,
@@ -28,6 +29,7 @@ from nv_config_manager_workflows.registration.descriptor import (
 )
 from nv_config_manager_workflows.registration.errors import WorkflowConflictError
 from nv_config_manager_workflows.registration.registry import PluginInfo, WorkflowRegistry
+from nv_config_manager_workflows.stage import StageMixin
 
 
 class DeviceInput(BaseModel):
@@ -43,7 +45,7 @@ async def push_config() -> None: ...
 
 
 @workflow.defn
-class AlphaWorkflow:
+class AlphaWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Alpha"
     workflow_description = "Complete metadata, exposed over the API and MCP"
     workflow_input_class = DeviceInput
@@ -52,7 +54,7 @@ class AlphaWorkflow:
     workflow_mcp_enabled = True
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -60,7 +62,7 @@ class AlphaWorkflow:
 
 
 @workflow.defn
-class BetaWorkflow:
+class BetaWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Beta"
     workflow_description = "Complete metadata, but not offered as an MCP tool"
     workflow_input_class = DeviceInput
@@ -68,7 +70,7 @@ class BetaWorkflow:
     workflow_api_endpoint = "/config/beta"
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -76,15 +78,15 @@ class BetaWorkflow:
 
 
 @workflow.defn
-class InternalWorkflow:
+class InternalWorkflow(WorkflowMetadataMixin, StageMixin):
     """Declares no metadata: the worker runs it, nothing else offers it."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 @workflow.defn
-class ApiDisabledWorkflow:
+class ApiDisabledWorkflow(WorkflowMetadataMixin, StageMixin):
     """Complete API metadata, but intentionally unavailable for direct invocation."""
 
     workflow_name = "API Disabled"
@@ -93,7 +95,7 @@ class ApiDisabledWorkflow:
     workflow_api_endpoint = "/internal/api-disabled"
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 def plugin(

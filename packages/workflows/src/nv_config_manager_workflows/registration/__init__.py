@@ -46,12 +46,17 @@ from nv_config_manager_workflows.registration.errors import (
     WorkflowRequiredActivityError,
 )
 from nv_config_manager_workflows.registration.registry import PluginInfo, WorkflowRegistry
+from nv_config_manager_workflows.registration.validation import (
+    REQUIRED_WORKFLOW_BASES,
+    validate_workflow_bases,
+)
 
 __all__ = [
     "BUILTIN_PLUGIN_NAME",
     "METADATA_ATTRIBUTES",
     "WORKFLOW_PLUGIN_ENTRY_POINT_GROUP",
     "PluginInfo",
+    "REQUIRED_WORKFLOW_BASES",
     "WorkflowConflictError",
     "WorkflowPluginDescriptor",
     "WorkflowPluginDiscoveryError",
@@ -73,4 +78,5 @@ __all__ = [
     "workflow_mcp_tool_name",
     "workflow_required_activity_names",
     "workflow_type_name",
+    "validate_workflow_bases",
 ]
