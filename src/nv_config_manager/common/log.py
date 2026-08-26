@@ -24,7 +24,7 @@ from numbers import Number
 from typing import Any
 
 from opentelemetry import trace
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 # =============================================================================
 # LOG CATEGORIES
@@ -187,7 +187,7 @@ def _build_formatter() -> logging.Formatter:
     """Build the appropriate formatter based on environment configuration."""
     if _use_json_format():
         format_str = "%(message)s%(levelname)s%(name)s%(asctime)s%(module)s%(lineno)d"
-        return jsonlogger.JsonFormatter(format_str)
+        return JsonFormatter(format_str)
     return logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 
@@ -238,11 +238,16 @@ class EscapingFilter(logging.Filter):
     use plain ``logging.getLogger()``, so their records reach the handler
     unsanitized. Escaping is idempotent: the translation table maps only control
     characters, so a record the adapter already escaped passes through unchanged.
+
+    Sanitizing must preserve the message's structure. A mapping passed as the
+    message -- ``logger.info({"event": "deploy"})`` -- is merged into the JSON
+    output as top-level fields by the formatter, so :func:`_escape_log_argument`
+    escapes it in place instead of stringifying it into one Python repr.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Sanitize the record in place and always keep it."""
-        record.msg = escape_log_newlines(record.msg)
+        record.msg = _escape_log_argument(record.msg)
         if record.args:
             record.args = _escape_log_argument(record.args)  # type: ignore[assignment]
         return True
