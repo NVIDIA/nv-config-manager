@@ -26,6 +26,7 @@ from nv_config_manager_workflows.registration.contract import (
     mcp_tool_name_for_endpoint,
     missing_metadata_attributes,
     normalized_api_endpoint,
+    workflow_api_enabled,
     workflow_api_endpoint,
     workflow_class_name,
     workflow_cli_name,
@@ -58,6 +59,7 @@ class FullyDeclaredWorkflow:
     workflow_name = "Apply Golden Config"
     workflow_description = "Applies the golden configuration to one device"
     workflow_input_class = GoldenConfigInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/config/apply-golden-config"
     workflow_mcp_enabled = True
     workflow_required_activities = (collect_facts, apply_configuration)
@@ -105,6 +107,12 @@ class TruthyMcpFlagWorkflow:
     """``validation`` rejects a non-bool flag; the accessor still reads it."""
 
     workflow_mcp_enabled = "yes"
+
+
+class TruthyApiFlagWorkflow:
+    """``validation`` rejects a non-bool flag; the accessor still reads it."""
+
+    workflow_api_enabled = "y"
 
 
 class BlankCliNameWorkflow:
@@ -188,6 +196,15 @@ class TestApiEndpoint:
 
     def test_non_string_endpoint_has_no_normalized_form(self) -> None:
         assert normalized_api_endpoint(NonStringEndpointWorkflow) is None
+
+
+class TestApiExposure:
+    def test_api_exposure_is_opt_in(self) -> None:
+        assert not workflow_api_enabled(BareWorkflow)
+        assert workflow_api_enabled(FullyDeclaredWorkflow)
+
+    def test_a_non_bool_flag_still_reads_as_a_bool(self) -> None:
+        assert workflow_api_enabled(TruthyApiFlagWorkflow) is True
 
 
 class TestCliName:

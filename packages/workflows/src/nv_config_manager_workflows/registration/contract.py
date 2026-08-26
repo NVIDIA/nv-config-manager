@@ -25,6 +25,7 @@ The attributes this module reads from a workflow class (each one optional):
 ``workflow_name``                       human-readable name, unique across plugins
 ``workflow_description``                one-line description
 ``workflow_input_class``                Pydantic model accepted as workflow input
+``workflow_api_enabled``                expose for direct invocation through the API
 ``workflow_api_endpoint``               API path, unique across plugins
 ``workflow_mcp_enabled``                expose as an MCP tool
 ``workflow_required_activities``        activity functions the workflow executes
@@ -111,6 +112,11 @@ def activity_is_dynamic(activity: Callable[..., Any]) -> bool:
 def workflow_api_endpoint(workflow: type) -> str | None:
     """Return the API path the workflow is served under, if any."""
     return getattr(workflow, "workflow_api_endpoint", None)
+
+
+def workflow_api_enabled(workflow: type) -> bool:
+    """Return whether the workflow opts in to direct invocation through the API."""
+    return bool(getattr(workflow, "workflow_api_enabled", False))
 
 
 def normalized_api_endpoint(workflow: type) -> str | None:

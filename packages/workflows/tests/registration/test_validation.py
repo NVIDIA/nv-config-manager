@@ -62,6 +62,7 @@ class AlphaWorkflow:
     workflow_name = "Alpha"
     workflow_description = "The reference workflow: complete and fully exposed"
     workflow_input_class = DeviceInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/config/alpha"
     workflow_mcp_enabled = True
     workflow_required_activities = (collect_facts,)
@@ -79,6 +80,7 @@ class BetaWorkflow:
     workflow_name = "Beta"
     workflow_description = "A second plugin's workflow, disjoint from Alpha"
     workflow_input_class = DeviceInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/config/beta"
     workflow_mcp_enabled = True
     workflow_required_activities = (push_config,)
@@ -94,6 +96,18 @@ class BetaWorkflow:
 @workflow.defn
 class BareWorkflow:
     """Declares no metadata: registrable by the worker, exposed nowhere else."""
+
+    @workflow.run
+    async def run(self) -> None: ...
+
+
+@workflow.defn
+class InternalWorkflow:
+    """Complete invocation metadata, but no public API endpoint."""
+
+    workflow_name = "Internal"
+    workflow_description = "Invoked only by another workflow"
+    workflow_input_class = DeviceInput
 
     @workflow.run
     async def run(self) -> None: ...
@@ -186,6 +200,9 @@ class TestAcceptedPlugins:
 
     def test_a_workflow_may_decline_to_declare_any_metadata(self) -> None:
         validate_plugins(installed(plugin("bare-plugin", workflows=(BareWorkflow,))))
+
+    def test_an_api_disabled_workflow_may_omit_its_endpoint(self) -> None:
+        validate_plugins(installed(plugin("internal-plugin", workflows=(InternalWorkflow,))))
 
     def test_plugins_with_disjoint_catalogs_are_valid(self) -> None:
         validate_plugins(installed(alpha_plugin(), beta_plugin()))
@@ -283,6 +300,15 @@ class TestDeclaredMetadata:
             validate_plugins(installed(alpha_plugin()))
 
     @pytest.mark.parametrize("declared", [1, "true", None])
+    def test_api_opt_in_must_be_a_bool(
+        self, monkeypatch: pytest.MonkeyPatch, declared: Any
+    ) -> None:
+        monkeypatch.setattr(AlphaWorkflow, "workflow_api_enabled", declared)
+
+        with pytest.raises(WorkflowRegistrationError, match="which is not a bool"):
+            validate_plugins(installed(alpha_plugin()))
+
+    @pytest.mark.parametrize("declared", [1, "true", None])
     def test_mcp_opt_in_must_be_a_bool(
         self, monkeypatch: pytest.MonkeyPatch, declared: Any
     ) -> None:
@@ -315,13 +341,24 @@ class TestDeclaredMetadata:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(AlphaWorkflow, "workflow_description", None)
+        monkeypatch.setattr(AlphaWorkflow, "workflow_mcp_enabled", False)
 
         with pytest.raises(WorkflowRegistrationError) as raised:
             validate_plugins(installed(alpha_plugin()))
 
-        assert "declares workflow_api_endpoint but is missing workflow_description" in str(
-            raised.value
-        )
+        assert "enables API but is missing workflow_description" in str(raised.value)
+
+    def test_an_api_enabled_workflow_must_declare_an_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(AlphaWorkflow, "workflow_api_endpoint", None)
+        monkeypatch.setattr(AlphaWorkflow, "workflow_mcp_enabled", False)
+
+        with pytest.raises(
+            WorkflowRegistrationError,
+            match="enables API but is missing workflow_api_endpoint",
+        ):
+            validate_plugins(installed(alpha_plugin()))
 
     def test_completeness_accessor_cannot_hide_missing_metadata(
         self, monkeypatch: pytest.MonkeyPatch
@@ -348,6 +385,17 @@ class TestDeclaredMetadata:
 
         assert "enables MCP but is missing" in str(raised.value)
         assert "workflow_description, workflow_api_endpoint" in str(raised.value)
+
+    def test_an_mcp_workflow_must_also_enable_the_api(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(AlphaWorkflow, "workflow_api_enabled", False)
+
+        with pytest.raises(
+            WorkflowRegistrationError,
+            match="enables MCP but does not enable API",
+        ):
+            validate_plugins(installed(alpha_plugin()))
 
     @pytest.mark.parametrize("declared", ["", "   ", None, 42])
     def test_a_declared_cli_accessor_must_return_a_usable_name(
@@ -465,6 +513,16 @@ class TestConflictsBetweenPlugins:
 
         with pytest.raises(WorkflowConflictError, match='Duplicate workflow CLI name "alpha"'):
             validate_plugins(installed(alpha_plugin(), beta_plugin()))
+
+    def test_api_disabled_workflows_do_not_claim_endpoints_or_cli_names(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(BetaWorkflow, "workflow_api_enabled", False)
+        monkeypatch.setattr(BetaWorkflow, "workflow_mcp_enabled", False)
+        monkeypatch.setattr(BetaWorkflow, "workflow_api_endpoint", "/config/alpha")
+        monkeypatch.setattr(BetaWorkflow, "get_workflow_cli_name", classmethod(lambda cls: "alpha"))
+
+        validate_plugins(installed(alpha_plugin(), beta_plugin()))
 
     def test_a_cli_name_on_an_unlaunchable_workflow_is_not_a_conflict(self) -> None:
         """The CLI only offers workflows it has the metadata to launch."""

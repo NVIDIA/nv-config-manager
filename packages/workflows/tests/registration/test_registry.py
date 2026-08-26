@@ -47,6 +47,7 @@ class AlphaWorkflow:
     workflow_name = "Alpha"
     workflow_description = "Complete metadata, exposed over the API and MCP"
     workflow_input_class = DeviceInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/config/alpha"
     workflow_mcp_enabled = True
 
@@ -63,6 +64,7 @@ class BetaWorkflow:
     workflow_name = "Beta"
     workflow_description = "Complete metadata, but not offered as an MCP tool"
     workflow_input_class = DeviceInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/config/beta"
 
     @workflow.run
@@ -76,6 +78,19 @@ class BetaWorkflow:
 @workflow.defn
 class InternalWorkflow:
     """Declares no metadata: the worker runs it, nothing else offers it."""
+
+    @workflow.run
+    async def run(self) -> None: ...
+
+
+@workflow.defn
+class ApiDisabledWorkflow:
+    """Complete API metadata, but intentionally unavailable for direct invocation."""
+
+    workflow_name = "API Disabled"
+    workflow_description = "Invoked only by another workflow"
+    workflow_input_class = DeviceInput
+    workflow_api_endpoint = "/internal/api-disabled"
 
     @workflow.run
     async def run(self) -> None: ...
@@ -153,14 +168,23 @@ class TestMergedCatalogs:
         assert registry.all_workflows == [AlphaWorkflow]
         assert registry.all_activities == [collect_facts]
 
-    def test_the_api_offers_only_workflows_with_complete_metadata(self) -> None:
+    def test_the_api_offers_only_workflows_that_opted_in(self) -> None:
         registry = WorkflowRegistry.build(
             installed(
-                plugin("alpha-plugin", workflows=(AlphaWorkflow, BetaWorkflow, InternalWorkflow))
+                plugin(
+                    "alpha-plugin",
+                    workflows=(
+                        AlphaWorkflow,
+                        BetaWorkflow,
+                        ApiDisabledWorkflow,
+                        InternalWorkflow,
+                    ),
+                )
             )
         )
 
         assert registry.api_workflows == [AlphaWorkflow, BetaWorkflow]
+        assert ApiDisabledWorkflow in registry.all_workflows
 
     def test_mcp_offers_only_workflows_that_opted_in(self) -> None:
         registry = WorkflowRegistry.build(

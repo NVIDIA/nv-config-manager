@@ -28,6 +28,7 @@ from nv_config_manager_workflows.registration.contract import (
     missing_metadata_attributes,
     normalized_api_endpoint,
     required_activity_name,
+    workflow_api_enabled,
     workflow_api_endpoint,
     workflow_class_name,
     workflow_cli_name,
@@ -82,15 +83,15 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
     _require_named_activities(activities)
     _require_valid_metadata(workflows)
 
-    launchable = [owned for owned in workflows if workflow_has_complete_metadata(owned.item)]
+    api_enabled = [owned for owned in workflows if workflow_api_enabled(owned.item)]
     mcp_enabled = [owned for owned in workflows if workflow_mcp_enabled(owned.item)]
 
     _reject_duplicates(workflows, workflow_class_name, "workflow class name")
     _reject_duplicates(workflows, workflow_declared_name, "workflow name")
     _reject_duplicates(workflows, workflow_type_name, "Temporal workflow type")
     _reject_duplicates(activities, activity_name, "activity name")
-    _reject_duplicates(workflows, normalized_api_endpoint, "workflow API endpoint")
-    _reject_duplicates(launchable, workflow_cli_name, "workflow CLI name")
+    _reject_duplicates(api_enabled, normalized_api_endpoint, "workflow API endpoint")
+    _reject_duplicates(api_enabled, workflow_cli_name, "workflow CLI name")
     _reject_duplicates(mcp_enabled, workflow_mcp_tool_name, "MCP tool name")
     _require_declared_activities(workflows, activities)
 
@@ -103,6 +104,7 @@ def _require_valid_metadata(workflows: list[_OwnedWorkflow]) -> None:
             getattr(owned.item, "workflow_description", None), "workflow_description", label
         )
         _require_input_class(owned.item, label)
+        _require_bool_api_flag(owned.item, label)
         _require_bool_mcp_flag(owned.item, label)
         _require_activity_names_wellformed(owned.item, label)
         _require_endpoint_wellformed(owned.item, label)
@@ -164,6 +166,15 @@ def _require_input_class(workflow: type, label: str) -> None:
         )
 
 
+def _require_bool_api_flag(workflow: type, label: str) -> None:
+    """Reject an API opt-in that is not a bool."""
+    api_enabled = getattr(workflow, "workflow_api_enabled", False)
+    if not isinstance(api_enabled, bool):
+        raise WorkflowRegistrationError(
+            f"{label} declares workflow_api_enabled {api_enabled!r}, which is not a bool"
+        )
+
+
 def _require_bool_mcp_flag(workflow: type, label: str) -> None:
     """Reject an MCP opt-in that is not a bool."""
     mcp_enabled = getattr(workflow, "workflow_mcp_enabled", False)
@@ -189,15 +200,21 @@ def _require_endpoint_wellformed(workflow: type, label: str) -> None:
 def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
     """Require the full metadata set from workflows the API or MCP exposes."""
 
+    api_enabled = workflow_api_enabled(workflow)
+    mcp_enabled = workflow_mcp_enabled(workflow)
+    if not api_enabled and not mcp_enabled:
+        return
+
+    if mcp_enabled and not api_enabled:
+        raise WorkflowRegistrationError(f"{label} enables MCP but does not enable API")
+
     if workflow_has_complete_metadata(workflow):
         return
+
     missing = ", ".join(missing_metadata_attributes(workflow)) or "required metadata"
-    if workflow_api_endpoint(workflow) is not None:
-        raise WorkflowRegistrationError(
-            f"{label} declares workflow_api_endpoint but is missing {missing}"
-        )
-    if workflow_mcp_enabled(workflow):
+    if mcp_enabled:
         raise WorkflowRegistrationError(f"{label} enables MCP but is missing {missing}")
+    raise WorkflowRegistrationError(f"{label} enables API but is missing {missing}")
 
 
 def _require_cli_name(workflow: type, label: str) -> None:

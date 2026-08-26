@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Self
 
 from nv_config_manager_workflows.registration.contract import (
-    workflow_has_complete_metadata,
+    workflow_api_enabled,
     workflow_mcp_enabled,
 )
 from nv_config_manager_workflows.registration.descriptor import (
@@ -78,7 +78,7 @@ class WorkflowRegistry:
         return cls(
             all_workflows=all_workflows,
             all_activities=all_activities,
-            api_workflows=[w for w in all_workflows if workflow_has_complete_metadata(w)],
+            api_workflows=[w for w in all_workflows if workflow_api_enabled(w)],
             mcp_workflows=[w for w in all_workflows if workflow_mcp_enabled(w)],
             plugin_diagnostics=[
                 PluginInfo(
