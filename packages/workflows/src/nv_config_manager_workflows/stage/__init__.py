@@ -12,35 +12,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Deprecated import path for :mod:`nv_config_manager_workflows.stage`.
+"""The stage framework: a workflow decomposed into reviewable, retryable steps."""
 
-The stage framework moved to the standalone workflows package, split across
-``stage/{models,exceptions,executor,presentation,mixin}.py``. This module
-re-exports the public surface so existing service imports keep resolving to the
-same class objects -- which matters because the service checks stage types with
-``isinstance`` and ``except``. Import from ``nv_config_manager_workflows`` in new
-code.
-
-Note for test authors: the implementation no longer lives here, so patch targets
-must name the package module, e.g.
-``nv_config_manager_workflows.stage.mixin.workflow.time`` and
-``nv_config_manager_workflows.stage.executor.traceback.format_exc``.
-"""
-
-from nv_config_manager_workflows.stage import (
+from nv_config_manager_workflows.stage.exceptions import StageRuntimeFailure, StageStateFailure
+from nv_config_manager_workflows.stage.executor import stage_executor
+from nv_config_manager_workflows.stage.mixin import (
     STAGE_STATE_SEARCH_ATTRIBUTES_PATCH,
+    StageMixin,
+)
+from nv_config_manager_workflows.stage.models import (
     HistoryEntry,
     Review,
     ReviewSignalInput,
     Stage,
     StageInput,
-    StageMixin,
     StageOutput,
-    StageRuntimeFailure,
-    StageStateFailure,
     StageWorkflowInput,
     StateEnum,
-    stage_executor,
+)
+from nv_config_manager_workflows.stage.presentation import (
+    compress_stages,
+    decompress_stages,
+    format_row_for_markdown_table,
+    render_markdown_table,
+    render_markdown_table_dict,
 )
 
 __all__ = [
@@ -56,5 +51,10 @@ __all__ = [
     "StageStateFailure",
     "StageWorkflowInput",
     "StateEnum",
+    "compress_stages",
+    "decompress_stages",
+    "format_row_for_markdown_table",
+    "render_markdown_table",
+    "render_markdown_table_dict",
     "stage_executor",
 ]

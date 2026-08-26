@@ -12,13 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Deprecated import path for :mod:`nv_config_manager_workflows.mixins.base`.
+"""Failures raised by the stage framework."""
 
-The mixin moved to the standalone workflows package. This module re-exports it so
-existing service imports keep resolving to the same class object; import from
-``nv_config_manager_workflows`` in new code.
-"""
+from temporalio.exceptions import ApplicationError
 
-from nv_config_manager_workflows.mixins.base import BaseMixin
 
-__all__ = ["BaseMixin"]
+class StageRuntimeFailure(ApplicationError):
+    """Exception thrown during stage runtime."""
+
+
+class StageStateFailure(ApplicationError):
+    """Exception thrown for invalid stage states."""
+
+    def __init__(self, message: str) -> None:
+        """Init method."""
+        super().__init__(message, non_retryable=True)

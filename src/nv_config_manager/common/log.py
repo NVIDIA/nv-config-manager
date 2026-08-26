@@ -230,6 +230,24 @@ class EscapingLoggerAdapter(logging.LoggerAdapter):
             self.logger.log(level, escaped_msg, *escaped_args, **processed_kwargs)
 
 
+class EscapingFilter(logging.Filter):
+    """Escape unsafe characters in records that bypass :class:`EscapingLoggerAdapter`.
+
+    Libraries and packages outside this distribution -- notably
+    ``nv_config_manager_workflows``, which logs signal-supplied stage names --
+    use plain ``logging.getLogger()``, so their records reach the handler
+    unsanitized. Escaping is idempotent: the translation table maps only control
+    characters, so a record the adapter already escaped passes through unchanged.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Sanitize the record in place and always keep it."""
+        record.msg = escape_log_newlines(record.msg)
+        if record.args:
+            record.args = _escape_log_argument(record.args)  # type: ignore[assignment]
+        return True
+
+
 def configure_logging(service: str | None = None) -> None:
     """Configure the root logger for the entire process.
 
@@ -268,6 +286,7 @@ def configure_logging(service: str | None = None) -> None:
 
     handler = logging.StreamHandler()
     handler.setFormatter(_build_formatter())
+    handler.addFilter(EscapingFilter())
     root.addHandler(handler)
 
     old_factory = logging.getLogRecordFactory()
@@ -316,6 +335,7 @@ def get_logger(
             if json_format
             else logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         )
+        handler.addFilter(EscapingFilter())
         logger.addHandler(handler)
         logger.setLevel(_get_log_level())
 

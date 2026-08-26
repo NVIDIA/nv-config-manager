@@ -12,12 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Deprecated import path for :mod:`nv_config_manager_workflows.mixins.base`.
-
-The mixin moved to the standalone workflows package. This module re-exports it so
-existing service imports keep resolving to the same class object; import from
-``nv_config_manager_workflows`` in new code.
-"""
+"""Mixins for Temporal Workflows."""
 
 from nv_config_manager_workflows.mixins.base import BaseMixin
 
