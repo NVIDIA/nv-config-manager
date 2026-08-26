@@ -102,7 +102,9 @@ class TestFailure:
             await state.render()
 
         assert state.get_stage_state("render") == StateEnum.FAILED
-        assert "RuntimeError: boom" in state.get_stage_by_name("render").traceback
+        recorded = state.get_stage_by_name("render").traceback
+        assert recorded is not None
+        assert "RuntimeError: boom" in recorded
 
     async def test_a_non_retryable_stage_fails_the_workflow(self, clock, legacy_history):
         state = Workflow(failing(RuntimeError("boom")), retryable=False)

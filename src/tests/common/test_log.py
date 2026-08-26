@@ -20,6 +20,7 @@ import logging
 from unittest import mock
 
 import pytest
+from nv_config_manager_workflows.log import WORKFLOW_LOG_CATEGORY
 from pythonjsonlogger.json import JsonFormatter
 
 from nv_config_manager.common import log
@@ -186,6 +187,15 @@ def test_logger_adapter_recursively_escapes_collection_arguments(
     assert caplog.messages[-1] == (
         r"nested={'bad\\n\\x1bkey': ['before\\nafter', ('bad\\rvalue',)]}"
     )
+
+
+def test_workflow_package_category_matches_this_services_label() -> None:
+    """The workflows package cannot import LogCategory, so it declares the label itself.
+
+    Both definitions feed the same ``category`` field, so a rename on either side
+    would silently split one dashboard filter into two.
+    """
+    assert WORKFLOW_LOG_CATEGORY == log.LogCategory.TEMPORAL_WORKFLOW
 
 
 def _emit_through_escaping_filter(msg: object, *args: object) -> str:

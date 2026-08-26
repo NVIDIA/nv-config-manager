@@ -16,13 +16,13 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
 from temporalio import workflow
 
+from nv_config_manager_workflows.log import get_workflow_logger
 from nv_config_manager_workflows.mixins.base import BaseMixin
 from nv_config_manager_workflows.search_attributes import (
     FAILED_STAGE_SEARCH_ATTRIBUTE,
@@ -51,7 +51,7 @@ STAGE_STATE_SEARCH_ATTRIBUTES_PATCH = "stage-state-search-attributes-v1"
 class StageMixin(BaseMixin):
     """Stage Mixin Class."""
 
-    logger = logging.getLogger(__name__)
+    logger = get_workflow_logger(__name__)
 
     def __init__(self) -> None:
         """Initialize Workflow with Stages."""

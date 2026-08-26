@@ -299,6 +299,9 @@ ignore = [
     "ANN401", # Any type allowed - needed for generic HTTP/Redis clients
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["nv_config_manager", "nv_config_manager_workflows"]
+
 [tool.ruff.lint.per-file-ignores]
 "src/tests/**/*.py" = ["B", "ANN"]
 
