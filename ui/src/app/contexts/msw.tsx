@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import { Suspense, use } from "react";
+import { useEffect, useState } from "react";
 import { handlers } from "@/mocks/handlers";
 
 async function startMocking(): Promise<void> {
@@ -40,27 +40,48 @@ async function startMocking(): Promise<void> {
   worker.use(...handlers);
 }
 
-const mockingEnabledPromise = startMocking();
+let mockingEnabledPromise: Promise<void> | undefined;
+
+function getMockingEnabledPromise(): Promise<void> {
+  mockingEnabledPromise ??= startMocking();
+  return mockingEnabledPromise;
+}
 
 export function MSWProvider({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // If MSW is enabled, we need to wait for the worker to start,
-  // so we wrap the children in a Suspense boundary until it's ready.
-  return (
-    <Suspense fallback={null}>
-      <MSWProviderWrapper>{children}</MSWProviderWrapper>
-    </Suspense>
+  const [isReady, setIsReady] = useState(
+    process.env.NODE_ENV !== "development"
   );
-}
+  const [startupError, setStartupError] = useState<unknown>(null);
 
-function MSWProviderWrapper({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  use(mockingEnabledPromise);
-  return children;
+  useEffect(() => {
+    let isMounted = true;
+
+    const initializeMocking = async () => {
+      try {
+        await getMockingEnabledPromise();
+        if (isMounted) {
+          setIsReady(true);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setStartupError(error);
+        }
+      }
+    };
+
+    void initializeMocking();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  if (startupError) {
+    throw startupError;
+  }
+
+  return isReady ? children : null;
 }
