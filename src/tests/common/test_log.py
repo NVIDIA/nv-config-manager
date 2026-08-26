@@ -20,11 +20,11 @@ import logging
 from unittest import mock
 
 import pytest
-from nv_config_manager_workflows.log import WORKFLOW_LOG_CATEGORY
 from pythonjsonlogger.json import JsonFormatter
 
 from nv_config_manager.common import log
 from nv_config_manager.common.log import EscapingFilter, escape_log_newlines, get_logger
+from nv_config_manager_workflows.log import WORKFLOW_LOG_CATEGORY
 
 # W3C trace-context example IDs.
 _TRACE_ID = 0x4BF92F3577B34DA6A3CE929D0E0E4736
