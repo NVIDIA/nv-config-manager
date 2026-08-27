@@ -2716,7 +2716,7 @@ class JuniperConnection(NetworkConnection):
         device = self._get_device()
         try:
             device.rpc.request_system_zeroize()
-        except (RpcError, ConnectError):
+        except ConnectError:
             # Zeroize tears down NETCONF as the device reboots; that is success.
             logger.info(
                 "NETCONF session ended after zeroize on %s; treating as success",
