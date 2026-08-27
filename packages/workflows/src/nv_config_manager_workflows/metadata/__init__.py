@@ -19,10 +19,11 @@ from nv_config_manager_workflows.metadata.lock import (
     WorkflowLockSpec,
     build_workflow_lock_key,
 )
-from nv_config_manager_workflows.metadata.mixin import WorkflowMetadataMixin
+from nv_config_manager_workflows.metadata.mixin import RequiredActivity, WorkflowMetadataMixin
 
 __all__ = [
     "LOCK_RENEW_BUFFER_SECONDS",
+    "RequiredActivity",
     "WorkflowLockSpec",
     "WorkflowMetadataMixin",
     "build_workflow_lock_key",

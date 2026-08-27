@@ -19,6 +19,7 @@ import pytest
 from pydantic import BaseModel
 from temporalio import activity, workflow
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.contract import (
     METADATA_ATTRIBUTES,
     declared_required_activities,
@@ -37,6 +38,7 @@ from nv_config_manager_workflows.registration.contract import (
     workflow_required_activity_names,
 )
 from nv_config_manager_workflows.registration.errors import WorkflowRegistrationError
+from nv_config_manager_workflows.stage import StageMixin
 
 
 class GoldenConfigInput(BaseModel):
@@ -55,7 +57,7 @@ async def undecorated_activity() -> None: ...
 
 
 @workflow.defn
-class FullyDeclaredWorkflow:
+class FullyDeclaredWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Apply Golden Config"
     workflow_description = "Applies the golden configuration to one device"
     workflow_input_class = GoldenConfigInput
@@ -65,7 +67,7 @@ class FullyDeclaredWorkflow:
     workflow_required_activities = (collect_facts, apply_configuration)
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
     @classmethod
     def get_workflow_cli_name(cls) -> str:
@@ -73,98 +75,54 @@ class FullyDeclaredWorkflow:
 
 
 @workflow.defn
-class BareWorkflow:
+class BareWorkflow(WorkflowMetadataMixin, StageMixin):
     """Declares nothing: registrable by the worker, exposed nowhere else."""
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
-class TrailingSlashWorkflow:
+class TrailingSlashWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_api_endpoint = "/config/apply-golden-config/"
 
 
-class RootEndpointWorkflow:
+class RootEndpointWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_api_endpoint = "/"
     workflow_mcp_enabled = True
 
 
-class NonStringEndpointWorkflow:
-    workflow_api_endpoint = 42
-
-
-class NestedEndpointWorkflow:
+class NestedEndpointWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_api_endpoint = "/config/v2/apply-golden-config"
     workflow_mcp_enabled = True
 
 
-class DisabledMcpWorkflow:
+class DisabledMcpWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_api_endpoint = "/config/apply-golden-config"
     workflow_mcp_enabled = False
 
 
-class TruthyMcpFlagWorkflow:
-    """``validation`` rejects a non-bool flag; the accessor still reads it."""
-
-    workflow_mcp_enabled = "yes"
-
-
-class TruthyApiFlagWorkflow:
-    """``validation`` rejects a non-bool flag; the accessor still reads it."""
-
-    workflow_api_enabled = "y"
-
-
-class BlankCliNameWorkflow:
-    @classmethod
-    def get_workflow_cli_name(cls) -> str:
-        return "   "
-
-
-class MissingCliNameWorkflow:
-    @classmethod
-    def get_workflow_cli_name(cls) -> None:
-        return None
-
-
-class FailingCliNameWorkflow:
+class FailingCliNameWorkflow(WorkflowMetadataMixin, StageMixin):
     @classmethod
     def get_workflow_cli_name(cls) -> str:
         raise RuntimeError("the plugin looked up a name it does not have")
 
 
-class DiagnosingCliNameWorkflow:
+class DiagnosingCliNameWorkflow(WorkflowMetadataMixin, StageMixin):
     @classmethod
     def get_workflow_cli_name(cls) -> str:
         raise WorkflowRegistrationError("the plugin's own diagnosis")
 
 
-class PartiallyDeclaredWorkflow:
+class PartiallyDeclaredWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_description = "Declares a description and nothing else"
 
 
-class AccessorActivitiesWorkflow:
+class AccessorActivitiesWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_required_activities = (collect_facts,)
 
     @classmethod
     def get_workflow_required_activities(cls) -> tuple[Any, ...]:
         return (apply_configuration,)
-
-
-class MixedActivitiesWorkflow:
-    workflow_required_activities = (
-        collect_facts,
-        "already_a_name",
-        undecorated_activity,
-        "",
-        None,
-    )
-
-
-class StringActivitiesWorkflow:
-    """A bare name reads as no requirement; ``validation`` rejects it outright."""
-
-    workflow_required_activities = "collect_facts"
 
 
 class TestDeclaredNames:
@@ -191,11 +149,9 @@ class TestApiEndpoint:
             FullyDeclaredWorkflow
         )
 
-    def test_root_endpoint_survives_normalization(self) -> None:
-        assert normalized_api_endpoint(RootEndpointWorkflow) == "/"
-
-    def test_non_string_endpoint_has_no_normalized_form(self) -> None:
-        assert normalized_api_endpoint(NonStringEndpointWorkflow) is None
+    def test_the_root_endpoint_normalizes_to_no_path(self) -> None:
+        """It is not an endpoint a workflow may claim, and validation rejects it."""
+        assert normalized_api_endpoint(RootEndpointWorkflow) == ""
 
 
 class TestApiExposure:
@@ -203,27 +159,13 @@ class TestApiExposure:
         assert not workflow_api_enabled(BareWorkflow)
         assert workflow_api_enabled(FullyDeclaredWorkflow)
 
-    def test_a_non_bool_flag_still_reads_as_a_bool(self) -> None:
-        assert workflow_api_enabled(TruthyApiFlagWorkflow) is True
-
 
 class TestCliName:
-    def test_a_workflow_without_the_accessor_has_no_cli_name(self) -> None:
-        assert workflow_cli_name(BareWorkflow) is None
+    def test_the_base_accessor_provides_a_cli_name(self) -> None:
+        assert workflow_cli_name(BareWorkflow) == "bare"
 
     def test_declared_cli_name_is_returned(self) -> None:
         assert workflow_cli_name(FullyDeclaredWorkflow) == "apply-golden-config"
-
-    @pytest.mark.parametrize(
-        ("workflow_class", "declared"),
-        [(BlankCliNameWorkflow, "   "), (MissingCliNameWorkflow, None)],
-        ids=["blank", "none"],
-    )
-    def test_an_unusable_declaration_reads_back_uninterpreted(
-        self, workflow_class: type, declared: Any
-    ) -> None:
-        """``validation`` rejects these; the accessor reports them as declared."""
-        assert workflow_cli_name(workflow_class) == declared
 
     def test_a_failing_accessor_is_reported_as_a_registration_failure(self) -> None:
         with pytest.raises(WorkflowRegistrationError) as raised:
@@ -241,9 +183,6 @@ class TestMcpExposure:
     def test_mcp_is_opt_in(self) -> None:
         assert not workflow_mcp_enabled(BareWorkflow)
         assert workflow_mcp_enabled(FullyDeclaredWorkflow)
-
-    def test_a_non_bool_flag_still_reads_as_a_bool(self) -> None:
-        assert workflow_mcp_enabled(TruthyMcpFlagWorkflow) is True
 
     def test_tool_name_is_derived_from_the_endpoint(self) -> None:
         assert workflow_mcp_tool_name(FullyDeclaredWorkflow) == "run_apply_golden_config"
@@ -309,19 +248,9 @@ class TestRequiredActivities:
         assert declared_required_activities(AccessorActivitiesWorkflow) == (apply_configuration,)
         assert workflow_required_activity_names(AccessorActivitiesWorkflow) == ("apply_config",)
 
-    def test_unusable_entries_are_dropped(self) -> None:
-        """Validation rejects them; the accessor stays usable for consumers."""
-        assert workflow_required_activity_names(MixedActivitiesWorkflow) == (
-            "collect_facts",
-            "already_a_name",
-        )
-
     def test_an_undeclared_requirement_reads_as_no_requirement(self) -> None:
         assert workflow_required_activity_names(BareWorkflow) == ()
-        assert declared_required_activities(BareWorkflow) is None
-
-    def test_a_bare_string_declares_no_requirement(self) -> None:
-        assert workflow_required_activity_names(StringActivitiesWorkflow) == ()
+        assert declared_required_activities(BareWorkflow) == ()
 
     @pytest.mark.parametrize("declared", [(), [], (collect_facts,)])
     def test_sequences_are_accepted(self, declared: Any) -> None:

@@ -153,23 +153,23 @@ class UnlaunchableCliWorkflow(WorkflowMetadataMixin, StageMixin):
 
 
 @workflow.defn(dynamic=True)
-class CatchAllWorkflow:
+class CatchAllWorkflow(WorkflowMetadataMixin, StageMixin):
     @workflow.run
     async def run(self, args: Sequence[RawValue]) -> None: ...
 
 
-class UndecoratedWorkflow:
+class UndecoratedWorkflow(WorkflowMetadataMixin, StageMixin):
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
-class UndecoratedMisdeclaredWorkflow:
+class UndecoratedMisdeclaredWorkflow(WorkflowMetadataMixin, StageMixin):
     """Undecorated, and what metadata it declares is unusable as well."""
 
     workflow_name = 42
 
     @workflow.run
-    async def run(self) -> None: ...
+    async def run(self, workflow_input: BaseModel) -> None: ...
 
 
 @workflow.defn
@@ -415,6 +415,18 @@ class TestDeclaredMetadata:
             validate_plugins(installed(alpha_plugin()))
 
         assert "workflow_api_endpoint" in str(raised.value)
+
+    @pytest.mark.parametrize("declared", ["/", "//"])
+    def test_endpoint_must_name_a_path_of_its_own(
+        self, monkeypatch: pytest.MonkeyPatch, declared: str
+    ) -> None:
+        """The API root serves the service itself, so no workflow may be invoked there."""
+        monkeypatch.setattr(AlphaWorkflow, "workflow_api_endpoint", declared)
+
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(installed(alpha_plugin()))
+
+        assert "names no path segment" in str(raised.value)
 
     @pytest.mark.parametrize("declared", [42, ""])
     def test_endpoint_must_be_a_non_empty_string(

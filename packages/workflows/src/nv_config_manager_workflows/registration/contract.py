@@ -52,6 +52,7 @@ from typing import Any
 from temporalio.activity import _Definition as ActivityDefinition
 from temporalio.workflow import _Definition as WorkflowDefinition
 
+from nv_config_manager_workflows.metadata import RequiredActivity, WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.errors import WorkflowRegistrationError
 
 METADATA_ATTRIBUTES = (
@@ -62,28 +63,28 @@ METADATA_ATTRIBUTES = (
 )
 
 
-def workflow_class_name(workflow: type) -> str:
+def workflow_class_name(workflow: type[WorkflowMetadataMixin]) -> str:
     """Return the Python class name, which RBAC and the API catalog key on."""
     return workflow.__name__
 
 
-def workflow_declared_name(workflow: type) -> str | None:
+def workflow_declared_name(workflow: type[WorkflowMetadataMixin]) -> str | None:
     """Return the human-readable workflow name, or ``None`` when undeclared."""
-    return getattr(workflow, "workflow_name", None)
+    return workflow.workflow_name
 
 
-def workflow_type_name(workflow: type) -> str | None:
+def workflow_type_name(workflow: type[WorkflowMetadataMixin]) -> str | None:
     """Return the Temporal workflow type, or ``None`` when the class declares none."""
     definition = _workflow_definition(workflow)
     return definition.name if definition is not None else None
 
 
-def workflow_has_definition(workflow: type) -> bool:
+def workflow_has_definition(workflow: type[WorkflowMetadataMixin]) -> bool:
     """Return whether the class carries its own ``@workflow.defn``."""
     return _workflow_definition(workflow) is not None
 
 
-def workflow_is_dynamic(workflow: type) -> bool:
+def workflow_is_dynamic(workflow: type[WorkflowMetadataMixin]) -> bool:
     """Return whether the class is declared as Temporal's catch-all workflow."""
     definition = _workflow_definition(workflow)
     return definition is not None and definition.name is None
@@ -110,44 +111,44 @@ def activity_is_dynamic(activity: Callable[..., Any]) -> bool:
     return definition is not None and definition.name is None
 
 
-def workflow_api_endpoint(workflow: type) -> str | None:
+def workflow_api_endpoint(workflow: type[WorkflowMetadataMixin]) -> str | None:
     """Return the API path the workflow is served under, if any."""
-    return getattr(workflow, "workflow_api_endpoint", None)
+    return workflow.workflow_api_endpoint
 
 
-def workflow_api_enabled(workflow: type) -> bool:
+def workflow_api_enabled(workflow: type[WorkflowMetadataMixin]) -> bool:
     """Return whether the workflow opts in to direct invocation through the API."""
-    return bool(getattr(workflow, "workflow_api_enabled", False))
+    return workflow.workflow_api_enabled
 
 
-def normalized_api_endpoint(workflow: type) -> str | None:
+def normalized_api_endpoint(workflow: type[WorkflowMetadataMixin]) -> str | None:
     """Return the API path in the form used to compare two workflows."""
     endpoint = workflow_api_endpoint(workflow)
-    if not isinstance(endpoint, str):
+    if endpoint is None:
         return None
-    return endpoint.rstrip("/") or "/"
+    return endpoint.rstrip("/")
 
 
-def workflow_cli_name(workflow: type) -> Any:
-    """Read the declared CLI command name without interpreting it.
+def workflow_cli_name(workflow: type[WorkflowMetadataMixin]) -> str:
+    """Return the workflow's CLI command name."""
+    return _call_workflow_accessor(
+        workflow,
+        lambda: workflow.get_workflow_cli_name(),
+        "get_workflow_cli_name",
+    )
 
-    ``validation`` rejects a declaration that is not a usable name, so a
-    silently dropped CLI command stays impossible.
-    """
-    return _call_contract_accessor(workflow, "get_workflow_cli_name")
 
-
-def workflow_mcp_enabled(workflow: type) -> bool:
+def workflow_mcp_enabled(workflow: type[WorkflowMetadataMixin]) -> bool:
     """Return whether the workflow opts in to being exposed as an MCP tool."""
-    return bool(getattr(workflow, "workflow_mcp_enabled", False))
+    return workflow.workflow_mcp_enabled
 
 
-def workflow_mcp_tool_name(workflow: type) -> str | None:
+def workflow_mcp_tool_name(workflow: type[WorkflowMetadataMixin]) -> str | None:
     """Return the MCP tool name the workflow is exposed under, if any."""
     if not workflow_mcp_enabled(workflow):
         return None
     endpoint = workflow_api_endpoint(workflow)
-    if not isinstance(endpoint, str) or not endpoint.strip("/"):
+    if endpoint is None or not endpoint.strip("/"):
         return None
     return mcp_tool_name_for_endpoint(endpoint)
 
@@ -158,17 +159,25 @@ def mcp_tool_name_for_endpoint(endpoint: str) -> str:
     return f"run_{slug.replace('-', '_')}"
 
 
-def workflow_has_complete_metadata(workflow: type) -> bool:
+def workflow_has_complete_metadata(workflow: type[WorkflowMetadataMixin]) -> bool:
     """Return whether the workflow carries every attribute the API needs."""
     return not missing_metadata_attributes(workflow)
 
 
-def missing_metadata_attributes(workflow: type) -> tuple[str, ...]:
+def missing_metadata_attributes(workflow: type[WorkflowMetadataMixin]) -> tuple[str, ...]:
     """Return the API metadata attributes the workflow leaves unset."""
-    return tuple(name for name in METADATA_ATTRIBUTES if getattr(workflow, name, None) is None)
+    declarations = (
+        ("workflow_name", workflow.workflow_name),
+        ("workflow_description", workflow.workflow_description),
+        ("workflow_input_class", workflow.workflow_input_class),
+        ("workflow_api_endpoint", workflow.workflow_api_endpoint),
+    )
+    return tuple(name for name, value in declarations if value is None)
 
 
-def workflow_required_activity_names(workflow: type) -> tuple[str, ...]:
+def workflow_required_activity_names(
+    workflow: type[WorkflowMetadataMixin],
+) -> tuple[str, ...]:
     """Return the Temporal activity names the workflow declares that it calls."""
     declared = declared_required_activities(workflow)
     if not is_activity_sequence(declared):
@@ -177,14 +186,18 @@ def workflow_required_activity_names(workflow: type) -> tuple[str, ...]:
     return tuple(name for name in resolved if name is not None)
 
 
-def declared_required_activities(workflow: type) -> Any:
-    """Read the required-activity declaration without interpreting it."""
-    if _has_contract_accessor(workflow, "get_workflow_required_activities"):
-        return _call_contract_accessor(workflow, "get_workflow_required_activities")
-    return getattr(workflow, "workflow_required_activities", None)
+def declared_required_activities(
+    workflow: type[WorkflowMetadataMixin],
+) -> Sequence[RequiredActivity]:
+    """Return the workflow's required-activity declaration."""
+    return _call_workflow_accessor(
+        workflow,
+        lambda: workflow.get_workflow_required_activities(),
+        "get_workflow_required_activities",
+    )
 
 
-def required_activity_name(entry: Any) -> str | None:
+def required_activity_name(entry: object) -> str | None:
     """Resolve one required-activity entry to a Temporal activity name.
 
     A callable carrying no ``@activity.defn`` resolves to ``None`` like any other
@@ -197,12 +210,14 @@ def required_activity_name(entry: Any) -> str | None:
     return None
 
 
-def is_activity_sequence(declared: Any) -> bool:
+def is_activity_sequence(declared: object) -> bool:
     """Return whether a required-activity declaration is a usable sequence."""
     return not isinstance(declared, str) and isinstance(declared, Sequence)
 
 
-def _workflow_definition(workflow: type) -> WorkflowDefinition | None:
+def _workflow_definition(
+    workflow: type[WorkflowMetadataMixin],
+) -> WorkflowDefinition | None:
     """Return the Temporal definition ``@workflow.defn`` attached to this class."""
     return WorkflowDefinition.from_class(workflow)
 
@@ -212,16 +227,12 @@ def _activity_definition(activity: Callable[..., Any]) -> ActivityDefinition | N
     return ActivityDefinition.from_callable(activity)
 
 
-def _has_contract_accessor(workflow: type, accessor: str) -> bool:
-    """Return whether the workflow exposes a callable contract accessor."""
-    return callable(getattr(workflow, accessor, None))
-
-
-def _call_contract_accessor(workflow: type, accessor: str) -> Any:
-    """Call a plugin-supplied accessor, reporting failures as our own error."""
-    method = getattr(workflow, accessor, None)
-    if not callable(method):
-        return None
+def _call_workflow_accessor[ValueT](
+    workflow: type[WorkflowMetadataMixin],
+    method: Callable[[], ValueT],
+    accessor: str,
+) -> ValueT:
+    """Call a workflow accessor, reporting failures as registration errors."""
     try:
         return method()
     except WorkflowRegistrationError:

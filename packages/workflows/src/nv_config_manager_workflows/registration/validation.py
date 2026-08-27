@@ -83,8 +83,8 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
         _Owned(name, item) for name, d in plugins.items() for item in d.activities
     ]
 
-    _require_named_workflows(workflows)
     _require_plugin_workflow_bases(workflows)
+    _require_named_workflows(workflows)
     _require_named_activities(activities)
     _require_valid_metadata(workflows)
 
@@ -218,6 +218,11 @@ def _require_endpoint_wellformed(workflow: type, label: str) -> None:
         raise WorkflowRegistrationError(
             f'{label} declares workflow_api_endpoint "{endpoint}", which must start with "/" '
             f"and contain no whitespace"
+        )
+    if not endpoint.strip("/"):
+        raise WorkflowRegistrationError(
+            f'{label} declares workflow_api_endpoint "{endpoint}", which names no path segment; '
+            f"a workflow is invoked under a path of its own, not the API root"
         )
 
 
