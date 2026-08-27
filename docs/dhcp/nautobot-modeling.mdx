@@ -377,9 +377,14 @@ Junos factory ZTP reads DHCP option 43, not `cumulus-provision-url`. The bundled
         }
       }
     }
+  },
+  "ztp": {
+    "ipv4": ["10.1.200.10", "10.1.200.11"]
   }
 }
 ```
+
+`{{ ztp_server }}` is rendered from the merged `ztp.ipv4` (or `ztp.ipv6`) list. Put that list in this context, or in another context that applies to the same device (typically a site-level context). Config generation fails if a reservation uses `{{ ztp_server }}` and no list is present.
 
 Custom option-def entries for those names must use Kea space `vendor-encapsulated-options-space` so they pack into DHCP option 43. The bundled `NVIDIA Config Manager DHCP Custom Options` context defines them.
 
