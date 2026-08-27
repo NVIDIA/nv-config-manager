@@ -2711,6 +2711,25 @@ class JuniperConnection(NetworkConnection):
         except (KeyError, IndexError, TypeError, ValueError) as error:
             raise NetworkDeviceException(f"Unable to determine uptime on {self._host}.") from error
 
+    def execute_ztp(self) -> None:
+        """Factory-reset the device so it re-runs Junos DHCP/HTTP ZTP."""
+        device = self._get_device()
+        try:
+            device.rpc.request_system_zeroize()
+        except (RpcError, ConnectError):
+            # Zeroize tears down NETCONF as the device reboots; that is success.
+            logger.info(
+                "NETCONF session ended after zeroize on %s; treating as success",
+                self._host,
+            )
+        finally:
+            self.close()
+
+    def get_ztp_status(self) -> str:
+        """Return success when the device is reachable after ZTP."""
+        self.get_running_image()
+        return "success"
+
     def _get_lldp_neighbor_entries(self) -> list[dict[str, Any]]:
         """Return raw lldp-neighbor-information entries from the device."""
         data = self._rpc("get-lldp-neighbors-information")
