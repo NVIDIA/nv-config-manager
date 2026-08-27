@@ -469,6 +469,12 @@ class TestGenerateHelmValues:
             == "nvcr.io/nvidian/cfa/nv-config-manager"
         )
 
+    def test_redis_exporter_image_default(self):
+        assert _GLOBAL_IMAGE_DEFAULTS["redisExporter"] == (
+            "docker.io/oliver006/redis_exporter",
+            "v1.90.0",
+        )
+
     def test_sso_enabled(self):
         config = _make_config(
             sso=SSOConfig(
@@ -1070,6 +1076,11 @@ class TestImagesInHelmValues:
             == "registry.example.com/nv-config-manager/natsio/prometheus-nats-exporter"
         )
         assert images["natsExporter"]["tag"] == "0.20.1"
+        assert (
+            images["redisExporter"]["repository"]
+            == "registry.example.com/nv-config-manager/oliver006/redis_exporter"
+        )
+        assert images["redisExporter"]["tag"] == "v1.90.0"
         assert (
             images["temporalServer"]["repository"]
             == "registry.example.com/nv-config-manager/nvidian/cfa/nv-config-manager-temporal"

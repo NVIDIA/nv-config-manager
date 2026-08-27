@@ -912,6 +912,7 @@ IMAGE_OVERRIDE_KEYS: list[tuple[str, str]] = [
     ("kubectl", "docker.io/alpine/kubectl"),
     ("busybox", "docker.io/library/busybox"),
     ("redis", "docker.io/library/redis"),
+    ("redisExporter", "docker.io/oliver006/redis_exporter"),
     ("nats", "docker.io/library/nats"),
     ("natsBox", "docker.io/natsio/nats-box"),
     ("natsExporter", "docker.io/natsio/prometheus-nats-exporter"),

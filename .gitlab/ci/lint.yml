@@ -244,6 +244,7 @@ lint-mr-helm:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "deploy/helm/**"
+        - "deploy/airgapped/values-airgapped-extract.yaml"
       when: always
   image: $NVCM_CI_IMAGE_ALPINE
   before_script:
@@ -267,6 +268,7 @@ lint-mr-helm:
     - helm dependency build deploy/helm/
     - helm lint deploy/helm/ -f deploy/helm/values-ci.yaml
     - helm template nv-config-manager deploy/helm/ -f deploy/helm/values-ci.yaml > /dev/null
+    - bash deploy/helm/tests/redis-metrics-render.sh
 
 lint-mr-ui:
   stage: lint
