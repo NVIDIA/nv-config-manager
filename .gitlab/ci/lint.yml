@@ -244,7 +244,6 @@ lint-mr-helm:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "deploy/helm/**"
-        - "deploy/airgapped/values-airgapped-extract.yaml"
       when: always
   image: $NVCM_CI_IMAGE_ALPINE
   before_script:

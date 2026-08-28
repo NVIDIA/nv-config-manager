@@ -559,6 +559,9 @@ class MonitoringConfig(BaseModel):
     # Grafana/Loki are AGPL-licensed and are not enabled by the default
     # installer-managed observability path.
     observability_enabled: bool = False
+    # Explicit preference for the bundled local Redis exporter. Local
+    # observability enables it effectively without changing this preference.
+    redis_metrics_enabled: bool = False
 
     @field_validator("prometheus_namespace")
     @classmethod

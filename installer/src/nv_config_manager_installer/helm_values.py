@@ -642,6 +642,14 @@ def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:
     return postgres
 
 
+def _redis_metrics_enabled(config: NVConfigManagerInstallConfig) -> bool:
+    """Return whether Redis metrics are effective for the bundled Redis."""
+    monitoring = config.infrastructure.monitoring
+    return not config.external_services.redis.enabled and (
+        monitoring.redis_metrics_enabled or monitoring.observability_enabled
+    )
+
+
 def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, Any]:
     """Build the ``externalServices`` section."""
     svc = config.services
@@ -685,9 +693,14 @@ def _build_external_services(config: NVConfigManagerInstallConfig) -> dict[str, 
             "port": r.port,
             "ssl": r.ssl,
             "passwordAuth": r.password_auth,
+            "metricsExport": {"enabled": False},
         }
     else:
-        ext["redis"] = {"local": True, "localHost": "redis-master"}
+        ext["redis"] = {
+            "local": True,
+            "localHost": "redis-master",
+            "metricsExport": {"enabled": _redis_metrics_enabled(config)},
+        }
 
     ext["postgres"] = _build_postgres_section(es.postgres)
 
@@ -1045,10 +1058,14 @@ def build_values(
 
     values["cnpg"] = _build_cnpg(config)
 
-    if (
-        config.infrastructure.monitoring.enabled
-        or config.infrastructure.monitoring.observability_enabled
-    ):
+    monitoring = config.infrastructure.monitoring
+    monitoring_active = monitoring.enabled or monitoring.observability_enabled
+    monitoring_values: dict[str, Any] = {
+        "podMonitors": {
+            "redis": {"enabled": _redis_metrics_enabled(config) and monitoring_active},
+        },
+    }
+    if monitoring_active:
         # The local-dev observability stack relies on the existing PodMonitor
         # resources in templates/monitoring.yaml to scrape nv-config-manager pods, so we
         # flip monitoring.enabled on whenever observability is on. The master
@@ -1058,23 +1075,28 @@ def build_values(
         # (both default false in values.yaml) so without these Alloy's
         # prometheus.operator.* informers run but find zero CRs to scrape and
         # Prometheus stays empty.
-        prometheus_namespace = config.infrastructure.monitoring.prometheus_namespace
-        if config.infrastructure.monitoring.observability_enabled:
+        prometheus_namespace = monitoring.prometheus_namespace
+        if monitoring.observability_enabled:
             # Local Prometheus + Alloy run in the release namespace.
             prometheus_namespace = config.cluster.namespace
-        values["monitoring"] = {
-            "enabled": True,
-            "podMonitors": {
+        monitoring_values.update(
+            {
+                "enabled": True,
+                "probes": {"enabled": True},
+                "prometheus": {"namespace": prometheus_namespace},
+            }
+        )
+        monitoring_values["podMonitors"].update(
+            {
                 "enabled": True,
                 # Chart CNPG PodMonitors also require monitoring.podMonitors.cnpg.enabled
                 # (plus cnpg.enabled and each cluster's enabled flag).
                 "cnpg": {"enabled": True},
-            },
-            "probes": {"enabled": True},
-            "prometheus": {"namespace": prometheus_namespace},
-        }
+            }
+        )
+    values["monitoring"] = monitoring_values
 
-    if config.infrastructure.monitoring.observability_enabled:
+    if monitoring.observability_enabled:
         # Flip the subchart condition gates so prometheus / alloy render.
         # Full configuration lives in
         # deploy/helm/values-observability.yaml, which the deployer layers in

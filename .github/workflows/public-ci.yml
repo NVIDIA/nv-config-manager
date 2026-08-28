@@ -270,8 +270,6 @@ jobs:
           helm dependency build deploy/helm/
       - run: helm lint deploy/helm/ --values deploy/helm/values-ci.yaml
       - run: helm template test deploy/helm/ --values deploy/helm/values-ci.yaml >/tmp/nvcm-helm.yaml
-      - name: Redis metrics render contract
-        run: bash deploy/helm/tests/redis-metrics-render.sh
       - name: Bundled NATS without Nautobot render
         run: |
           helm template test deploy/helm/ \

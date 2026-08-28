@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import tempfile
+from itertools import product
 from pathlib import Path
 
+import pytest
 import yaml
 
 from nv_config_manager_installer.helm_values import _GLOBAL_IMAGE_DEFAULTS, generate_helm_values
@@ -29,6 +31,7 @@ from nv_config_manager_installer.schema import (
     DCIMConfig,
     DCIMProviderPackage,
     ExternalNATSConfig,
+    ExternalRedisConfig,
     ExternalServicesConfig,
     ExternalTemporalConfig,
     GatewayType,
@@ -1166,6 +1169,113 @@ class TestImagesInHelmValues:
 
 
 class TestMonitoringHelmValues:
+    @pytest.mark.parametrize(
+        ("external_redis_enabled", "explicit", "observability", "monitoring"),
+        product((False, True), repeat=4),
+    )
+    def test_redis_metrics_boolean_truth_table(
+        self,
+        external_redis_enabled: bool,
+        explicit: bool,
+        observability: bool,
+        monitoring: bool,
+    ):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                redis=ExternalRedisConfig(
+                    enabled=external_redis_enabled,
+                    host="redis.example.com" if external_redis_enabled else "",
+                ),
+            ),
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    enabled=monitoring,
+                    observability_enabled=observability,
+                    redis_metrics_enabled=explicit,
+                ),
+            ),
+        )
+
+        values = _gen(config)
+        exporter = not external_redis_enabled and (explicit or observability)
+
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is exporter
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is (
+            exporter and (monitoring or observability)
+        )
+
+    def test_explicit_redis_metrics_without_monitoring_enables_exporter_only(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(redis_metrics_enabled=True),
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is False
+
+    def test_explicit_redis_metrics_with_monitoring_enables_pod_monitor(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(enabled=True, redis_metrics_enabled=True),
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is True
+
+    def test_observability_automatically_enables_redis_metrics(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(observability_enabled=True),
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is True
+
+    def test_external_redis_suppresses_exporter_and_pod_monitor(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                redis=ExternalRedisConfig(enabled=True, host="redis.example.com"),
+            ),
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(
+                    observability_enabled=True,
+                    redis_metrics_enabled=True,
+                ),
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["local"] is False
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is False
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is False
+
+    def test_disabled_redis_metrics_emit_false_upgrade_overrides(self):
+        config = _make_config(
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(enabled=True, redis_metrics_enabled=True),
+            ),
+        )
+        enabled_values = _gen(config)
+        assert enabled_values["externalServices"]["redis"]["metricsExport"]["enabled"] is True
+        assert enabled_values["monitoring"]["podMonitors"]["redis"]["enabled"] is True
+
+        config.infrastructure.monitoring.enabled = False
+        config.infrastructure.monitoring.redis_metrics_enabled = False
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is False
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is False
+
     def test_monitoring_enabled_sets_default_prometheus_namespace(self):
         config = _make_config(
             infrastructure=InfrastructureConfig(
