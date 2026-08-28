@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -77,7 +78,7 @@ def descriptor(name: str = "example-plugin", **overrides: Any) -> WorkflowPlugin
 
 
 @pytest.fixture
-def install(monkeypatch: pytest.MonkeyPatch):
+def install(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     """Return a callable that publishes entry points to an entry-point group."""
 
     def install_entry_points(
@@ -99,17 +100,19 @@ class TestDiscoveredPlugins:
         """Renaming this orphans the packaging metadata of every published plugin."""
         assert WORKFLOW_PLUGIN_ENTRY_POINT_GROUP == "nv_config_manager.workflows"
 
-    def test_an_environment_with_no_plugins_discovers_nothing(self, install) -> None:
+    def test_an_environment_with_no_plugins_discovers_nothing(
+        self, install: Callable[..., None]
+    ) -> None:
         install()
 
         assert discover_workflow_plugins() == {}
 
-    def test_only_the_workflow_plugin_group_is_scanned(self, install) -> None:
+    def test_only_the_workflow_plugin_group_is_scanned(self, install: Callable[..., None]) -> None:
         install(FakeEntryPoint(name="example-plugin"), group="console_scripts")
 
         assert discover_workflow_plugins() == {}
 
-    def test_an_entry_point_may_point_at_a_descriptor(self, install) -> None:
+    def test_an_entry_point_may_point_at_a_descriptor(self, install: Callable[..., None]) -> None:
         install(FakeEntryPoint(name="example-plugin", returns=descriptor()))
 
         discovered = discover_workflow_plugins()
@@ -117,12 +120,14 @@ class TestDiscoveredPlugins:
         assert list(discovered) == ["example-plugin"]
         assert discovered["example-plugin"].name == "example-plugin"
 
-    def test_an_entry_point_may_point_at_a_factory(self, install) -> None:
+    def test_an_entry_point_may_point_at_a_factory(self, install: Callable[..., None]) -> None:
         install(FakeEntryPoint(name="example-plugin", returns=lambda: descriptor()))
 
         assert list(discover_workflow_plugins()) == ["example-plugin"]
 
-    def test_plugins_are_keyed_and_ordered_by_entry_point_name(self, install) -> None:
+    def test_plugins_are_keyed_and_ordered_by_entry_point_name(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(name="zulu-plugin", returns=descriptor("zulu-plugin")),
             FakeEntryPoint(name="alpha-plugin", returns=descriptor("alpha-plugin")),
@@ -130,7 +135,7 @@ class TestDiscoveredPlugins:
 
         assert list(discover_workflow_plugins()) == ["alpha-plugin", "zulu-plugin"]
 
-    def test_the_declared_catalog_survives_discovery(self, install) -> None:
+    def test_the_declared_catalog_survives_discovery(self, install: Callable[..., None]) -> None:
         install(
             FakeEntryPoint(
                 name="example-plugin",
@@ -145,7 +150,9 @@ class TestDiscoveredPlugins:
 
 
 class TestReportedVersion:
-    def test_an_unset_version_is_filled_in_from_the_installed_distribution(self, install) -> None:
+    def test_an_unset_version_is_filled_in_from_the_installed_distribution(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(
                 name="example-plugin",
@@ -156,7 +163,7 @@ class TestReportedVersion:
 
         assert discover_workflow_plugins()["example-plugin"].version == "1.2.3"
 
-    def test_a_declared_version_is_reported_instead(self, install) -> None:
+    def test_a_declared_version_is_reported_instead(self, install: Callable[..., None]) -> None:
         install(
             FakeEntryPoint(
                 name="example-plugin",
@@ -169,7 +176,7 @@ class TestReportedVersion:
 
     @pytest.mark.parametrize("reported", [None, "", 42], ids=["missing", "blank", "not-a-string"])
     def test_a_distribution_reporting_no_usable_version_falls_back(
-        self, install, reported: Any
+        self, install: Callable[..., None], reported: Any
     ) -> None:
         install(
             FakeEntryPoint(
@@ -181,12 +188,16 @@ class TestReportedVersion:
 
         assert discover_workflow_plugins()["example-plugin"].version == UNKNOWN_PLUGIN_VERSION
 
-    def test_an_entry_point_without_a_distribution_falls_back(self, install) -> None:
+    def test_an_entry_point_without_a_distribution_falls_back(
+        self, install: Callable[..., None]
+    ) -> None:
         install(FakeEntryPoint(name="example-plugin", returns=descriptor(), dist=None))
 
         assert discover_workflow_plugins()["example-plugin"].version == UNKNOWN_PLUGIN_VERSION
 
-    def test_filling_the_version_in_preserves_the_rest_of_the_descriptor(self, install) -> None:
+    def test_filling_the_version_in_preserves_the_rest_of_the_descriptor(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(
                 name="example-plugin",
@@ -202,7 +213,9 @@ class TestReportedVersion:
 
 
 class TestRejectedPlugins:
-    def test_an_import_failure_is_reported_against_the_plugin(self, install) -> None:
+    def test_an_import_failure_is_reported_against_the_plugin(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(
                 name="example-plugin",
@@ -219,7 +232,9 @@ class TestRejectedPlugins:
         )
         assert isinstance(raised.value.__cause__, ModuleNotFoundError)
 
-    def test_a_failing_factory_is_reported_against_the_plugin(self, install) -> None:
+    def test_a_failing_factory_is_reported_against_the_plugin(
+        self, install: Callable[..., None]
+    ) -> None:
         def explode() -> WorkflowPluginDescriptor:
             raise RuntimeError("the plugin read config that is not there yet")
 
@@ -229,7 +244,7 @@ class TestRejectedPlugins:
             discover_workflow_plugins()
 
     def test_registering_the_descriptor_class_instead_of_an_instance_is_reported(
-        self, install
+        self, install: Callable[..., None]
     ) -> None:
         """Calling it yields a validation error, which is still a load failure."""
         install(FakeEntryPoint(name="example-plugin", returns=WorkflowPluginDescriptor))
@@ -237,7 +252,9 @@ class TestRejectedPlugins:
         with pytest.raises(WorkflowPluginDiscoveryError, match="failed to load"):
             discover_workflow_plugins()
 
-    def test_something_other_than_a_descriptor_is_rejected_by_type(self, install) -> None:
+    def test_something_other_than_a_descriptor_is_rejected_by_type(
+        self, install: Callable[..., None]
+    ) -> None:
         install(FakeEntryPoint(name="example-plugin", returns={"workflows": []}))
 
         with pytest.raises(WorkflowPluginDiscoveryError) as raised:
@@ -245,7 +262,9 @@ class TestRejectedPlugins:
 
         assert "does not return WorkflowPluginDescriptor, got dict" in str(raised.value)
 
-    def test_a_descriptor_naming_itself_something_else_is_rejected(self, install) -> None:
+    def test_a_descriptor_naming_itself_something_else_is_rejected(
+        self, install: Callable[..., None]
+    ) -> None:
         """The entry-point table an operator reads has to match the diagnostics."""
         install(FakeEntryPoint(name="example-plugin", returns=descriptor("other-plugin")))
 
@@ -254,7 +273,9 @@ class TestRejectedPlugins:
 
         assert 'declares name "other-plugin"' in str(raised.value)
 
-    def test_two_distributions_registering_one_name_are_rejected(self, install) -> None:
+    def test_two_distributions_registering_one_name_are_rejected(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(name="example-plugin", returns=descriptor()),
             FakeEntryPoint(
@@ -273,7 +294,9 @@ class TestRejectedPlugins:
         assert "distribution vendor-plugin 9.9.9" in str(raised.value)
         assert "/usr/lib/python3.13/site-packages" in str(raised.value)
 
-    def test_a_duplicate_without_a_distribution_is_still_identified(self, install) -> None:
+    def test_a_duplicate_without_a_distribution_is_still_identified(
+        self, install: Callable[..., None]
+    ) -> None:
         install(
             FakeEntryPoint(name="example-plugin", returns=descriptor(), dist=None),
             FakeEntryPoint(

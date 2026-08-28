@@ -14,6 +14,8 @@
 # limitations under the License.
 """Stage definition, dependency rules, signals and search-attribute indexing."""
 
+from typing import Any
+
 import pytest
 from pydantic import BaseModel
 
@@ -30,7 +32,7 @@ from nv_config_manager_workflows.stage import (
 )
 
 
-def build_workflow(clock):
+def build_workflow(clock: Any) -> StageMixin:
     """Build a stage workflow with a render stage feeding a deploy stage."""
     state = StageMixin()
     state.define_stage(name="render", description="Render", requires_approval=False, depends_on=[])
@@ -41,14 +43,14 @@ def build_workflow(clock):
 
 
 class TestDefineStage:
-    def test_a_stage_starts_not_started_with_seeded_history(self, clock):
+    def test_a_stage_starts_not_started_with_seeded_history(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         stage = state.get_stage_by_name("render")
         assert stage.state == StateEnum.NOT_STARTED
         assert [entry.state for entry in stage.state_history] == [StateEnum.NOT_STARTED]
 
-    def test_a_duplicate_stage_name_is_rejected(self, clock):
+    def test_a_duplicate_stage_name_is_rejected(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         with pytest.raises(StageStateFailure, match="Stage already defined with name render"):
@@ -56,7 +58,7 @@ class TestDefineStage:
                 name="render", description="Render again", requires_approval=False, depends_on=[]
             )
 
-    def test_a_dependency_on_an_undefined_stage_is_rejected(self, clock):
+    def test_a_dependency_on_an_undefined_stage_is_rejected(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         with pytest.raises(StageStateFailure, match="Stage verify in depends_on does not exist"):
@@ -64,7 +66,7 @@ class TestDefineStage:
                 name="report", description="Report", requires_approval=False, depends_on=["verify"]
             )
 
-    def test_an_approval_stage_needs_a_positive_threshold(self, clock):
+    def test_an_approval_stage_needs_a_positive_threshold(self, clock: Any) -> None:
         state = StageMixin()
 
         with pytest.raises(StageStateFailure, match="threshold >= 1"):
@@ -76,7 +78,7 @@ class TestDefineStage:
                 approval_threshold=0,
             )
 
-    def test_an_unknown_stage_lookup_is_rejected(self, clock):
+    def test_an_unknown_stage_lookup_is_rejected(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         with pytest.raises(StageStateFailure, match="No stage defined with name verify"):
@@ -86,13 +88,15 @@ class TestDefineStage:
 
 
 class TestDependencies:
-    def test_a_stage_cannot_start_before_its_dependency_completes(self, clock):
+    def test_a_stage_cannot_start_before_its_dependency_completes(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         with pytest.raises(StageStateFailure, match="Cannot start deploy before render"):
             state.set_stage_state("deploy", StateEnum.IN_PROGRESS)
 
-    def test_a_stage_starts_once_its_dependency_completes(self, clock, legacy_history):
+    def test_a_stage_starts_once_its_dependency_completes(
+        self, clock: Any, legacy_history: Any
+    ) -> None:
         state = build_workflow(clock)
 
         state.set_stage_state("render", StateEnum.IN_PROGRESS)
@@ -101,7 +105,9 @@ class TestDependencies:
 
         assert state.get_stage_state("deploy") == StateEnum.IN_PROGRESS
 
-    def test_an_unreachable_dependency_still_unblocks_its_dependents(self, clock, legacy_history):
+    def test_an_unreachable_dependency_still_unblocks_its_dependents(
+        self, clock: Any, legacy_history: Any
+    ) -> None:
         """Skipping a stage must not strand the stages behind it."""
         state = build_workflow(clock)
 
@@ -110,21 +116,25 @@ class TestDependencies:
 
         assert state.get_stage_state("deploy") == StateEnum.IN_PROGRESS
 
-    def test_unreachable_cascades_to_dependents(self, clock, legacy_history):
+    def test_unreachable_cascades_to_dependents(self, clock: Any, legacy_history: Any) -> None:
         state = build_workflow(clock)
 
         state.set_stage_state("render", StateEnum.UNREACHABLE)
 
         assert state.get_stage_state("deploy") == StateEnum.UNREACHABLE
 
-    def test_setting_the_state_a_stage_already_holds_is_a_no_op(self, clock, legacy_history):
+    def test_setting_the_state_a_stage_already_holds_is_a_no_op(
+        self, clock: Any, legacy_history: Any
+    ) -> None:
         state = build_workflow(clock)
 
         state.set_stage_state("render", StateEnum.NOT_STARTED)
 
         assert len(state.get_stage_by_name("render").state_history) == 1
 
-    def test_stages_can_be_selected_by_state_and_by_dependency(self, clock, legacy_history):
+    def test_stages_can_be_selected_by_state_and_by_dependency(
+        self, clock: Any, legacy_history: Any
+    ) -> None:
         state = build_workflow(clock)
 
         state.set_stage_state("render", StateEnum.IN_PROGRESS)
@@ -134,7 +144,9 @@ class TestDependencies:
 
 
 class TestSearchAttributes:
-    def test_stage_state_is_indexed_on_every_transition(self, clock, patched_history, upserted):
+    def test_stage_state_is_indexed_on_every_transition(
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = build_workflow(clock)
 
         state.set_stage_state("render", StateEnum.IN_PROGRESS)
@@ -145,7 +157,9 @@ class TestSearchAttributes:
             PENDING_APPROVAL_SEARCH_ATTRIBUTE: [False],
         }
 
-    def test_histories_from_before_the_patch_are_not_indexed(self, clock, legacy_history, upserted):
+    def test_histories_from_before_the_patch_are_not_indexed(
+        self, clock: Any, legacy_history: Any, upserted: Any
+    ) -> None:
         """Upserting on replay of an older history would break determinism."""
         state = build_workflow(clock)
 
@@ -155,7 +169,7 @@ class TestSearchAttributes:
 
 
 class TestTerminateOnFailure:
-    def test_a_stage_workflow_input_configures_termination(self, clock):
+    def test_a_stage_workflow_input_configures_termination(self, clock: Any) -> None:
         state = StageMixin()
 
         state.set_input(StageWorkflowInput(terminate_on_failure=True))
@@ -163,7 +177,7 @@ class TestTerminateOnFailure:
         assert state.terminate_on_failure is True
         assert state.input() == StageWorkflowInput(terminate_on_failure=True)
 
-    def test_an_unrelated_input_leaves_termination_off(self, clock):
+    def test_an_unrelated_input_leaves_termination_off(self, clock: Any) -> None:
         class PlainInput(BaseModel):
             device: str
 
@@ -175,7 +189,9 @@ class TestTerminateOnFailure:
 
 
 class TestSignals:
-    async def test_approve_transitions_a_pending_stage(self, clock, patched_history, upserted):
+    async def test_approve_transitions_a_pending_stage(
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = StageMixin()
         state.define_stage(
             name="approve",
@@ -192,7 +208,9 @@ class TestSignals:
         assert state.get_stage_state("approve") == StateEnum.APPROVED
         assert state.pending_approval() is False
 
-    async def test_reject_transitions_a_pending_stage(self, clock, patched_history, upserted):
+    async def test_reject_transitions_a_pending_stage(
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = StageMixin()
         state.define_stage(
             name="approve",
@@ -210,8 +228,8 @@ class TestSignals:
 
     @pytest.mark.parametrize("signal", ["approve", "reject"])
     async def test_a_review_signal_for_an_unknown_stage_is_ignored(
-        self, clock, legacy_history, signal
-    ):
+        self, clock: Any, legacy_history: Any, signal: str
+    ) -> None:
         """A signal naming a stage that does not exist must not fail the workflow."""
         state = build_workflow(clock)
 
@@ -220,8 +238,8 @@ class TestSignals:
         assert state.stages_by_state(StateEnum.NOT_STARTED) == state.stages()
 
     async def test_retry_returns_a_failed_stage_to_in_progress(
-        self, clock, patched_history, upserted
-    ):
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = build_workflow(clock)
         state.set_stage_state("render", StateEnum.IN_PROGRESS)
         state.set_stage_state("render", StateEnum.FAILED)
@@ -232,8 +250,8 @@ class TestSignals:
         assert state.failed_stage() is False
 
     async def test_retry_is_ignored_for_a_stage_that_has_not_failed(
-        self, clock, patched_history, upserted
-    ):
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = build_workflow(clock)
         state.set_stage_state("render", StateEnum.IN_PROGRESS)
 
@@ -242,8 +260,8 @@ class TestSignals:
         assert state.get_stage_state("render") == StateEnum.IN_PROGRESS
 
     async def test_retry_is_ignored_for_a_non_retryable_stage(
-        self, clock, patched_history, upserted
-    ):
+        self, clock: Any, patched_history: Any, upserted: Any
+    ) -> None:
         state = StageMixin()
         state.define_stage(
             name="render",
@@ -259,7 +277,9 @@ class TestSignals:
 
         assert state.get_stage_state("render") == StateEnum.FAILED
 
-    async def test_retry_for_an_unknown_stage_is_ignored(self, clock, legacy_history):
+    async def test_retry_for_an_unknown_stage_is_ignored(
+        self, clock: Any, legacy_history: Any
+    ) -> None:
         state = build_workflow(clock)
 
         await state.retry("verify")
@@ -268,7 +288,7 @@ class TestSignals:
 
 
 class TestChildWorkflows:
-    def test_child_workflow_ids_are_recorded_against_their_stage(self, clock):
+    def test_child_workflow_ids_are_recorded_against_their_stage(self, clock: Any) -> None:
         state = build_workflow(clock)
 
         state.append_child_workflow("deploy", "deploy-leaf01")

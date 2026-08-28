@@ -44,7 +44,7 @@ class CuratedDevice(BaseModel):
     markdown_fields: ClassVar[list[str]] = ["name", "site"]
 
 
-def build_stage(name="deploy", state=StateEnum.NOT_STARTED):
+def build_stage(name: str = "deploy", state: StateEnum = StateEnum.NOT_STARTED) -> Stage:
     """Build a stage with the history a real run through that state would leave.
 
     A terminal state needs its preceding IN_PROGRESS entry: ``execution_time``
@@ -69,34 +69,34 @@ def build_stage(name="deploy", state=StateEnum.NOT_STARTED):
 
 
 class TestMarkdownTable:
-    def test_rows_render_with_a_header_and_one_line_each(self):
+    def test_rows_render_with_a_header_and_one_line_each(self) -> None:
         table = render_markdown_table([Device(name="leaf01", site="SJC01")])
 
         assert "name" in table
         assert "leaf01" in table
         assert "SJC01" in table
 
-    def test_a_single_model_renders_without_being_wrapped_in_a_list(self):
+    def test_a_single_model_renders_without_being_wrapped_in_a_list(self) -> None:
         assert render_markdown_table(Device(name="leaf01", site="SJC01")) == render_markdown_table(
             [Device(name="leaf01", site="SJC01")]
         )
 
-    def test_no_rows_render_as_the_empty_string(self):
+    def test_no_rows_render_as_the_empty_string(self) -> None:
         assert render_markdown_table([]) == ""
 
-    def test_string_lists_render_comma_separated(self):
+    def test_string_lists_render_comma_separated(self) -> None:
         table = render_markdown_table(
             [Device(name="leaf01", site="SJC01", roles=["spine", "leaf"])]
         )
 
         assert "spine, leaf" in table
 
-    def test_an_empty_string_list_renders_blank(self):
+    def test_an_empty_string_list_renders_blank(self) -> None:
         table = render_markdown_table([Device(name="leaf01", site="SJC01", roles=[])])
 
         assert "[]" not in table
 
-    def test_markdown_fields_restrict_the_columns(self):
+    def test_markdown_fields_restrict_the_columns(self) -> None:
         """A model can keep a field off the operator-facing table."""
         table = render_markdown_table(
             [CuratedDevice(name="leaf01", site="SJC01", secret="hunter2")]
@@ -105,20 +105,20 @@ class TestMarkdownTable:
         assert "hunter2" not in table
         assert "leaf01" in table
 
-    def test_excluded_fields_are_dropped(self):
+    def test_excluded_fields_are_dropped(self) -> None:
         table = render_markdown_table([Device(name="leaf01", site="SJC01")], exclude={"site"})
 
         assert "SJC01" not in table
 
-    def test_dicts_render_through_the_dict_variant(self):
+    def test_dicts_render_through_the_dict_variant(self) -> None:
         table = render_markdown_table_dict([{"name": "leaf01", "site": "SJC01"}])
 
         assert "leaf01" in table
 
-    def test_no_dict_rows_render_as_the_empty_string(self):
+    def test_no_dict_rows_render_as_the_empty_string(self) -> None:
         assert render_markdown_table_dict([]) == ""
 
-    def test_the_mixin_exposes_both_renderers(self):
+    def test_the_mixin_exposes_both_renderers(self) -> None:
         """Workflows call these through self, so the mixin must keep forwarding."""
         rows = [Device(name="leaf01", site="SJC01")]
 
@@ -129,7 +129,7 @@ class TestMarkdownTable:
 
 
 class TestCompression:
-    def test_stages_survive_a_compression_round_trip(self):
+    def test_stages_survive_a_compression_round_trip(self) -> None:
         stages = [build_stage("render", StateEnum.COMPLETE), build_stage("deploy")]
 
         restored = decompress_stages(compress_stages(stages))
@@ -137,10 +137,10 @@ class TestCompression:
         assert [stage.name for stage in restored] == ["render", "deploy"]
         assert [stage.state for stage in restored] == [StateEnum.COMPLETE, StateEnum.NOT_STARTED]
 
-    def test_no_stages_survive_a_round_trip(self):
+    def test_no_stages_survive_a_round_trip(self) -> None:
         assert decompress_stages(compress_stages([])) == []
 
-    def test_compression_shrinks_a_realistic_stage_list(self):
+    def test_compression_shrinks_a_realistic_stage_list(self) -> None:
         """The query exists because uncompressed stages exceed Temporal's payload limits."""
         stages = [build_stage(f"stage-{index}") for index in range(50)]
 
@@ -148,7 +148,7 @@ class TestCompression:
 
         assert len(compressed) < len(str([stage.model_dump(mode="json") for stage in stages]))
 
-    def test_stage_history_and_traceback_survive(self):
+    def test_stage_history_and_traceback_survive(self) -> None:
         stage = build_stage("render", StateEnum.FAILED)
         stage.traceback = "Traceback (most recent call last): ..."
 
@@ -161,7 +161,7 @@ class TestCompression:
             StateEnum.FAILED,
         ]
 
-    def test_the_mixin_exposes_both_codecs(self):
+    def test_the_mixin_exposes_both_codecs(self) -> None:
         """workflow_v1 decodes the query result through StageMixin.decompress_stages."""
         stages = [build_stage()]
 

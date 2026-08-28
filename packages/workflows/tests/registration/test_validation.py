@@ -158,7 +158,7 @@ class CatchAllWorkflow(WorkflowMetadataMixin, StageMixin):
     @workflow.run
     # This intentionally violates the normal workflow signature to exercise rejection
     # of Temporal's dynamic workflow contract during plugin validation.
-    async def run(  # ty: ignore[invalid-method-override]
+    async def run(  # type: ignore[override]  # ty: ignore[invalid-method-override]
         self, args: Sequence[RawValue]
     ) -> None: ...
 
@@ -171,7 +171,7 @@ class UndecoratedWorkflow(WorkflowMetadataMixin, StageMixin):
 class UndecoratedMisdeclaredWorkflow(WorkflowMetadataMixin, StageMixin):
     """Undecorated, and what metadata it declares is unusable as well."""
 
-    workflow_name = 42  # pyright: ignore[reportAssignmentType]
+    workflow_name = 42  # type: ignore[assignment]  # pyright: ignore[reportAssignmentType]
 
     @workflow.run
     async def run(self, workflow_input: BaseModel) -> None: ...

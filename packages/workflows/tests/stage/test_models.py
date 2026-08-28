@@ -14,6 +14,8 @@
 # limitations under the License.
 """The stage state machine: which transitions are legal and what they record."""
 
+from typing import Any
+
 import pytest
 
 from nv_config_manager_workflows.stage import (
@@ -41,12 +43,12 @@ ILLEGAL_TRANSITIONS = [
 
 
 def build_stage(
-    state=StateEnum.NOT_STARTED,
+    state: StateEnum = StateEnum.NOT_STARTED,
     *,
-    requires_approval=False,
-    approval_threshold=0,
-    retryable=True,
-):
+    requires_approval: bool = False,
+    approval_threshold: int = 0,
+    retryable: bool = True,
+) -> Stage:
     """Build a stage sitting in a given state with its history seeded."""
     return Stage(
         name="deploy",
@@ -62,7 +64,7 @@ def build_stage(
 
 
 class TestTransitions:
-    def test_a_legal_transition_records_state_and_history(self, clock):
+    def test_a_legal_transition_records_state_and_history(self, clock: Any) -> None:
         stage = build_stage()
         clock.advance(5)
 
@@ -72,7 +74,7 @@ class TestTransitions:
         assert stage.state_history[-1] == HistoryEntry(state=StateEnum.IN_PROGRESS, time=5.0)
 
     @pytest.mark.parametrize(("start", "target"), ILLEGAL_TRANSITIONS)
-    def test_an_illegal_transition_is_rejected(self, start, target):
+    def test_an_illegal_transition_is_rejected(self, start: StateEnum, target: StateEnum) -> None:
         stage = build_stage(start)
 
         with pytest.raises(StageStateFailure, match=f"Invalid transition from {start}"):
@@ -80,7 +82,7 @@ class TestTransitions:
 
         assert stage.state == start
 
-    def test_a_rejected_transition_leaves_no_history(self):
+    def test_a_rejected_transition_leaves_no_history(self) -> None:
         stage = build_stage(StateEnum.COMPLETE)
 
         with pytest.raises(StageStateFailure):
@@ -88,13 +90,13 @@ class TestTransitions:
 
         assert len(stage.state_history) == 1
 
-    def test_an_approval_stage_cannot_complete_unreviewed(self):
+    def test_an_approval_stage_cannot_complete_unreviewed(self) -> None:
         stage = build_stage(StateEnum.IN_PROGRESS, requires_approval=True, approval_threshold=1)
 
         with pytest.raises(StageStateFailure, match="must be reviewed before completion"):
             stage.transition(StateEnum.COMPLETE)
 
-    def test_retrying_a_failed_stage_clears_the_previous_traceback(self, clock):
+    def test_retrying_a_failed_stage_clears_the_previous_traceback(self, clock: Any) -> None:
         stage = build_stage(StateEnum.FAILED)
         stage.traceback = "Traceback (most recent call last): ..."
 
@@ -104,7 +106,7 @@ class TestTransitions:
 
 
 class TestReview:
-    def test_approvals_below_the_threshold_leave_the_stage_pending(self, clock):
+    def test_approvals_below_the_threshold_leave_the_stage_pending(self, clock: Any) -> None:
         stage = build_stage(
             StateEnum.PENDING_APPROVAL, requires_approval=True, approval_threshold=2
         )
@@ -114,7 +116,7 @@ class TestReview:
         assert stage.state == StateEnum.PENDING_APPROVAL
         assert stage.approvers == [Review(user="first-reviewer", time=0.0)]
 
-    def test_reaching_the_threshold_approves_the_stage(self, clock):
+    def test_reaching_the_threshold_approves_the_stage(self, clock: Any) -> None:
         stage = build_stage(
             StateEnum.PENDING_APPROVAL, requires_approval=True, approval_threshold=2
         )
@@ -124,7 +126,7 @@ class TestReview:
 
         assert stage.state == StateEnum.APPROVED
 
-    def test_an_approved_stage_may_complete(self, clock):
+    def test_an_approved_stage_may_complete(self, clock: Any) -> None:
         stage = build_stage(
             StateEnum.PENDING_APPROVAL, requires_approval=True, approval_threshold=1
         )
@@ -134,7 +136,7 @@ class TestReview:
 
         assert stage.state == StateEnum.COMPLETE
 
-    def test_one_rejection_rejects_the_stage(self, clock):
+    def test_one_rejection_rejects_the_stage(self, clock: Any) -> None:
         stage = build_stage(
             StateEnum.PENDING_APPROVAL, requires_approval=True, approval_threshold=2
         )
@@ -145,7 +147,7 @@ class TestReview:
         assert stage.rejecters == [Review(user="reviewer", time=0.0)]
 
     @pytest.mark.parametrize("review", ["approve", "reject"])
-    def test_reviewing_a_stage_that_is_not_pending_is_rejected(self, review):
+    def test_reviewing_a_stage_that_is_not_pending_is_rejected(self, review: str) -> None:
         stage = build_stage(StateEnum.IN_PROGRESS)
 
         with pytest.raises(StageStateFailure, match="is not pending approval"):
@@ -153,13 +155,13 @@ class TestReview:
 
 
 class TestExecutionTime:
-    def test_a_running_stage_reports_no_execution_time(self, clock):
+    def test_a_running_stage_reports_no_execution_time(self, clock: Any) -> None:
         stage = build_stage()
         stage.transition(StateEnum.IN_PROGRESS)
 
         assert stage.execution_time is None
 
-    def test_execution_time_spans_the_last_run_to_the_terminal_state(self, clock):
+    def test_execution_time_spans_the_last_run_to_the_terminal_state(self, clock: Any) -> None:
         stage = build_stage()
         clock.advance(10)
         stage.transition(StateEnum.IN_PROGRESS)
@@ -168,7 +170,7 @@ class TestExecutionTime:
 
         assert stage.execution_time == 30.0
 
-    def test_execution_time_measures_the_retry_not_the_original_attempt(self, clock):
+    def test_execution_time_measures_the_retry_not_the_original_attempt(self, clock: Any) -> None:
         """A retried stage reports its latest attempt, not the one that failed."""
         stage = build_stage()
         stage.transition(StateEnum.IN_PROGRESS)
@@ -183,13 +185,13 @@ class TestExecutionTime:
 
 
 class TestTimeSerialization:
-    def test_times_serialize_as_utc_isoformat(self):
+    def test_times_serialize_as_utc_isoformat(self) -> None:
         """Temporal rejects datetime fields, so times travel as floats and render as text."""
         entry = HistoryEntry(state=StateEnum.COMPLETE, time=0.0)
 
         assert entry.model_dump(mode="json")["time"] == "1970-01-01T00:00:00+00:00"
 
-    def test_isoformat_input_is_accepted_back(self):
+    def test_isoformat_input_is_accepted_back(self) -> None:
         entry = HistoryEntry.model_validate(
             {"state": StateEnum.COMPLETE, "time": "1970-01-01T00:00:00+00:00"}
         )
