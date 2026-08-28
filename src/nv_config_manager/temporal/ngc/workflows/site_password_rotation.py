@@ -40,7 +40,11 @@ from nv_config_manager.temporal.common.workflow_references import LocationRefere
 
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
-    from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
+    from nv_config_manager.temporal.common.mixins.device import (
+        DeviceMixin,
+        NetworkDeviceData,
+        Platform,
+    )
     from nv_config_manager.temporal.ngc.activities.config import get_ui_base_url
     from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDevicesInput,
@@ -59,7 +63,7 @@ with workflow.unsafe.imports_passed_through():
 # Default configurations
 DEFAULT_CONFIG_MANAGER_STATUS = ["Active", "Provisioned"]
 DEFAULT_CONFIG_MANAGER_TENANT = None
-SUPPORTED_PLATFORMS = ["cumulus", "nvos"]
+SUPPORTED_PLATFORMS = [Platform.CUMULUS_LINUX, Platform.NV_OS, Platform.JUNIPER_JUNOS]
 
 # Search attributes to clone from parent to child workflows
 CLONE_SEARCH_ATTRS = [
@@ -166,6 +170,7 @@ class SitePasswordRotationWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixi
                 tenant=stage_input.tenant,
                 status=stage_input.status,
                 managed_only=True,
+                platforms=SUPPORTED_PLATFORMS,
             ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=DEFAULT_ACTIVITY_RETRY_POLICY,

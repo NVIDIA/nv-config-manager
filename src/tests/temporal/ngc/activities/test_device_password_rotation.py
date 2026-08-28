@@ -27,6 +27,7 @@ from nv_config_manager.temporal.ngc.activities.device_password_rotation import (
     ValidatePasswordDiffInput,
     ValidatePlatformSupportInput,
     _validate_cumulus_diff,
+    _validate_junos_diff,
     format_password_rotation_results,
     get_password_mappings,
     validate_password_diff,
@@ -122,6 +123,101 @@ nv set system aaa user admin password $6$newpassword"""
         result = asyncio.run(validate_password_diff(input_data))
         assert result.is_valid is True
         assert len(result.invalid_lines) == 0
+
+    def test_junos_platform_integration(self):
+        """Test the main validate_password_diff function with junos platform."""
+        diff = (
+            "[edit system login user admin authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        input_data = ValidatePasswordDiffInput(diff=diff, username="admin", platform="junos")
+
+        result = asyncio.run(validate_password_diff(input_data))
+        assert result.is_valid is True
+        assert len(result.invalid_lines) == 0
+        assert len(result.valid_lines) == 2
+
+    def test_junos_mixed_changes_fails(self):
+        """Test that a Junos diff with password + other changes fails."""
+        diff = (
+            "[edit system login user admin authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA\n'
+            "[edit system]\n"
+            "-   host-name OLD;\n"
+            "+   host-name RTR1;"
+        )
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 2
+        assert any("host-name" in line for line in result.invalid_lines)
+        assert len(result.valid_lines) == 2
+
+    def test_junos_wrong_user_password_fails(self):
+        """Test that a Junos password change for a different login user fails."""
+        diff = (
+            "[edit system login user operator authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 2
+        assert len(result.valid_lines) == 0
+
+    def test_junos_root_platform_integration(self):
+        """Test the main validate_password_diff function rotating the root user."""
+        diff = (
+            "[edit system root-authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        input_data = ValidatePasswordDiffInput(diff=diff, username="root", platform="junos")
+
+        result = asyncio.run(validate_password_diff(input_data))
+        assert result.is_valid is True
+        assert len(result.invalid_lines) == 0
+        assert len(result.valid_lines) == 2
+
+    def test_junos_root_authentication_rejected_for_other_user(self):
+        """Test that a root-authentication change fails validation for a non-root target."""
+        diff = (
+            "[edit system root-authentication]\n"
+            '-   encrypted-password "$6$oldHash"; ## SECRET-DATA\n'
+            '+   encrypted-password "$6$newHash"; ## SECRET-DATA'
+        )
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 2
+        assert len(result.valid_lines) == 0
+
+    def test_junos_no_password_changes_fails(self):
+        """Test that a Junos diff with no password changes fails."""
+        diff = "[edit system]\n-   host-name OLD;\n+   host-name RTR1;"
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 2
+        assert len(result.valid_lines) == 0
+
+    def test_junos_header_only_diff_fails(self):
+        """Test that a diff with only the user authentication edit stanza header fails.
+
+        A header with no +/- body lines produces empty valid_lines and empty
+        invalid_lines; this must not be treated as a validated password change.
+        """
+        diff = "[edit system login user admin authentication]"
+
+        result = _validate_junos_diff(diff, "admin")
+        assert result.is_valid is False
+        assert len(result.invalid_lines) == 0
+        assert len(result.valid_lines) == 0
 
 
 class TestGetPasswordMappings:
@@ -231,6 +327,13 @@ class TestValidatePlatformSupport:
 
         result = asyncio.run(validate_platform_support(input_data))
         assert result.normalized_platform == "nvos"
+
+    def test_junos_platform_supported(self):
+        """Test that Juniper Junos platform is supported."""
+        input_data = ValidatePlatformSupportInput(platform="juniper-junos")
+
+        result = asyncio.run(validate_platform_support(input_data))
+        assert result.normalized_platform == "junos"
 
     def test_unsupported_platform_fails(self):
         """Test that unsupported platform raises error."""
