@@ -15,7 +15,6 @@
 """Simple Hello World Workflow Definition."""
 
 from datetime import timedelta
-from operator import truediv
 
 from pydantic import BaseModel, Field
 from temporalio import workflow

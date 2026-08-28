@@ -36,7 +36,7 @@ class WorkflowMetadataMixin:
     workflow_namespace: str | None = None
     workflow_mcp_enabled: bool = False
     workflow_lock: WorkflowLockSpec | None = None
-    workflow_required_activities: Sequence[RequiredActivity] = () #NEW
+    workflow_required_activities: Sequence[RequiredActivity] = ()
 
     @classmethod
     def get_workflow_name(cls) -> str:

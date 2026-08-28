@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Mapping
 from numbers import Number
 from typing import Any
 
@@ -218,6 +219,15 @@ def _escape_log_argument(value: object) -> object:
     return escape_log_newlines(value)
 
 
+def _escape_log_arguments(
+    args: tuple[object, ...] | Mapping[str, object],
+) -> tuple[object, ...] | dict[str, object]:
+    """Escape record arguments while preserving whether they are positional or named."""
+    if isinstance(args, Mapping):
+        return {escape_log_newlines(key): _escape_log_argument(item) for key, item in args.items()}
+    return tuple(_escape_log_argument(arg) for arg in args)
+
+
 class EscapingLoggerAdapter(logging.LoggerAdapter):
     """Logger adapter that escapes unsafe characters in messages and arguments."""
 
@@ -249,7 +259,7 @@ class EscapingFilter(logging.Filter):
         """Sanitize the record in place and always keep it."""
         record.msg = _escape_log_argument(record.msg)
         if record.args:
-            record.args = _escape_log_argument(record.args)  # type: ignore[assignment]
+            record.args = _escape_log_arguments(record.args)
         return True
 
 
