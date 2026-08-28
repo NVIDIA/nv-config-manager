@@ -114,6 +114,8 @@ dependencies = [
     "nv-config-manager-dcim",
     # Built-in reference DCIM provider (also distributed as a standalone provider package)
     "nv-config-manager-dcim-nautobot-2x",
+    # Shared workflow contracts and implementations imported by the Temporal services
+    "nv-config-manager-workflows",
 ]
 
 [project.scripts]
@@ -186,10 +188,6 @@ dev = [
     # Utilities
     "anybadge>=1.14.0",
     "lxml>=5.3.0",
-
-    # Workflow plugin library. Dev-only until the consumers are flipped over to
-    # the registry, so `uv sync --no-dev` keeps it out of the release image.
-    "nv-config-manager-workflows",
 ]
 ipython = [
     "ipython>=8.28.0",
