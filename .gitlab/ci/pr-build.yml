@@ -36,7 +36,7 @@ pr-build-image:
     - docker
     - linux/amd64
   needs: []
-  image: $NVCM_CI_IMAGE_DOCKER
+  image: $NVCM_CI_IMAGE_DOCKER_DIND
   services:
     - name: $NVCM_CI_IMAGE_DOCKER_DIND
       alias: docker
