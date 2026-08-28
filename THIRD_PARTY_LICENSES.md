@@ -222,7 +222,7 @@ Air-gapped bundles can optionally include CLI tools copied from the build host. 
 
 ### Redis Exporter — MIT License
 
-```
+```text
 MIT License
 
 Copyright (c) 2016 Oliver

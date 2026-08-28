@@ -1259,6 +1259,22 @@ class TestMonitoringHelmValues:
         assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is False
         assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is False
 
+    def test_external_redis_without_host_uses_bundled_redis_metrics(self):
+        config = _make_config(
+            external_services=ExternalServicesConfig(
+                redis=ExternalRedisConfig(enabled=True),
+            ),
+            infrastructure=InfrastructureConfig(
+                monitoring=MonitoringConfig(enabled=True, redis_metrics_enabled=True),
+            ),
+        )
+
+        values = _gen(config)
+
+        assert values["externalServices"]["redis"]["local"] is True
+        assert values["externalServices"]["redis"]["metricsExport"]["enabled"] is True
+        assert values["monitoring"]["podMonitors"]["redis"]["enabled"] is True
+
     def test_disabled_redis_metrics_emit_false_upgrade_overrides(self):
         config = _make_config(
             infrastructure=InfrastructureConfig(

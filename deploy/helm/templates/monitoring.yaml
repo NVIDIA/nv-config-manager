@@ -714,7 +714,7 @@ spec:
 
 {{- /* Bundled Redis exporter PodMonitor. Gated on the same local Redis and
        exporter conditions as the redis-exporter sidecar. */}}
-{{- if and .Values.monitoring.podMonitors.redis.enabled .Values.externalServices.redis.local .Values.externalServices.redis.metricsExport.enabled }}
+{{- if and .Values.monitoring.podMonitors.enabled .Values.monitoring.podMonitors.redis.enabled .Values.externalServices.redis.local .Values.externalServices.redis.metricsExport.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor

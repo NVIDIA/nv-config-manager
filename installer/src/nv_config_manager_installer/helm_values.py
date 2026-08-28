@@ -645,7 +645,8 @@ def _build_postgres_section(pg: ExternalPostgresConfig) -> dict[str, Any]:
 def _redis_metrics_enabled(config: NVConfigManagerInstallConfig) -> bool:
     """Return whether Redis metrics are effective for the bundled Redis."""
     monitoring = config.infrastructure.monitoring
-    return not config.external_services.redis.enabled and (
+    redis = config.external_services.redis
+    return not (redis.enabled and redis.host) and (
         monitoring.redis_metrics_enabled or monitoring.observability_enabled
     )
 
