@@ -38,11 +38,11 @@ with workflow.unsafe.imports_passed_through():
         build_workflow_url,
         get_ui_base_url,
     )
-    from nv_config_manager.temporal.ngc.activities.deploy import load_intended_configuration
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDeviceInput,
         get_network_device,
     )
+    from nv_config_manager.temporal.ngc.activities.deploy import load_intended_configuration
     from nv_config_manager.temporal.ngc.activities.os import (
         ExecuteZTPInput,
         PollZTPStatusInput,

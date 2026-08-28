@@ -69,7 +69,7 @@ TEST_DEVICES = [
         deploy_enabled=True,
         backup_enabled=True,
         ztp_enabled=False,
-        config_context=None,
+        intent=None,
     ),
     NetworkDeviceData(
         id="device-2-uuid",
@@ -86,7 +86,7 @@ TEST_DEVICES = [
         deploy_enabled=True,
         backup_enabled=True,
         ztp_enabled=False,
-        config_context=None,
+        intent=None,
     ),
 ]
 

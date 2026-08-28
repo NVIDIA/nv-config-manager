@@ -46,7 +46,7 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
     from nv_config_manager.temporal.ngc.activities.config import get_ui_base_url
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDevicesInput,
         GetNetworkDevicesOutput,
         get_network_devices,

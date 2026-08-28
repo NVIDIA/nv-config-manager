@@ -3,31 +3,30 @@
 Template rendering engine, public reference templates, and plugin host for NV
 Config Manager render services.
 
-This package is published as the `nv-config-manager-templates` Python
-distribution. It is versioned from the repository Git tag so it can match the
-platform release while still being consumed independently by render services and
-external template plugin packages.
+This package is consumed from this Git repository as the
+`nv-config-manager-templates` distribution. Until the publishing story is
+finalized, render services and external template plugin packages install it from
+a sibling checkout using the local-development commands below.
 
 ## Render Model
 
 The render engine is intentionally small:
 
-1. It loads device data from Nautobot using the core device GraphQL query.
-2. It resolves the device's site or plugin-provided location name.
-3. It loads location data using the core location GraphQL query.
-4. It executes any plugin GraphQL queries and stores the results by query name.
-5. It selects every entrypoint template under:
+1. A selected DCIM provider supplies provider-neutral `RenderData`.
+2. The renderer validates that payload and loads built-in and plugin filters.
+3. It makes provider-supplied extension data available to plugin filters by name.
+4. It selects every entrypoint template under:
 
    ```text
    <normalized-platform>/<normalized-role>/<desired-firmware>/entrypoint/
    ```
 
-6. It renders each entrypoint with this Jinja context:
+5. It renders each entrypoint with this Jinja context:
 
    ```text
-   device_data   # core device query result
-   location_data # core location query result
-   plugin_data   # optional plugin query results, keyed by query name
+   device_data   # DeviceRenderData: typed identity, interface, network, routing, overlay, firmware, service, and access data
+   location_data # LocationRenderData: typed location, routing, address-space, and topology data
+   plugin_data   # optional provider-supplied extension data, keyed by requirement name
    ```
 
 The platform and role path components are normalized by lower-casing and
@@ -121,17 +120,18 @@ Good entrypoints answer:
 
 They should not answer:
 
-- How is a Nautobot object shaped?
+- How is a DCIM object shaped?
 - How are interfaces sorted or filtered?
 - How do we recover from missing source data?
 
 Those questions belong in Python filters and dataclasses.
 
-### No Direct GraphQL Access in Templates Ever
+### No Direct Provider Access in Templates
 
-Templates must not call GraphQL, embed GraphQL queries, or depend on
-GraphQL-shaped response paths directly. All Nautobot data access must go through
-filter wrappers or dataclass wrappers.
+Templates must not call a DCIM provider, embed backend queries, or depend on a
+provider-native response path directly. The renderer receives one complete
+`RenderData` object from the selected provider; filters and dataclass wrappers
+are the template-facing boundary.
 
 Use:
 
@@ -141,32 +141,33 @@ Use:
 {% endfor %}
 ```
 
-Do not add new template logic that reaches through raw GraphQL dictionaries:
+Do not add new template logic that reaches through nested provider payloads:
 
 ```jinja
 {# Do not add new code like this. #}
 {% for intf in device_data.data.device.interfaces %}
 ```
 
-This boundary is deliberate. Nautobot GraphQL schemas, plugin fields, and query
-shape can change. When templates only call wrappers such as `interfaces`,
+This boundary is deliberate. A provider's REST resources, GraphQL schema, or
+client-library objects can change. When templates only call wrappers such as `interfaces`,
 `interface_by_name`, `site_name`, `asn`, `site_aggregates`, or plugin-owned
-filters, an upstream API change can be handled in one Python wrapper instead of
-touching every template that happens to read the old field path.
+filters, a provider change can be handled at its boundary instead of touching
+every template that happens to read the old field path.
 
 If a template needs data that no wrapper exposes:
 
-1. Add or adjust the core GraphQL query, or add a plugin query when the data is
-   plugin-owned.
-2. Add a filter or dataclass property that returns the stable concept the
+1. Declare a provider-neutral plugin render-data requirement when the data is
+   plugin-owned, or extend the provider's `RenderData` mapping for common data.
+2. Have the selected provider fetch and normalize the data into `RenderData`.
+3. Add a filter or dataclass property that returns the stable concept the
    template needs.
-3. Add unit tests for the wrapper.
-4. Update the template to call the wrapper.
+4. Add unit tests for the wrapper.
+5. Update the template to call the wrapper.
 
-Plugin query data follows the same rule. `plugin_data` is available in the
-render context, but templates should not hard-code plugin GraphQL response
-paths. Expose plugin-owned concepts through plugin filters so schema changes
-remain isolated to the plugin.
+`plugin_data` follows the same rule. It is available in the render context, but
+templates should not hard-code provider response paths. Expose plugin-owned
+concepts through plugin filters so provider schema changes remain isolated to a
+single boundary.
 
 ### Keep Data Logic in Python
 
@@ -216,9 +217,10 @@ or a base/common template override rather than duplicating every include.
 
 ### Validate Rendered Outputs
 
-Render tests should use cached Nautobot fixtures and expected output files under
-`tests/resources/`. For YAML entrypoints, tests should parse the rendered output
-with `yaml.safe_load` so syntax failures are caught before deployment.
+Render tests use portable `RenderData` cache fixtures and expected output files
+under `tests/resources/`. Do not add native DCIM response fixtures to template
+tests. For YAML entrypoints, tests should parse the rendered output with
+`yaml.safe_load` so syntax failures are caught before deployment.
 
 When adding a role, platform, firmware version, or plugin template tree, add
 fixtures that cover at least one representative device and every rendered
@@ -253,7 +255,8 @@ replace core wrapper behavior.
 Template plugins are normal Python packages that register an entry point in the
 `nv_config_manager_templates.plugins` group. At runtime the renderer discovers
 installed plugins, imports their modules, asks them for optional hooks, and adds
-their templates, filters, and query data to the render environment.
+their templates, filters, and render-data requirements to the render
+environment.
 
 Minimal plugin registration:
 
@@ -279,12 +282,13 @@ def get_custom_filters() -> dict[str, Any]:
     return _get_custom_filters()
 
 
-def get_graphql_queries() -> dict[str, str]:
+def get_render_data_requirements() -> dict[str, object]:
     return {}
 ```
 
 All plugin hooks are optional. A plugin can provide only templates, only
-filters, only queries, or any combination of those capabilities.
+filters, only render-data requirements, or any combination of those
+capabilities.
 
 ### Discovery and Load Order
 
@@ -294,12 +298,12 @@ Renderer initialization performs this sequence:
 2. Import each plugin module.
 3. Call `get_template_paths()` when present.
 4. Call `get_custom_filters()` when present.
-5. Call `get_graphql_queries()` when present.
+5. Call `get_render_data_requirements()` when present.
 6. Add plugin template paths to the Jinja loader before the built-in package
    templates.
 7. Load built-in filters.
 8. Load non-conflicting plugin filters.
-9. Collect non-conflicting plugin queries.
+9. Collect non-conflicting plugin render-data requirements.
 
 Because plugin template paths are loaded before the built-in template package, a
 plugin can add completely new template paths or intentionally shadow a built-in
@@ -367,76 +371,49 @@ def get_custom_filters() -> dict[str, Any]:
 
 Plugins use filters to expose plugin-specific domain concepts to templates. A
 plugin filter can interpret core `device_data`, core `location_data`, or
-plugin-provided query results. This is the correct place to hide plugin model
-shape, Nautobot schema details, migration fallback behavior, and output sorting.
+provider-supplied `plugin_data`. This is the correct place to hide plugin model
+shape, provider schema details, and output sorting.
 
 Filter naming should be specific enough to avoid collisions. If a plugin filter
 name conflicts with an existing built-in filter or a previously loaded plugin
 filter, the renderer skips it and logs a warning.
 
-### Plugin GraphQL Queries
+### Plugin Render-data Requirements
 
-`get_graphql_queries()` returns a dictionary of query names to GraphQL query
-strings:
+`get_render_data_requirements()` returns a dictionary of names to
+provider-neutral requirements. The selected provider owns the native API calls
+and supplies matching normalized results in `RenderData.plugin_data`:
 
 ```python
-def get_graphql_queries() -> dict[str, str]:
+from nv_config_manager_dcim import RenderDataRequirement
+
+
+def get_render_data_requirements() -> dict[str, RenderDataRequirement]:
     return {
-        "my_extra_data": """
-        query MyExtraData($id: ID!, $hostname: String) {
-          # plugin-owned fields here
-        }
-        """,
+        "my_extra_data": RenderDataRequirement(parameters={"kind": "example-policy"}),
     }
 ```
 
-The renderer executes every registered plugin query during `load_data()`. It
-passes common variables when they are available:
+Requirement names must be unique across loaded plugins. Later conflicts are
+skipped with a warning. Providers can use any native transport to satisfy a
+requirement, and a provider that cannot support a required concept should fail
+with a clear DCIM error rather than silently rendering incomplete
+configuration.
 
-```text
-id       # Nautobot device ID
-hostname # device hostname
-```
+Use requirements only for plugin-owned data that does not belong in the common
+device or location mappings. Do not use them as a reason to put raw provider
+response traversal in templates. Add plugin filters that turn `plugin_data`
+into stable template concepts.
 
-Each result is stored under `plugin_data[query_name]` and passed into the Jinja
-context. If a plugin query fails, the renderer logs a warning and stores `None`
-for that query name so the failure is visible and deterministic.
-
-Query names must be unique across loaded plugins. Later conflicts are skipped
-with a warning.
-
-Use plugin queries for data that is plugin-owned or not appropriate for the
-core device/location queries. Do not use plugin queries as a reason to put raw
-GraphQL response traversal in templates. Add plugin filters that turn
-`plugin_data` into stable template concepts.
-
-The CLI can cache plugin query results with `cache-query --output-plugin-file`
-and reuse them during local renders with `render --cached-plugin-data`.
-
-### Plugin Location Resolution
-
-A plugin may provide:
-
-```python
-from typing import Any
-
-
-def get_location_name(device_data: dict[str, Any]) -> str | None:
-    ...
-```
-
-When present, the renderer calls this hook before the built-in `site_name`
-filter. Return a location name when the plugin owns a special device-to-location
-mapping; return `None` to let the built-in site resolver handle the device.
-
-This hook is useful for templates whose location data should be keyed from a
-plugin-specific relationship rather than the normal device site hierarchy.
+`cache-query` writes the complete payload—including plugin data—in one portable
+`RenderData` envelope. Reuse it with `render --cached-render-data`.
 
 ### Plugin Packaging and Deployment
 
-A plugin package should depend on `nv-config-manager-templates` and publish a
-wheel. The render service installs plugin wheels into the render environment so
-their entry points are visible to `importlib.metadata`.
+A plugin package should depend on `nv-config-manager-templates` through the
+same Git/sibling-checkout workflow. The render service installs locally built
+plugin artifacts into the render environment so their entry points are visible
+to `importlib.metadata`; no package-index publishing is required.
 
 The Helm chart can install plugins from images that provide wheel files under:
 
@@ -467,16 +444,15 @@ Plugins can:
 - Inherit from built-in templates and override selected blocks.
 - Intentionally shadow built-in templates by providing the same logical path.
 - Export custom Jinja filters.
-- Register additional GraphQL queries.
-- Interpret plugin query data through filters.
-- Override device-to-location resolution with `get_location_name()`.
+- Declare provider-neutral render-data requirements.
+- Interpret provider-supplied plugin data through filters.
 - Participate in rendered template version keys through package metadata.
 - Ship independently as Python wheels and plugin images.
 
 Plugins should not:
 
-- Put GraphQL queries or Nautobot client calls in Jinja templates.
-- Hard-code raw GraphQL response paths in templates.
+- Put native DCIM queries or client calls in Jinja templates.
+- Hard-code raw provider response paths in templates.
 - Copy large built-in templates for small changes.
 - Depend on overriding built-in filters.
 - Depend on unspecified load order between multiple plugins with the same
@@ -485,7 +461,7 @@ Plugins should not:
 
 ## Local Development
 
-Run commands from this directory:
+Run the rendering-engine checks from this directory:
 
 ```bash
 cd components/network-templates
@@ -494,26 +470,42 @@ uv run pytest
 uv run ruff check src tests
 ```
 
-Render a cached fixture locally:
+`template-cli` is a provider-neutral command shipped by this library. It loads
+an installed DCIM provider directly through `nv-config-manager-dcim`; it does
+not require an NVCM service checkout. Until package publishing is finalized,
+install the template library, SDK, and chosen provider from sibling Git
+checkouts. Render a cached fixture locally:
 
 ```bash
 uv run template-cli render \
-  --cached-data tests/resources/nautobot/a09-u28-p01-bleaf-01.json \
-  --cached-location-data tests/resources/nautobot/TEST-SITE.json \
+  --cached-render-data tests/resources/render-data/a09-u28-p01-bleaf-01.json \
   --entrypoint startup.yaml.j2
 ```
 
-Cache data from Nautobot for local iteration:
+For live data, create a service-level TOML file such as
+`nautobot-provider.toml`:
+
+```toml
+[provider]
+name = "nautobot"
+
+[provider.settings]
+server = "https://nautobot.example"
+token = "<token>"
+verify = true
+```
+
+Then query the installed provider and write one portable `RenderData` envelope:
 
 ```bash
 uv run template-cli cache-query \
-  --hostname <hostname> \
-  --nautobot-url <url> \
-  --token-file <token-file> \
-  --output-file tests/resources/nautobot/<hostname>.json \
-  --output-location-file tests/resources/nautobot/<site>.json \
-  --output-plugin-file tests/resources/nautobot/<hostname>-plugin-data.json
+  --provider-config nautobot-provider.toml \
+  --device-name <device-name> \
+  --output-render-data-file tests/resources/render-data/<device-name>.json
 ```
+
+Use that portable cache with `--cached-render-data`. It is the only cache format
+accepted by `template-cli`.
 
 Vault lookups are disabled by default for local renders unless `--vault` is
 provided.

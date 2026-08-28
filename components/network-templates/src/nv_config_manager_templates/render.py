@@ -20,7 +20,6 @@ import logging
 import re
 import sys
 from inspect import getmembers, isfunction
-from typing import Any
 
 from jinja2 import (
     ChoiceLoader,
@@ -35,13 +34,14 @@ try:
 except ImportError:
     from importlib_metadata import entry_points  # type: ignore
 
+from nv_config_manager_dcim import DeviceRenderData, RenderData, RenderDataRequirement
+
 import nv_config_manager_templates.filters.bgp as bgp_filters
 import nv_config_manager_templates.filters.device as device_filters
 import nv_config_manager_templates.filters.ip as ip_filters
 import nv_config_manager_templates.filters.location as location_filters
 import nv_config_manager_templates.filters.vault as vault_filters
 from nv_config_manager_templates.filters import FilterException
-from nv_config_manager_templates.nautobot import NautobotClient
 
 # Modify this constant as new filter modules are implemented
 FILTER_MODULES = [
@@ -64,19 +64,12 @@ class PluginException(Exception):
 
 
 class Renderer:
-    """Manages querying nautobot, rendering templates, and persisting to gitlab."""
+    """Render templates from data supplied by the selected DCIM provider."""
 
-    def __init__(
-        self,
-        nautobot_url: str,
-        nautobot_token: str,
-        enable_plugins: bool = True,
-    ):
+    def __init__(self, enable_plugins: bool = True):
         """Initialize Renderer object.
 
         Args:
-            nautobot_url: URL for Nautobot instance
-            nautobot_token: Authentication token for Nautobot
             enable_plugins: Whether to discover and load plugins (default: True)
         """
         # Discover plugins first
@@ -108,10 +101,10 @@ class Renderer:
         self._dynamically_load_filters()
         self._load_plugin_filters()
 
-        # Store plugin queries for access
-        self.plugin_queries = self._collect_plugin_queries()
-
-        self.nautobot_client = NautobotClient(nautobot_url, nautobot_token)
+        # Plugins may declare provider-neutral data requirements. The active
+        # DCIM provider owns fetching and normalizing all of that data before
+        # invoking this engine.
+        self.plugin_data_requirements = self._collect_plugin_data_requirements()
 
     def _discover_plugins(self) -> list[dict]:
         """Discover installed template plugins via entry points.
@@ -151,7 +144,7 @@ class Renderer:
                         "module": plugin_module,
                         "template_paths": [],
                         "filters": {},
-                        "queries": {},
+                        "data_requirements": {},
                     }
 
                     # Get template paths
@@ -165,9 +158,10 @@ class Renderer:
                     if hasattr(plugin_module, "get_custom_filters"):
                         plugin_info["filters"] = plugin_module.get_custom_filters()
 
-                    # Get GraphQL queries
-                    if hasattr(plugin_module, "get_graphql_queries"):
-                        plugin_info["queries"] = plugin_module.get_graphql_queries()
+                    if hasattr(plugin_module, "get_render_data_requirements"):
+                        plugin_info["data_requirements"] = (
+                            plugin_module.get_render_data_requirements()
+                        )
 
                     discovered_plugins.append(plugin_info)
                     logger.info(
@@ -208,161 +202,72 @@ class Renderer:
                 self.environment.filters[name] = func
                 logger.info("Loaded filter '%s' from plugin %s", name, plugin["name"])
 
-    def _collect_plugin_queries(self) -> dict[str, str]:
-        """Collect all GraphQL queries from plugins.
+    def _collect_plugin_data_requirements(self) -> dict[str, RenderDataRequirement]:
+        """Collect provider-neutral render-data requirements from plugins.
 
         Returns:
-            Dictionary mapping query names to query strings
+            Dictionary mapping requirement names to provider-owned requirement data
         """
-        all_queries = {}
+        requirements: dict[str, RenderDataRequirement] = {}
         for plugin in self.plugins:
-            for name, query in plugin.get("queries", {}).items():
-                if name in all_queries:
+            for name, requirement in plugin.get("data_requirements", {}).items():
+                if name in requirements:
                     logger.warning(
-                        "Plugin %s query '%s' conflicts with existing query, skipping",
+                        "Plugin %s data requirement '%s' conflicts with an existing requirement; "
+                        "skipping",
                         plugin["name"],
                         name,
                     )
                     continue
-                all_queries[name] = query
-                logger.info("Registered query '%s' from plugin %s", name, plugin["name"])
-        return all_queries
-
-    def _plugin_location_name(self, device_data: dict[str, Any]) -> str | None:
-        """Return a plugin-provided location name when a plugin owns that mapping."""
-        for plugin in self.plugins:
-            resolver = getattr(plugin["module"], "get_location_name", None)
-            if not resolver:
-                continue
-            location = resolver(device_data)
-            if location:
-                return location
-        return None
-
-    def execute_plugin_query(
-        self,
-        query_name: str,
-        variables: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Execute a plugin-provided GraphQL query.
-
-        Args:
-            query_name: Name of the query (as registered by plugin)
-            variables: Variables to pass to the query
-
-        Returns:
-            Query response data
-
-        Raises:
-            PluginException: If query name not found
-        """
-        if query_name not in self.plugin_queries:
-            available = list(self.plugin_queries.keys())
-            raise PluginException(f"Query '{query_name}' not found. Available queries: {available}")
-
-        query = self.plugin_queries[query_name]
-        return self.nautobot_client.graphql_query(query, variables)
+                if not isinstance(name, str):
+                    logger.warning(
+                        "Plugin %s declared a non-string render-data requirement name; skipping",
+                        plugin["name"],
+                    )
+                    continue
+                if isinstance(requirement, RenderDataRequirement):
+                    requirements[name] = requirement
+                elif isinstance(requirement, dict):
+                    requirements[name] = RenderDataRequirement(parameters=requirement)
+                else:
+                    logger.warning(
+                        "Plugin %s data requirement '%s' must be a mapping; skipping",
+                        plugin["name"],
+                        name,
+                    )
+                    continue
+                logger.info("Registered data requirement '%s' from plugin %s", name, plugin["name"])
+        return requirements
 
     @staticmethod
     def _normalize_string(src_string: str):
         return re.sub(r"\s+", "-", src_string).lower()
 
-    def load_data(
-        self,
-        device_id: str | None = None,
-        hostname: str | None = None,
-        device_data: dict[str, Any] | None = None,
-        location_data: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        """Load all necessary data for rendering.
-
-        Returns:
-            Tuple of (device_data, location_data, plugin_data)
-        """
-        if not device_data:
-            device_data = self.nautobot_client.load_device_data(
-                device_id=device_id, hostname=hostname
-            )
-
-        if not location_data:
-            location = self._plugin_location_name(device_data) or device_filters.site_name(
-                device_data
-            )
-            location_data = self.nautobot_client.load_location_data(location)
-
-        # Execute plugin queries if any are registered
-        plugin_data = self._execute_plugin_queries(device_id, hostname, device_data)
-
-        return device_data, location_data, plugin_data
-
-    def _execute_plugin_queries(
-        self,
-        device_id: str | None,
-        hostname: str | None,
-        device_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Execute all plugin-provided GraphQL queries.
-
-        Args:
-            device_id: Device ID for queries that need it
-            hostname: Hostname for queries that need it
-            device_data: Device data for queries that need it
-
-        Returns:
-            Dictionary mapping query names to their results
-        """
-        plugin_data = {}
-
-        if not self.plugin_queries:
-            return plugin_data
-
-        # Determine device_id if not provided
-        if not device_id and hostname:
-            device_id = self.nautobot_client.device_id_from_hostname(hostname)
-        elif not device_id and device_data:
-            device_id = device_data.get("data", {}).get("device", {}).get("id")
-
-        for query_name, query in self.plugin_queries.items():
-            try:
-                # Execute query with common variables
-                variables = {}
-                if device_id:
-                    variables["id"] = device_id
-                if hostname:
-                    variables["hostname"] = hostname
-
-                result = self.nautobot_client.graphql_query(query, variables)
-                plugin_data[query_name] = result
-                logger.info("Executed plugin query '%s'", query_name)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("Failed to execute plugin query '%s': %s", query_name, exc)
-                plugin_data[query_name] = None
-
-        return plugin_data
+    def load_data(self, render_data: RenderData | None = None) -> RenderData:
+        """Validate the complete render payload supplied by a DCIM provider."""
+        if render_data is None:
+            raise TemplateLookupException("Renderer requires RenderData from a DCIM provider.")
+        if not isinstance(render_data, RenderData):
+            raise TemplateLookupException("Renderer requires a RenderData instance.")
+        return render_data
 
     def render_entrypoints(
         self,
-        device_id: str | None = None,
-        hostname: str | None = None,
-        device_data: dict[str, Any] | None = None,
-        location_data: dict[str, Any] | None = None,
+        render_data: RenderData,
     ) -> dict[str, str]:
         """Render all entrypoint files for the given device."""
-        # Perform GraphQL query (including plugin queries)
-        device_data, location_data, plugin_data = self.load_data(
-            device_id, hostname, device_data, location_data
-        )
+        render_data = self.load_data(render_data)
 
         # Load all Entrypoint templates
-        entrypoints = self.list_entrypoints(device_data)
+        entrypoints = self.list_entrypoints(render_data.device)
 
         # Render all Entrypoint templates
         files = {}
         for entrypoint in entrypoints:
-            files[entrypoint] = self.render(entrypoint, device_data, location_data, plugin_data)
+            files[entrypoint] = self.render(entrypoint, render_data)
         return files
 
-    def list_entrypoints(self, device_data: dict[str, Any]) -> list[str]:
+    def list_entrypoints(self, device_data: DeviceRenderData) -> list[str]:
         """List all entrypoint templates for the given device."""
         platform = self._normalize_string(device_filters.platform(device_data))
         role = self._normalize_string(device_filters.role(device_data))
@@ -376,29 +281,30 @@ class Renderer:
     def render(
         self,
         template: str,
-        device_data: dict[str, Any],
-        location_data: dict[str, Any],
-        plugin_data: dict[str, Any] | None = None,
+        render_data: RenderData,
     ):
-        """Execute a render of a template given the nautobot GraphQL data.
+        """Execute a render from provider-owned ``RenderData``.
 
         Args:
             template: Template path to render
-            device_data: Device data from Nautobot
-            location_data: Location data from Nautobot
-            plugin_data: Optional data from plugin queries
+            render_data: Complete device, location, and extension data from a DCIM provider
         """
+        render_data = self.load_data(render_data)
         template_obj = self.environment.get_template(template)
 
         # Build render context
         context = {
-            "device_data": device_data,
-            "location_data": location_data,
+            "device_data": render_data.device,
+            "location_data": render_data.location,
         }
 
-        # Add plugin data to context if available
-        if plugin_data:
-            context["plugin_data"] = plugin_data
+        # Templates receive each extension's declared data.  The schema and
+        # version remain part of the provider/cache envelope, not a new
+        # provider-specific template object.
+        if render_data.plugin_data:
+            context["plugin_data"] = {
+                name: extension.data for name, extension in render_data.plugin_data.items()
+            }
 
         output = template_obj.render(**context)
         return re.sub(r"\n+", "\n", output).strip()

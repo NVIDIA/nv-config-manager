@@ -21,14 +21,16 @@ import json
 from pathlib import Path
 
 import pytest
+from nv_config_manager_dcim import RenderData
 
 RESOURCES_DIR = Path(__file__).resolve().parents[1] / "resources"
-NAUTOBOT_MOCK_DIR = RESOURCES_DIR / "nautobot"
+RENDER_DATA_DIR = RESOURCES_DIR / "render-data"
 
 
-def _load_nautobot_fixture(name: str) -> dict:
-    with (NAUTOBOT_MOCK_DIR / f"{name}.json").open(encoding="utf-8") as f:
-        return json.load(f)
+def _load_render_fixture(name: str) -> RenderData:
+    """Load a portable provider-neutral render-data fixture."""
+    with (RENDER_DATA_DIR / f"{name}.json").open(encoding="utf-8") as file:
+        return RenderData.from_cache(json.load(file))
 
 
 @pytest.fixture
@@ -55,30 +57,30 @@ hash_salt_t7: 0
 
 
 @pytest.fixture
-def public_tor_data() -> dict:
+def public_tor_data():
     """Load representative OOB leaf data."""
-    return _load_nautobot_fixture("a04-u44-p01-tor-01")
+    return _load_render_fixture("a04-u44-p01-tor-01").device
 
 
 @pytest.fixture
-def public_leaf_data() -> dict:
+def public_leaf_data():
     """Load representative in-band leaf data."""
-    return _load_nautobot_fixture("a08-u32-p01-cleaf-01")
+    return _load_render_fixture("a08-u32-p01-cleaf-01").device
 
 
 @pytest.fixture
-def public_border_leaf_data() -> dict:
+def public_border_leaf_data():
     """Load representative border leaf data."""
-    return _load_nautobot_fixture("a09-u28-p01-bleaf-01")
+    return _load_render_fixture("a09-u28-p01-bleaf-01").device
 
 
 @pytest.fixture
-def public_spine_data() -> dict:
+def public_spine_data():
     """Load representative converged spine data."""
-    return _load_nautobot_fixture("a09-u36-p01-spine-01")
+    return _load_render_fixture("a09-u36-p01-spine-01").device
 
 
 @pytest.fixture
-def public_location_data() -> dict:
+def public_location_data():
     """Load representative site data."""
-    return _load_nautobot_fixture("TEST-SITE")
+    return _load_render_fixture("a08-u32-p01-cleaf-01").location

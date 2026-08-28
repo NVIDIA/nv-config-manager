@@ -39,6 +39,7 @@ from nv_config_manager.temporal.client.device import (
     MockNetworkConnection,
     NetworkConnection,
     NetworkDeviceException,
+    _junos_list,
 )
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
 from nv_config_manager.temporal.common.secrets import clear_secrets_cache
@@ -962,3 +963,286 @@ def test_run_diagnostic_command_unsupported_junos_raises_network_exception(junip
     a raw NotImplementedError from the base stub."""
     with pytest.raises(NetworkDeviceException, match="not implemented for JuniperConnection"):
         juniper_conn.run_diagnostic_command("show_bgp_summary")
+
+
+class TestJunosList:
+    """Tests for the _junos_list Junos-JSON normalization helper."""
+
+    def test_missing_key_returns_empty_list(self):
+        """A key absent from the container returns an empty list, not an error."""
+        assert _junos_list({}, "mac-table-entry") == []
+
+    def test_wraps_a_bare_dict_as_a_single_item_list(self):
+        """Junos omits the list wrapper entirely when there is exactly one element."""
+        entry = {"mac-address": [{"data": "00:11:22:33:44:55"}]}
+        assert _junos_list({"mac-table-entry": entry}, "mac-table-entry") == [entry]
+
+    def test_preserves_an_actual_list(self):
+        """A real list of entries is returned as-is."""
+        entries = [{"a": 1}, {"b": 2}]
+        assert _junos_list({"mac-table-entry": entries}, "mac-table-entry") == entries
+
+    @pytest.mark.parametrize("scalar", ["some-string", 5, 1.5, True])
+    def test_scalar_value_returns_empty_list_instead_of_iterating_it(self, scalar):
+        """A stray string/number under a repeatable key must not be iterated character-by-character."""
+        assert _junos_list({"mac-table-entry": scalar}, "mac-table-entry") == []
+
+
+def _lldp_neighbor_entry(local_port: str, remote_port: str, remote_system: str) -> dict:
+    """Build one lldp-neighbor-information entry as PyEZ returns it in JSON."""
+    return {
+        "lldp-local-port-id": [{"data": local_port}],
+        "lldp-remote-port-id": [{"data": remote_port}],
+        "lldp-remote-system-name": [{"data": remote_system}],
+    }
+
+
+def test_get_lldp_data_returns_neighbor_for_matching_interface(juniper_conn):
+    """get_lldp_data finds the single neighbor entry for the requested local port."""
+    data = {
+        "lldp-neighbors-information": [
+            {
+                "lldp-neighbor-information": [
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/1", "junos-backbone-vjunos02"),
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_lldp_data("ge-0/0/0")
+    assert result.device_name == "junos-backbone-vjunos02"
+    assert result.name == "et-0/0/1"
+
+
+def test_get_lldp_data_returns_none_when_no_match(juniper_conn):
+    """get_lldp_data returns None when the interface has no LLDP neighbor."""
+    data = {"lldp-neighbors-information": [{"lldp-neighbor-information": []}]}
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        assert juniper_conn.get_lldp_data("ge-0/0/5") is None
+
+
+def test_get_lldp_data_raises_on_multiple_neighbors_for_one_interface(juniper_conn):
+    """Multiple neighbors on the same local port is treated as ambiguous, like Arista."""
+    data = {
+        "lldp-neighbors-information": [
+            {
+                "lldp-neighbor-information": [
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/1", "device-a"),
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/2", "device-b"),
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        with pytest.raises(NetworkDeviceException, match="multiple LLDP neighbors"):
+            juniper_conn.get_lldp_data("ge-0/0/0")
+
+
+def test_get_interface_connections_combines_lldp_and_link_state(juniper_conn):
+    """get_interface_connections merges LLDP neighbors with per-interface link state."""
+    lldp_data = {
+        "lldp-neighbors-information": [
+            {
+                "lldp-neighbor-information": [
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/1", "junos-backbone-vjunos02"),
+                ]
+            }
+        ]
+    }
+    link_state_data = {
+        "interface-information": [
+            {
+                "physical-interface": [
+                    {"name": [{"data": "ge-0/0/0"}], "oper-status": [{"data": "up"}]},
+                    {"name": [{"data": "ge-0/0/1"}], "oper-status": [{"data": "down"}]},
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", side_effect=[lldp_data, link_state_data]):
+        result = juniper_conn.get_interface_connections()
+    assert result.neighbors["ge-0/0/0"].device_name == "junos-backbone-vjunos02"
+    assert result.link_states == {"ge-0/0/0": True, "ge-0/0/1": False}
+
+
+def test_get_interface_connections_handles_no_neighbors(juniper_conn):
+    """An empty LLDP table still returns link states with no neighbors."""
+    empty_lldp = {"lldp-neighbors-information": [{"lldp-neighbor-information": []}]}
+    link_state_data = {
+        "interface-information": [
+            {
+                "physical-interface": [
+                    {"name": [{"data": "ge-0/0/0"}], "oper-status": [{"data": "up"}]}
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", side_effect=[empty_lldp, link_state_data]):
+        result = juniper_conn.get_interface_connections()
+    assert result.neighbors == {}
+    assert result.link_states == {"ge-0/0/0": True}
+
+
+def test_get_interface_connections_raises_on_multiple_neighbors_for_one_interface(juniper_conn):
+    """A hub/fan-in on one port must raise here too, not silently keep the last neighbor."""
+    lldp_data = {
+        "lldp-neighbors-information": [
+            {
+                "lldp-neighbor-information": [
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/1", "device-a"),
+                    _lldp_neighbor_entry("ge-0/0/0", "et-0/0/2", "device-b"),
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=lldp_data):
+        with pytest.raises(NetworkDeviceException, match="multiple LLDP neighbors"):
+            juniper_conn.get_interface_connections()
+
+
+def test_get_mac_table_parses_switching_table_entries(juniper_conn):
+    """get_mac_table parses mac-table-entry rows, keyed by physical interface."""
+    data = {
+        "ethernet-switching-table-information": [
+            {
+                "ethernet-switching-table": [
+                    {
+                        "mac-table-entry": [
+                            {
+                                "mac-address": [{"data": "00:11:22:33:44:55"}],
+                                "mac-interfaces-list": [{"data": "ge-0/0/0.0"}],
+                                "mac-vlan": [{"data": "100"}],
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_mac_table()
+    mac = "00-11-22-33-44-55"
+    assert result.by_mac[mac].interface == "ge-0/0/0"
+    assert result.by_mac[mac].vlan == 100
+    assert result.by_interface["ge-0/0/0"] == [mac]
+
+
+def test_get_mac_table_skips_entry_with_invalid_mac(juniper_conn):
+    """A malformed MAC in one entry is skipped rather than aborting the whole table."""
+    data = {
+        "ethernet-switching-table-information": [
+            {
+                "ethernet-switching-table": [
+                    {
+                        "mac-table-entry": [
+                            {
+                                "mac-address": [{"data": "not-a-mac"}],
+                                "mac-interfaces-list": [{"data": "ge-0/0/0.0"}],
+                            },
+                            {
+                                "mac-address": [{"data": "00:11:22:33:44:55"}],
+                                "mac-interfaces-list": [{"data": "ge-0/0/1.0"}],
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_mac_table()
+    assert list(result.by_mac.keys()) == ["00-11-22-33-44-55"]
+    assert result.by_interface == {"ge-0/0/1": ["00-11-22-33-44-55"]}
+
+
+def _raise_unsupported_switching_table(*_args: object, **_kwargs: object) -> None:
+    """Raise the RpcError Junos actually returns for a backbone router with no bridging."""
+    cause = Exception()
+    cause.message = "the l2-learning subsystem is not running"  # matches jnpr RpcError.message
+    raise NetworkDeviceException("RPC get-ethernet-switching-table-information failed") from cause
+
+
+def test_get_mac_table_returns_empty_when_switching_unsupported(juniper_conn):
+    """A backbone router without bridging rejects the RPC; treat that as an empty table."""
+    with patch.object(juniper_conn, "_rpc", side_effect=_raise_unsupported_switching_table):
+        result = juniper_conn.get_mac_table()
+    assert result.by_mac == {}
+    assert result.by_interface == {}
+
+
+def test_get_arp_table_parses_entries_and_strips_logical_unit(juniper_conn):
+    """get_arp_table maps IP/MAC/interface, keying interfaces by physical name."""
+    data = {
+        "arp-table-information": [
+            {
+                "arp-table-entry": [
+                    {
+                        "mac-address": [{"data": "00:11:22:33:44:55"}],
+                        "ip-address": [{"data": "192.0.2.1"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    }
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_arp_table()
+    mac = "00-11-22-33-44-55"
+    assert result.ip_to_mac["192.0.2.1"] == [mac]
+    assert result.mac_to_ip[mac] == ["192.0.2.1"]
+    assert result.interface_to_mac["ge-0/0/0"] == [mac]
+
+
+def test_get_arp_table_skips_incomplete_entries(juniper_conn):
+    """Entries missing a mac, ip, or interface are skipped rather than raising."""
+    data = {
+        "arp-table-information": [
+            {
+                "arp-table-entry": [
+                    {"mac-address": [{"data": "00:11:22:33:44:55"}], "ip-address": []},
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_arp_table()
+    assert result.ip_to_mac == {}
+    assert result.mac_to_ip == {}
+
+
+def test_get_arp_table_skips_entries_with_invalid_ip_or_mac(juniper_conn):
+    """A malformed IP or MAC in one entry is skipped rather than aborting the whole table."""
+    data = {
+        "arp-table-information": [
+            {
+                "arp-table-entry": [
+                    {
+                        "ip-address": [{"data": "not-an-ip"}],
+                        "mac-address": [{"data": "00:11:22:33:44:55"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                    {
+                        "ip-address": [{"data": "10.0.0.1"}],
+                        "mac-address": [{"data": "not-a-mac"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                    {
+                        "ip-address": [{"data": "10.0.0.2"}],
+                        "mac-address": [{"data": "00:11:22:33:44:66"}],
+                        "interface-name": [{"data": "ge-0/0/0.0"}],
+                    },
+                ]
+            }
+        ]
+    }
+    with patch.object(juniper_conn, "_rpc", return_value=data):
+        result = juniper_conn.get_arp_table()
+    assert result.ip_to_mac == {"10.0.0.2": ["00-11-22-33-44-66"]}
+    assert result.mac_to_ip == {"00-11-22-33-44-66": ["10.0.0.2"]}
+
+
+def test_get_arp_table_returns_empty_for_empty_reply(juniper_conn):
+    """An empty arp-table-information reply produces an empty table, not an error."""
+    with patch.object(juniper_conn, "_rpc", return_value={"arp-table-information": []}):
+        result = juniper_conn.get_arp_table()
+    assert result.ip_to_mac == {}

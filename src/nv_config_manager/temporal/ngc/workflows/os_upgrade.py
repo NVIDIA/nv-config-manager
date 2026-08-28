@@ -36,7 +36,7 @@ from nv_config_manager.temporal.common.workflow_references import DeviceReferenc
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         CheckRecordedConfigDriftInput,
         GetNetworkDeviceInput,
         check_recorded_config_drift,
@@ -151,7 +151,7 @@ class SwitchOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Ar
         )
 
         # Add device search attributes the first time we pull
-        # them from nautobot
+        # them from the DCIM
         DeviceMixin.attach_device_search_attributes(result.device)
 
         device_data = result.device
@@ -303,7 +303,7 @@ class SwitchOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Ar
         self.append_child_workflow("perform_backup", backup_handle.id)
         await workflow.wait_condition(backup_handle.done)
 
-        # Check if the backup workflow reported config drift to nautobot
+        # Check if the backup workflow reported config drift to the DCIM
         config_drift = await workflow.execute_activity(
             check_recorded_config_drift,
             CheckRecordedConfigDriftInput(device_id=stage_input.device_id),

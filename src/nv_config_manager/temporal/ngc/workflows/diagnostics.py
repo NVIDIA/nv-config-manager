@@ -37,6 +37,10 @@ from nv_config_manager.temporal.common.workflow_references import DeviceReferenc
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDeviceInput,
+        get_network_device,
+    )
     from nv_config_manager.temporal.ngc.activities.diagnostics import (
         RunDiagnosticsInput,
         RunDiagnosticsOutput,
@@ -45,10 +49,6 @@ with workflow.unsafe.imports_passed_through():
         collect_tech_support_bundle,
         get_available_commands,
         run_diagnostic_commands,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDeviceInput,
-        get_network_device,
     )
     from nv_config_manager.temporal.ngc.activities.ticketing import (
         AddCommentInput,
@@ -89,9 +89,7 @@ _PREFLIGHT_RETRY = RetryPolicy(maximum_attempts=1)  # fail fast before touching 
 
 
 class DiagnosticsWorkflowInput(BaseModel):
-    device_ids: DeviceReferences = Field(
-        description="Nautobot identifiers of the devices to diagnose."
-    )
+    device_ids: DeviceReferences = Field(description="DCIM identifiers of the devices to diagnose.")
     commands: list[str] = Field(
         description="Diagnostic command catalog names to run on each device."
     )
@@ -308,7 +306,7 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
         )
         self.define_stage(
             name="resolve_devices",
-            description="Fetch NetworkDeviceData for each requested device ID from Nautobot",
+            description="Fetch NetworkDeviceData for each requested device ID from the DCIM",
             requires_approval=False,
             depends_on=["validate_ticket"],
         )
@@ -676,7 +674,7 @@ class DiagnosticsWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Archiv
                             cascade_unreachable=False,
                         )
 
-        # Stage 2 — resolve Nautobot UUIDs → NetworkDeviceData
+        # Stage 2 — resolve DCIM device identifiers → NetworkDeviceData
         resolve_output = await self.resolve_devices_stage(
             ResolveDevicesStageInput(device_ids=workflow_input.device_ids)
         )

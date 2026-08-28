@@ -72,7 +72,7 @@ async def mock_get_network_device(
             deploy_enabled=False,
             backup_enabled=False,
             ztp_enabled=False,
-            config_context=None,
+            intent=None,
         )
     )
 
@@ -573,7 +573,7 @@ async def test_execute_workflow(
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "display": "```\nmock running config\n```",
                     "running_config": "mock running config",
@@ -651,7 +651,7 @@ async def test_execute_workflow(
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "intended_config_commit_id": "mock_commit_id",
                     "running_config": "mock running config",
@@ -722,7 +722,7 @@ async def test_execute_workflow(
 @patch("nv_config_manager.temporal.client.device.CumulusConnection")
 @patch("nv_config_manager.temporal.ngc.activities.backup.config_store_client")
 @patch("nv_config_manager.temporal.ngc.activities.deploy.config_store_client")
-@patch("nv_config_manager.temporal.ngc.activities.backup.NautobotClient")
+@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_client")
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_execute_workflow_no_diff(
@@ -888,7 +888,7 @@ async def test_execute_workflow_no_diff(
 @patch("nv_config_manager.temporal.client.device.CumulusConnection")
 @patch("nv_config_manager.temporal.ngc.activities.backup.config_store_client")
 @patch("nv_config_manager.temporal.ngc.activities.deploy.config_store_client")
-@patch("nv_config_manager.temporal.ngc.activities.backup.NautobotClient")
+@patch("nv_config_manager.temporal.ngc.activities.backup.create_dcim_client")
 @patch("nv_config_manager.temporal.ngc.activities.nats.NatsProducer", autospec=True)
 @patch("nv_config_manager.temporal.common.mixins.stage.workflow.time", return_value=float(0))
 async def test_execute_workflow_rejected_diff(
@@ -1228,7 +1228,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "display": "```\nmock running config\n```",
                     "running_config": "mock running config",
@@ -1308,7 +1308,7 @@ nv set vrf test-ryan-2 router bgp router-id 172.28.0.2
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "intended_config_commit_id": None,
                     "running_config": "mock running config",

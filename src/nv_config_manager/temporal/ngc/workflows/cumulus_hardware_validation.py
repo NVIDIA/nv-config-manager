@@ -42,6 +42,10 @@ from nv_config_manager.temporal.common.workflow_references import LocationRefere
 with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import DeviceMixin, NetworkDeviceData
+    from nv_config_manager.temporal.ngc.activities.dcim import (
+        GetNetworkDevicesInput,
+        get_network_devices,
+    )
     from nv_config_manager.temporal.ngc.activities.hardware_validation import (
         CreateConsolidatedExcelInput,
         HardwareValidationInput,
@@ -54,10 +58,6 @@ with workflow.unsafe.imports_passed_through():
         get_platform_environment_psu,
         get_platform_environment_voltage,
         get_platform_inventory,
-    )
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
-        GetNetworkDevicesInput,
-        get_network_devices,
     )
 
 DEFAULT_ACTIVITY_RETRY_POLICY = RetryPolicy(maximum_attempts=5)
@@ -316,7 +316,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
         )
         self.define_stage(
             name="get_device_info",
-            description="Get device information from Nautobot",
+            description="Get device information from the DCIM",
             requires_approval=False,
             depends_on=["get_devices_to_validate"],
         )
@@ -474,7 +474,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
         elif not cumulus_devices:
             display = (
                 "No Cumulus Linux devices matched the specified filters "
-                f"({filter_summary}). Nautobot returned {len(result.devices)} "
+                f"({filter_summary}). The DCIM returned {len(result.devices)} "
                 "device(s), but hardware validation only runs against Cumulus Linux devices."
             )
         else:
@@ -487,7 +487,7 @@ class ValidateHardwareWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, A
 
     @stage_executor("get_device_info")
     async def get_device_info(self, stage_input: GetDeviceStageInput) -> GetDeviceStageOutput:
-        """Get device data from Nautobot."""
+        """Get device data from the DCIM."""
         devices_data = {}
         device_names = []
 

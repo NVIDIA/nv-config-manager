@@ -44,7 +44,6 @@ The following Python packages are dependencies of NVIDIA Config Manager. See `py
 | temporalio | MIT | https://github.com/temporalio/sdk-python |
 | protobuf | BSD-3-Clause | https://github.com/protocolbuffers/protobuf |
 | pyeapi | BSD-3-Clause | https://github.com/arista-eosplus/pyeapi |
-| pynautobot | Apache-2.0 | https://github.com/nautobot/pynautobot |
 | netmiko | MIT | https://github.com/ktbyers/netmiko |
 | macaddress | MIT | https://github.com/mentalisttraceur/python-macaddress |
 | netaddr | BSD-3-Clause | https://github.com/netaddr/netaddr |

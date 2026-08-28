@@ -78,7 +78,7 @@ async def mock_get_network_device(
             deploy_enabled=False,
             backup_enabled=False,
             ztp_enabled=False,
-            config_context=None,
+            intent=None,
         )
     )
 
@@ -277,7 +277,7 @@ async def test_execute_workflow(
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "display": "```\nmock config\n```",
                     "running_config": "mock config",
@@ -355,7 +355,7 @@ async def test_execute_workflow(
                         "tenant_config_file": "tenant.yaml",
                         "tenant_config_path": "mock_device_uuid/tenant.yaml",
                         "ztp_enabled": False,
-                        "config_context": None,
+                        "intent": None,
                     },
                     "intended_config_commit_id": None,
                     "running_config": "mock config",

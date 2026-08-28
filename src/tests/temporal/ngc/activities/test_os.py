@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 import responses
+from nv_config_manager_dcim.workflow_models import OSImageVersions
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
@@ -340,35 +341,10 @@ async def test_get_os_image_versions_integration(monkeypatch):
         async def __aexit__(self, *args):
             pass
 
-        async def graphql_query(self, query, variables):
-            if "device(id:" in query:
-                return {
-                    "data": {
-                        "device": {
-                            "role": {"name": "Leaf Switch"},
-                            "platform": {"name": "cumulus-linux"},
-                            "config_context": {
-                                "intended-firmware": {"version": "5.1.0"},
-                                "ztp": {"ipv4": ["192.168.1.1"]},
-                            },
-                            "location": {"id": "site-1", "location_type": {"name": "Site"}},
-                        }
-                    }
-                }
-            else:
-                return {
-                    "data": {
-                        "config_contexts": [
-                            {
-                                "data": {
-                                    "firmware-targets": {"leaf-switch": {"cumulus-linux": "5.2.0"}}
-                                }
-                            }
-                        ]
-                    }
-                }
+        async def get_os_image_versions(self, device_id):
+            return OSImageVersions("5.1.0", "5.2.0", "192.168.1.1")
 
-    monkeypatch.setattr(os_module, "NautobotClient", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     result = await get_os_image_versions(GetOSImageVersionsInput(device_id="test-id"))
     assert result.intended_firmware == "5.1.0"
@@ -390,16 +366,16 @@ async def test_update_intended_os_image_integration(monkeypatch):
         async def __aexit__(self, *args):
             pass
 
-        async def merge_config_context(self, device_id, context):
-            merge_called.append((device_id, context))
+        async def set_intended_os_image(self, device_id, desired_firmware):
+            merge_called.append((device_id, desired_firmware))
 
-    monkeypatch.setattr(os_module, "NautobotClient", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     await update_intended_os_image(
         UpdateIntendedOSImageInput(device_id="test-id", desired_firmware="5.2.0")
     )
     assert len(merge_called) == 1
-    assert merge_called[0][0] == "test-id"
+    assert merge_called == [("test-id", "5.2.0")]
 
 
 @pytest.mark.asyncio
@@ -602,39 +578,10 @@ async def test_get_os_image_versions_with_parent_location(monkeypatch):
         async def __aexit__(self, *args):
             pass
 
-        async def graphql_query(self, query, variables):
-            if "device(id:" in query:
-                return {
-                    "data": {
-                        "device": {
-                            "role": {"name": "Leaf Switch"},
-                            "platform": {"name": "cumulus-linux"},
-                            "config_context": {
-                                "intended-firmware": {"version": "5.1.0"},
-                                "ztp": {"ipv4": ["192.168.1.1"]},
-                            },
-                            "location": {
-                                "id": "rack-1",
-                                "location_type": {"name": "Rack"},  # Not a Site
-                                "parent": {"id": "site-1", "location_type": {"name": "Site"}},
-                            },
-                        }
-                    }
-                }
-            else:
-                return {
-                    "data": {
-                        "config_contexts": [
-                            {
-                                "data": {
-                                    "firmware-targets": {"leaf-switch": {"cumulus-linux": "5.2.0"}}
-                                }
-                            }
-                        ]
-                    }
-                }
+        async def get_os_image_versions(self, device_id):
+            return OSImageVersions("5.1.0", "5.2.0", "192.168.1.1")
 
-    monkeypatch.setattr(os_module, "NautobotClient", MockClient)
+    monkeypatch.setattr(os_module, "create_dcim_client", MockClient)
 
     result = await get_os_image_versions(GetOSImageVersionsInput(device_id="test-id"))
     assert result.intended_firmware == "5.1.0"

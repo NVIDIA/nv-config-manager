@@ -49,7 +49,11 @@ F = TypeVar("F", bound=Callable[..., Any])
 STAGE_STATE_SEARCH_ATTRIBUTES_PATCH = "stage-state-search-attributes-v1"
 
 
-def stage_executor(stage_name: str) -> Callable[[F], F]:
+def stage_executor(
+    stage_name: str,
+    *,
+    name_attribute: str | None = None,
+) -> Callable[[F], F]:
     """Stage decorator."""
 
     def stage_decorator(func: F) -> F:
@@ -57,35 +61,39 @@ def stage_executor(stage_name: str) -> Callable[[F], F]:
         async def wrap_stage(
             self: StageMixin, stage_input: StageInput | None = None
         ) -> StageOutput:
-            self.set_stage_state(stage_name, StateEnum.IN_PROGRESS)
-            current_stage = self.get_stage_by_name(stage_name)
+            effective_stage_name = (
+                getattr(self, name_attribute) if name_attribute is not None else stage_name
+            )
+            self.set_stage_state(effective_stage_name, StateEnum.IN_PROGRESS)
+            current_stage = self.get_stage_by_name(effective_stage_name)
             while True:
                 try:
                     result: StageOutput
                     if stage_input:
-                        self.set_stage_input(stage_name, stage_input)
+                        self.set_stage_input(effective_stage_name, stage_input)
                         result = await func(self, stage_input)
                     else:
                         result = await func(self)
-                    self.set_stage_output(stage_name, result)
-                    self.set_stage_state(stage_name, StateEnum.COMPLETE)
+                    self.set_stage_output(effective_stage_name, result)
+                    self.set_stage_state(effective_stage_name, StateEnum.COMPLETE)
                     return result
                 except StageStateFailure as exc:
                     raise exc
                 except Exception as exc:  # pylint:disable=broad-exception-caught
-                    self.set_stage_state(stage_name, StateEnum.FAILED)
+                    self.set_stage_state(effective_stage_name, StateEnum.FAILED)
                     current_stage.traceback = traceback.format_exc()
 
                     if self.terminate_on_failure or not current_stage.retryable:
                         raise StageRuntimeFailure(
-                            f"Stage {stage_name} has failed and is non-retryable: {{exc}}",
+                            f"Stage {effective_stage_name} has failed and is non-retryable: {{exc}}",
                             non_retryable=True,
                         ) from exc
 
                     if isinstance(exc, ApplicationError):
                         if exc.non_retryable:
                             raise StageRuntimeFailure(
-                                f"Stage {stage_name} has failed and cannot be retried: {exc.cause}",
+                                f"Stage {effective_stage_name} has failed and cannot be retried: "
+                                f"{exc.cause}",
                                 non_retryable=True,
                             ) from exc
                     elif isinstance(exc, ActivityError):
@@ -94,7 +102,7 @@ def stage_executor(stage_name: str) -> Callable[[F], F]:
                         ):
                             raise StageRuntimeFailure(
                                 f"Activity {exc.activity_type}:{exc.activity_id} in "
-                                f"{stage_name} has failed and cannot be retried: "
+                                f"{effective_stage_name} has failed and cannot be retried: "
                                 f"{exc.cause}",
                                 non_retryable=True,
                             ) from exc
@@ -104,7 +112,7 @@ def stage_executor(stage_name: str) -> Callable[[F], F]:
                         ):
                             raise StageRuntimeFailure(
                                 f"Child workflow {exc.workflow_type}:{exc.workflow_id} "
-                                f"in {stage_name} has failed and cannot be retried: "
+                                f"in {effective_stage_name} has failed and cannot be retried: "
                                 f"{exc.cause}",
                                 non_retryable=True,
                             ) from exc
