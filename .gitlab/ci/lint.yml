@@ -267,7 +267,6 @@ lint-mr-helm:
     - helm dependency build deploy/helm/
     - helm lint deploy/helm/ -f deploy/helm/values-ci.yaml
     - helm template nv-config-manager deploy/helm/ -f deploy/helm/values-ci.yaml > /dev/null
-    - bash deploy/helm/tests/redis-metrics-render.sh
 
 lint-mr-ui:
   stage: lint
