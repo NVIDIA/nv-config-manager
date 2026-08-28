@@ -43,6 +43,7 @@ class TestBuiltinPlugin:
 
         assert descriptor.workflows == ()
         assert descriptor.activities == ()
+        assert descriptor.schedulers == ()
 
     def test_its_version_is_left_to_the_installed_distribution(self) -> None:
         assert builtin_plugin().version is None

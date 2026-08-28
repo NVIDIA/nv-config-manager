@@ -40,8 +40,7 @@ if TYPE_CHECKING:
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def stage_executor(stage_name: str,     *,
-    name_attribute: str | None = None) -> Callable[[F], F]:
+def stage_executor(stage_name: str, *, name_attribute: str | None = None) -> Callable[[F], F]:
     """Stage decorator."""
 
     def stage_decorator(func: F) -> F:

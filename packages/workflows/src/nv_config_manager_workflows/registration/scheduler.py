@@ -12,18 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""The built-in plugin: this package's own contribution to the registry."""
+"""The public contract for scheduler contributions."""
 
-from nv_config_manager_workflows.registration.descriptor import WorkflowPluginDescriptor
+from abc import abstractmethod
+from typing import Protocol, runtime_checkable
 
-BUILTIN_PLUGIN_NAME = "builtin"
 
+@runtime_checkable
+class WorkflowScheduler(Protocol):
+    """A long-running scheduler the scheduler service can construct and run."""
 
-def builtin_plugin() -> WorkflowPluginDescriptor:
-    """Return the descriptor for the built-in workflow and activity catalog."""
-    return WorkflowPluginDescriptor(
-        name=BUILTIN_PLUGIN_NAME,
-        workflows=(),
-        activities=(),
-        schedulers=(),
-    )
+    @abstractmethod
+    async def run(self) -> None:
+        """Run until the scheduler is cancelled or asked to stop."""
+        ...

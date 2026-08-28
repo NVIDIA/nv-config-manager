@@ -19,6 +19,8 @@ from typing import Annotated, Any
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from nv_config_manager_workflows.registration.scheduler import WorkflowScheduler
+
 UNKNOWN_PLUGIN_VERSION = "unknown"
 
 
@@ -42,5 +44,5 @@ class WorkflowPluginDescriptor(BaseModel):
     version: str | None = Field(default=None, min_length=1)
     workflows: Annotated[Sequence[type], AfterValidator(tuple)] = ()
     activities: Annotated[Sequence[Callable[..., Any]], AfterValidator(tuple)] = ()
-    schedulers: Annotated[Sequence[Any], AfterValidator(tuple)] = ()
+    schedulers: Annotated[Sequence[type[WorkflowScheduler]], AfterValidator(tuple)] = ()
     metadata: dict[str, Any] = Field(default_factory=dict)

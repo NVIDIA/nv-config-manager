@@ -46,6 +46,7 @@ from nv_config_manager_workflows.registration.errors import (
     WorkflowRequiredActivityError,
 )
 from nv_config_manager_workflows.registration.registry import PluginInfo, WorkflowRegistry
+from nv_config_manager_workflows.registration.scheduler import WorkflowScheduler
 from nv_config_manager_workflows.registration.validation import (
     REQUIRED_WORKFLOW_BASES,
     validate_workflow_bases,
@@ -64,6 +65,7 @@ __all__ = [
     "WorkflowRegistrationError",
     "WorkflowRegistry",
     "WorkflowRequiredActivityError",
+    "WorkflowScheduler",
     "activity_name",
     "builtin_plugin",
     "discover_workflow_plugins",

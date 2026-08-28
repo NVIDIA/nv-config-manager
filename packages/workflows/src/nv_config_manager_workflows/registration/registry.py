@@ -27,6 +27,7 @@ from nv_config_manager_workflows.registration.descriptor import (
     WorkflowPluginDescriptor,
 )
 from nv_config_manager_workflows.registration.discovery import discover_workflow_plugins
+from nv_config_manager_workflows.registration.scheduler import WorkflowScheduler
 from nv_config_manager_workflows.registration.validation import validate_plugins
 
 
@@ -38,6 +39,7 @@ class PluginInfo:
     version: str
     workflow_count: int
     activity_count: int
+    scheduler_count: int
 
 
 @dataclass
@@ -46,6 +48,7 @@ class WorkflowRegistry:
 
     all_workflows: list[type] = field(default_factory=list)
     all_activities: list[Callable[..., Any]] = field(default_factory=list)
+    all_schedulers: list[type[WorkflowScheduler]] = field(default_factory=list)
     api_workflows: list[type] = field(default_factory=list)
     mcp_workflows: list[type] = field(default_factory=list)
     plugin_diagnostics: list[PluginInfo] = field(default_factory=list)
@@ -74,10 +77,12 @@ class WorkflowRegistry:
 
         all_workflows = list(dict.fromkeys(w for d in ordered.values() for w in d.workflows))
         all_activities = list(dict.fromkeys(a for d in ordered.values() for a in d.activities))
+        all_schedulers = list(dict.fromkeys(s for d in ordered.values() for s in d.schedulers))
 
         return cls(
             all_workflows=all_workflows,
             all_activities=all_activities,
+            all_schedulers=all_schedulers,
             api_workflows=[w for w in all_workflows if workflow_api_enabled(w)],
             mcp_workflows=[w for w in all_workflows if workflow_mcp_enabled(w)],
             plugin_diagnostics=[
@@ -86,6 +91,7 @@ class WorkflowRegistry:
                     version=descriptor.version or UNKNOWN_PLUGIN_VERSION,
                     workflow_count=len(descriptor.workflows),
                     activity_count=len(descriptor.activities),
+                    scheduler_count=len(descriptor.schedulers),
                 )
                 for descriptor in ordered.values()
             ],

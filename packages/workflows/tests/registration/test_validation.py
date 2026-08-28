@@ -28,6 +28,7 @@ from nv_config_manager_workflows.registration.errors import (
     WorkflowRegistrationError,
     WorkflowRequiredActivityError,
 )
+from nv_config_manager_workflows.registration.scheduler import WorkflowScheduler
 from nv_config_manager_workflows.registration.validation import (
     REQUIRED_WORKFLOW_BASES,
     validate_plugins,
@@ -166,7 +167,7 @@ class UndecoratedWorkflow(WorkflowMetadataMixin, StageMixin):
 class UndecoratedMisdeclaredWorkflow(WorkflowMetadataMixin, StageMixin):
     """Undecorated, and what metadata it declares is unusable as well."""
 
-    workflow_name = 42
+    workflow_name = 42  # pyright: ignore[reportAssignmentType]
 
     @workflow.run
     async def run(self, workflow_input: BaseModel) -> None: ...
@@ -208,13 +209,34 @@ class ExtendedWorkflow(AdditionalWorkflowMixin, WorkflowMetadataMixin, StageMixi
     async def run(self, workflow_input: BaseModel) -> None: ...
 
 
+class AsyncScheduler:
+    async def run(self) -> None: ...
+
+
+class SynchronousScheduler:
+    def run(self) -> None: ...
+
+
+class SchedulerWithRequiredRunArgument:
+    async def run(self, interval: int) -> None: ...
+
+
+class SchedulerInheritingProtocolStub(WorkflowScheduler): ...
+
+
 def plugin(
     name: str,
     *,
     workflows: tuple[type, ...] = (),
     activities: tuple[Any, ...] = (),
+    schedulers: tuple[type, ...] = (),
 ) -> WorkflowPluginDescriptor:
-    return WorkflowPluginDescriptor(name=name, workflows=workflows, activities=activities)
+    return WorkflowPluginDescriptor(
+        name=name,
+        workflows=workflows,
+        activities=activities,
+        schedulers=schedulers,
+    )
 
 
 def installed(*descriptors: WorkflowPluginDescriptor) -> dict[str, WorkflowPluginDescriptor]:
@@ -239,6 +261,9 @@ class TestAcceptedPlugins:
 
     def test_a_fully_declared_plugin_is_valid(self) -> None:
         validate_plugins(installed(alpha_plugin()))
+
+    def test_an_async_scheduler_is_valid(self) -> None:
+        validate_plugins(installed(plugin("scheduler-plugin", schedulers=(AsyncScheduler,))))
 
     def test_a_workflow_may_decline_to_declare_any_metadata(self) -> None:
         validate_plugins(installed(plugin("bare-plugin", workflows=(BareWorkflow,))))
@@ -303,6 +328,44 @@ class TestTemporalDefinitionRequired:
             )
 
         assert "not decorated with @workflow.defn" in str(raised.value)
+
+
+class TestSchedulerContract:
+    def test_a_scheduler_run_method_must_be_async(self) -> None:
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(installed(plugin("broken-plugin", schedulers=(SynchronousScheduler,))))
+
+        assert "Scheduler" in str(raised.value)
+        assert "run(), which is not async" in str(raised.value)
+        assert 'plugin "broken-plugin"' in str(raised.value)
+
+    def test_a_scheduler_run_method_must_accept_no_arguments(self) -> None:
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(
+                installed(
+                    plugin(
+                        "broken-plugin",
+                        schedulers=(SchedulerWithRequiredRunArgument,),
+                    )
+                )
+            )
+
+        assert "run(), which cannot be called without arguments" in str(raised.value)
+        assert 'plugin "broken-plugin"' in str(raised.value)
+
+    def test_a_scheduler_must_implement_the_protocol_method(self) -> None:
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(
+                installed(
+                    plugin(
+                        "broken-plugin",
+                        schedulers=(SchedulerInheritingProtocolStub,),
+                    )
+                )
+            )
+
+        assert "is abstract and cannot be constructed" in str(raised.value)
+        assert 'plugin "broken-plugin"' in str(raised.value)
 
 
 class TestRequiredWorkflowBases:

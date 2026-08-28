@@ -33,6 +33,13 @@ class ExampleWorkflow:
 async def example_activity() -> None: ...
 
 
+class ExampleScheduler:
+    async def run(self) -> None: ...
+
+
+class MissingRunScheduler: ...
+
+
 class TestDeclaredIdentity:
     def test_a_plugin_may_contribute_nothing_but_a_name(self) -> None:
         descriptor = WorkflowPluginDescriptor(name="example")
@@ -72,7 +79,7 @@ class TestCatalogs:
             name="example",
             workflows=[ExampleWorkflow],
             activities=[example_activity],
-            schedulers=[object()],
+            schedulers=[ExampleScheduler],
         )
 
         assert isinstance(descriptor.workflows, tuple)
@@ -80,6 +87,7 @@ class TestCatalogs:
         assert isinstance(descriptor.schedulers, tuple)
         assert descriptor.workflows == (ExampleWorkflow,)
         assert descriptor.activities == (example_activity,)
+        assert descriptor.schedulers == (ExampleScheduler,)
 
     def test_the_plugin_cannot_reach_the_catalog_it_passed(self) -> None:
         declared = [ExampleWorkflow]
@@ -100,6 +108,19 @@ class TestCatalogs:
             WorkflowPluginDescriptor.model_validate(
                 {"name": "example", "activities": ["collect_facts"]}
             )
+
+    @pytest.mark.parametrize("scheduler", [ExampleScheduler(), MissingRunScheduler, object()])
+    def test_a_scheduler_must_be_a_class_with_run(self, scheduler: object) -> None:
+        with pytest.raises(ValidationError):
+            WorkflowPluginDescriptor.model_validate({"name": "example", "schedulers": [scheduler]})
+
+    def test_the_plugin_cannot_mutate_its_scheduler_catalog(self) -> None:
+        declared = [ExampleScheduler]
+        descriptor = WorkflowPluginDescriptor(name="example", schedulers=declared)
+
+        declared.clear()
+
+        assert descriptor.schedulers == (ExampleScheduler,)
 
     def test_metadata_defaults_are_not_shared_between_descriptors(self) -> None:
         first = WorkflowPluginDescriptor(name="first")

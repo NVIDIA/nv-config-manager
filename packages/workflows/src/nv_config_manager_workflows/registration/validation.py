@@ -14,6 +14,7 @@
 # limitations under the License.
 """The checks run while the registry is built."""
 
+import inspect
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, NamedTuple
 
@@ -48,6 +49,7 @@ from nv_config_manager_workflows.registration.errors import (
     WorkflowRegistrationError,
     WorkflowRequiredActivityError,
 )
+from nv_config_manager_workflows.registration.scheduler import WorkflowScheduler
 from nv_config_manager_workflows.stage import StageMixin
 
 REQUIRED_WORKFLOW_BASES = (StageMixin, WorkflowMetadataMixin)
@@ -62,6 +64,7 @@ class _Owned[ItemT](NamedTuple):
 
 type _OwnedWorkflow = _Owned[type]
 type _OwnedActivity = _Owned[Callable[..., Any]]
+type _OwnedScheduler = _Owned[type[WorkflowScheduler]]
 
 
 def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
@@ -82,10 +85,14 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
     activities: list[_OwnedActivity] = [
         _Owned(name, item) for name, d in plugins.items() for item in d.activities
     ]
+    schedulers: list[_OwnedScheduler] = [
+        _Owned(name, item) for name, d in plugins.items() for item in d.schedulers
+    ]
 
     _require_plugin_workflow_bases(workflows)
     _require_named_workflows(workflows)
     _require_named_activities(activities)
+    _require_scheduler_contracts(schedulers)
     _require_valid_metadata(workflows)
 
     api_enabled = [owned for owned in workflows if workflow_api_enabled(owned.item)]
@@ -156,6 +163,28 @@ def _require_named_activities(activities: list[_OwnedActivity]) -> None:
             raise WorkflowRegistrationError(
                 f"{_label(owned, 'Activity')} is not decorated with @activity.defn"
             )
+
+
+def _require_scheduler_contracts(schedulers: list[_OwnedScheduler]) -> None:
+    """Require schedulers to expose an asynchronous no-argument runner."""
+    for owned in schedulers:
+        label = _label(owned, "Scheduler")
+        if inspect.isabstract(owned.item):
+            raise WorkflowRegistrationError(f"{label} is abstract and cannot be constructed")
+
+        if not inspect.iscoroutinefunction(owned.item.run):
+            raise WorkflowRegistrationError(f"{label} declares run(), which is not async")
+
+        run_descriptor = inspect.getattr_static(owned.item, "run")
+        implicit_arguments = (
+            () if isinstance(run_descriptor, (classmethod, staticmethod)) else (None,)
+        )
+        try:
+            inspect.signature(owned.item.run).bind(*implicit_arguments)
+        except (TypeError, ValueError):
+            raise WorkflowRegistrationError(
+                f"{label} declares run(), which cannot be called without arguments"
+            ) from None
 
 
 def _dynamic_rejection[ItemT](owned: _Owned[ItemT], kind: str, decorator: str) -> str:

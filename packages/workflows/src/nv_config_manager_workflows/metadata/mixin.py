@@ -51,7 +51,7 @@ class WorkflowMetadataMixin:
         if cls.workflow_description:
             return cls.workflow_description
 
-        # Fallback to docstring    
+        # Fallback to docstring
         if cls.__doc__:
             return cls.__doc__.strip().split("\n")[0].replace('"""', "").strip()
 
@@ -85,7 +85,7 @@ class WorkflowMetadataMixin:
         # Remove 'Workflow' suffix if present
         if name.endswith("Workflow"):
             name = name[:-8]
-        
+
         # Insert hyphens before uppercase letters (except the first one)
         s1 = re.sub("(.)([A-Z][a-z]+)", r"\1-\2", name)
         # Insert hyphens before uppercase letters that follow lowercase letters or numbers

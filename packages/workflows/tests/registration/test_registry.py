@@ -44,6 +44,14 @@ async def collect_facts() -> None: ...
 async def push_config() -> None: ...
 
 
+class BackupScheduler:
+    async def run(self) -> None: ...
+
+
+class InventoryScheduler:
+    async def run(self) -> None: ...
+
+
 @workflow.defn
 class AlphaWorkflow(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Alpha"
@@ -104,9 +112,14 @@ def plugin(
     version: str | None = None,
     workflows: tuple[type, ...] = (),
     activities: tuple[Any, ...] = (),
+    schedulers: tuple[type, ...] = (),
 ) -> WorkflowPluginDescriptor:
     return WorkflowPluginDescriptor(
-        name=name, version=version, workflows=workflows, activities=activities
+        name=name,
+        version=version,
+        workflows=workflows,
+        activities=activities,
+        schedulers=schedulers,
     )
 
 
@@ -120,6 +133,7 @@ class TestEmptyRegistry:
 
         assert registry.all_workflows == []
         assert registry.all_activities == []
+        assert registry.all_schedulers == []
         assert registry.api_workflows == []
         assert registry.mcp_workflows == []
         assert registry.plugin_diagnostics == []
@@ -143,17 +157,24 @@ class TestMergedCatalogs:
     def test_catalogs_are_ordered_by_plugin_name_then_by_declaration(self) -> None:
         registry = WorkflowRegistry.build(
             installed(
-                plugin("zulu-plugin", workflows=(InternalWorkflow,), activities=(push_config,)),
+                plugin(
+                    "zulu-plugin",
+                    workflows=(InternalWorkflow,),
+                    activities=(push_config,),
+                    schedulers=(InventoryScheduler,),
+                ),
                 plugin(
                     "alpha-plugin",
                     workflows=(AlphaWorkflow, BetaWorkflow),
                     activities=(collect_facts,),
+                    schedulers=(BackupScheduler,),
                 ),
             )
         )
 
         assert registry.all_workflows == [AlphaWorkflow, BetaWorkflow, InternalWorkflow]
         assert registry.all_activities == [collect_facts, push_config]
+        assert registry.all_schedulers == [BackupScheduler, InventoryScheduler]
 
     def test_a_workflow_two_plugins_both_contribute_is_registered_once(self) -> None:
         registry = WorkflowRegistry.build(
@@ -163,12 +184,15 @@ class TestMergedCatalogs:
                     "downstream-plugin",
                     workflows=(AlphaWorkflow,),
                     activities=(collect_facts,),
+                    schedulers=(BackupScheduler,),
                 ),
+                plugin("scheduler-plugin", schedulers=(BackupScheduler,)),
             )
         )
 
         assert registry.all_workflows == [AlphaWorkflow]
         assert registry.all_activities == [collect_facts]
+        assert registry.all_schedulers == [BackupScheduler]
 
     def test_the_api_offers_only_workflows_that_opted_in(self) -> None:
         registry = WorkflowRegistry.build(
@@ -220,20 +244,27 @@ class TestPluginDiagnostics:
     def test_counts_describe_what_each_plugin_declared(self) -> None:
         registry = WorkflowRegistry.build(
             installed(
-                plugin("alpha-plugin", workflows=(AlphaWorkflow,), activities=(collect_facts,)),
+                plugin(
+                    "alpha-plugin",
+                    workflows=(AlphaWorkflow,),
+                    activities=(collect_facts,),
+                    schedulers=(BackupScheduler,),
+                ),
                 plugin(
                     "downstream-plugin",
                     workflows=(AlphaWorkflow, InternalWorkflow),
                     activities=(collect_facts,),
+                    schedulers=(BackupScheduler, InventoryScheduler),
                 ),
             )
         )
 
         assert [
-            (info.workflow_count, info.activity_count) for info in registry.plugin_diagnostics
+            (info.workflow_count, info.activity_count, info.scheduler_count)
+            for info in registry.plugin_diagnostics
         ] == [
-            (1, 1),
-            (2, 1),
+            (1, 1, 1),
+            (2, 1, 2),
         ]
 
     def test_diagnostics_cannot_be_edited_after_the_registry_is_built(self) -> None:

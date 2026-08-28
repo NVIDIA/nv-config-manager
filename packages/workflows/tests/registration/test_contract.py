@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from temporalio import activity, workflow
 from temporalio.common import RawValue
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.contract import (
     activity_has_definition,
     activity_is_dynamic,
@@ -37,24 +38,24 @@ from nv_config_manager_workflows.registration.contract import (
 
 
 @workflow.defn
-class DeclaredWorkflow:
+class DeclaredWorkflow(WorkflowMetadataMixin):
     @workflow.run
     async def run(self) -> None: ...
 
 
 @workflow.defn(name="RenamedType")
-class RenamedWorkflow:
+class RenamedWorkflow(WorkflowMetadataMixin):
     @workflow.run
     async def run(self) -> None: ...
 
 
 @workflow.defn(dynamic=True)
-class DynamicWorkflow:
+class DynamicWorkflow(WorkflowMetadataMixin):
     @workflow.run
     async def run(self, args: Sequence[RawValue]) -> None: ...
 
 
-class UndecoratedWorkflow:
+class UndecoratedWorkflow(WorkflowMetadataMixin):
     @workflow.run
     async def run(self) -> None: ...
 
