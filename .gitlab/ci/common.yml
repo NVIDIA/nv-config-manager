@@ -47,6 +47,11 @@ variables:
   NVCM_CI_IMAGE_PYTHON_313: "python:3.13"
   NVCM_CI_IMAGE_SONAR: "sonarsource/sonar-scanner-cli:11"
   NVCM_CI_IMAGE_UBUNTU: "ubuntu:24.04"
+  # Images for the untrusted PR build only. Kept separate
+  # so a registry override can be scoped to pr-build.yml without
+  # moving the ~30 other jobs (including the release path) onto it.
+  NVCM_PR_IMAGE_ALPINE: "$NVCM_CI_IMAGE_ALPINE"
+  NVCM_PR_IMAGE_DOCKER_DIND: "$NVCM_CI_IMAGE_DOCKER_DIND"
   APT_MIRROR: "$NVCM_APT_MIRROR"
   APT_MIRROR_DEBIAN: "$NVCM_APT_MIRROR_DEBIAN"
   APT_MIRROR_GPG_KEY_URL: "$NVCM_APT_MIRROR_GPG_KEY_URL"
