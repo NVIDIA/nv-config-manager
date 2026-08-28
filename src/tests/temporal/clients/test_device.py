@@ -564,6 +564,34 @@ def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
     assert '"$6$abcDE12$secretHash"' in text
 
 
+def test_execute_ztp_issues_zeroize_and_closes(juniper_conn):
+    """execute_ztp issues request-system-zeroize and closes the NETCONF session."""
+    device = MagicMock()
+    juniper_conn._device = device
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        juniper_conn.execute_ztp()
+    device.rpc.request_system_zeroize.assert_called_once_with()
+    device.close.assert_called_once()
+    assert juniper_conn._device is None
+
+
+def test_execute_ztp_treats_dropped_session_as_success(juniper_conn):
+    """A dropped NETCONF session during zeroize is treated as success."""
+    device = MagicMock()
+    device.rpc.request_system_zeroize.side_effect = ConnectError("session closed")
+    juniper_conn._device = device
+    with patch.object(juniper_conn, "_get_device", return_value=device):
+        juniper_conn.execute_ztp()
+    device.close.assert_called_once()
+    assert juniper_conn._device is None
+
+
+def test_get_ztp_status_returns_success_when_image_readable(juniper_conn):
+    """get_ztp_status is success once the device answers with a running image."""
+    with patch.object(juniper_conn, "get_running_image", return_value="24.4R2-S3.7-EVO"):
+        assert juniper_conn.get_ztp_status() == "success"
+
+
 def test_get_hostname_and_running_image_use_facts(juniper_conn):
     """Hostname and running image come from PyEZ facts."""
     device = MagicMock()
