@@ -125,7 +125,7 @@ class TestFailure:
     ) -> None:
         state = Workflow(failing(RuntimeError("boom")), retryable=False)
 
-        with pytest.raises(StageRuntimeFailure, match="is non-retryable") as failure:
+        with pytest.raises(StageRuntimeFailure, match="is non-retryable: boom") as failure:
             await state.render()
 
         assert failure.value.non_retryable is True
@@ -136,7 +136,7 @@ class TestFailure:
         state = Workflow(failing(RuntimeError("boom")))
         state.set_terminate_on_failure(True)
 
-        with pytest.raises(StageRuntimeFailure, match="is non-retryable"):
+        with pytest.raises(StageRuntimeFailure, match="is non-retryable: boom"):
             await state.render()
 
     async def test_a_non_retryable_application_error_is_not_awaited_for_retry(

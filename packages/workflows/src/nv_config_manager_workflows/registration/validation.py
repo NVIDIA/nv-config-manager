@@ -178,7 +178,10 @@ def _require_scheduler_contracts(schedulers: list[_OwnedScheduler]) -> None:
         if inspect.isabstract(owned.item):
             raise WorkflowRegistrationError(f"{label} is abstract and cannot be constructed")
 
-        if not inspect.iscoroutinefunction(owned.item.run):
+        run = getattr(owned.item, "run", None)
+        if run is None:
+            raise WorkflowRegistrationError(f"{label} does not declare run()")
+        if not inspect.iscoroutinefunction(run):
             raise WorkflowRegistrationError(f"{label} declares run(), which is not async")
 
         run_descriptor = inspect.getattr_static(owned.item, "run")
@@ -186,7 +189,7 @@ def _require_scheduler_contracts(schedulers: list[_OwnedScheduler]) -> None:
             () if isinstance(run_descriptor, (classmethod, staticmethod)) else (None,)
         )
         try:
-            inspect.signature(owned.item.run).bind(*implicit_arguments)
+            inspect.signature(run).bind(*implicit_arguments)
         except (TypeError, ValueError):
             raise WorkflowRegistrationError(
                 f"{label} declares run(), which cannot be called without arguments"

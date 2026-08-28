@@ -72,7 +72,7 @@ def stage_executor(stage_name: str, *, name_attribute: str | None = None) -> Cal
 
                     if self.terminate_on_failure or not current_stage.retryable:
                         raise StageRuntimeFailure(
-                            f"Stage {effective_stage_name} has failed and is non-retryable: {{exc}}",
+                            f"Stage {effective_stage_name} has failed and is non-retryable: {exc}",
                             non_retryable=True,
                         ) from exc
 

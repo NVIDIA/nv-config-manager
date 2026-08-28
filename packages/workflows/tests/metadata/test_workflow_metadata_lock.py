@@ -47,6 +47,24 @@ def test_lock_key_uses_the_declared_scope_and_input_fields() -> None:
     )
 
 
+def test_lock_key_retains_the_legacy_unencoded_format() -> None:
+    spec = WorkflowLockSpec(
+        key_fields=["site"],
+        namespace="fabric:one",
+        include_workflow_name=True,
+    )
+
+    assert (
+        build_workflow_lock_key(
+            spec,
+            workflow_name="Deploy:Workflow",
+            namespace=None,
+            workflow_input=LockInput(site="rdu/device 1"),
+        )
+        == "wf-lock:fabric:one:Deploy:Workflow:site=rdu/device 1"
+    )
+
+
 def test_lock_key_rejects_a_missing_input_value() -> None:
     spec = WorkflowLockSpec(key_fields=["device"])
 

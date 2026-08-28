@@ -223,7 +223,12 @@ packages = ["src/nv_config_manager"]
 [tool.pytest.ini_options]
 cache_dir = ".cache/pytest_cache"
 asyncio_mode = "auto"
-testpaths = ["src/tests", "development/mock_topology/tests", "development/ufm_mock/tests"]
+testpaths = [
+    "src/tests",
+    "development/mock_topology/tests",
+    "development/ufm_mock/tests",
+    "packages/workflows/tests",
+]
 timeout = 30  # Global timeout in seconds per test
 # Exclude integration tests by default (they require a running cluster)
 addopts = "--ignore=src/tests/integration"

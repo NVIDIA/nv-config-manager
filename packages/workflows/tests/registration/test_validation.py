@@ -225,6 +225,9 @@ class SchedulerWithRequiredRunArgument:
     async def run(self, interval: int) -> None: ...
 
 
+class SchedulerWithoutRun: ...
+
+
 class SchedulerInheritingProtocolStub(WorkflowScheduler): ...
 
 
@@ -335,6 +338,21 @@ class TestTemporalDefinitionRequired:
 
 
 class TestSchedulerContract:
+    def test_a_scheduler_must_declare_a_run_method(self) -> None:
+        # model_construct bypasses the descriptor's protocol validation so the
+        # registry's defensive error handling is exercised directly.
+        descriptor = WorkflowPluginDescriptor.model_construct(
+            name="broken-plugin",
+            schedulers=(SchedulerWithoutRun,),
+        )
+
+        with pytest.raises(WorkflowRegistrationError) as raised:
+            validate_plugins(installed(descriptor))
+
+        assert "Scheduler" in str(raised.value)
+        assert "does not declare run()" in str(raised.value)
+        assert 'plugin "broken-plugin"' in str(raised.value)
+
     def test_a_scheduler_run_method_must_be_async(self) -> None:
         with pytest.raises(WorkflowRegistrationError) as raised:
             validate_plugins(installed(plugin("broken-plugin", schedulers=(SynchronousScheduler,))))

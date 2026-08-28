@@ -279,7 +279,7 @@ class StageMixin(BaseMixin):
 
     @workflow.signal
     async def retry(self, stage_name: str) -> None:
-        """Reject signal."""
+        """Retry signal."""
         if not self.stage_exists(stage_name):
             self.logger.error("Received retry signal for non-existent stage: %s", stage_name)
             return
