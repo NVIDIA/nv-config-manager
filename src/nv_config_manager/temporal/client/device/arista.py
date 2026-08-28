@@ -271,8 +271,8 @@ class AristaConnection(NetworkConnection):
             else:
                 self._node.enable(f"configure session {self._session_id} commit")
             self._node.enable("copy running-config startup-config")
-        except ConfigSyntaxException as exc:
-            raise exc
+        except (ConfigSyntaxException, DiffChangedException):
+            raise
         except Exception as exc:  # pylint: disable=broad-except
             raise NetworkDeviceException(f"Failed to commit session {self._session_id}") from exc
         finally:

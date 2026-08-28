@@ -49,6 +49,7 @@ class MellanoxConnection(NetworkConnection):
             device = {
                 "device_type": "mellanox_mlnxos",
                 "host": self._host,
+                "port": self._port,
                 "username": self._username,
                 "password": password,
             }
@@ -143,6 +144,8 @@ class MellanoxConnection(NetworkConnection):
                     line = line.strip("+ ")
                 self.execute_configure_command(line)
             self.execute_configure_command("write memory")
+        except DiffChangedException:
+            raise
         except Exception as e:
             raise NetworkDeviceException("Failed to commit candidate configuration.") from e
 
