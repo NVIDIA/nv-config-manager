@@ -19,6 +19,7 @@ import pytest
 
 from nv_config_manager.temporal.client.device import (
     AristaConnection,
+    ConfigSyntaxException,
     DiffChangedException,
     NetworkDeviceException,
 )
@@ -54,3 +55,29 @@ def test_commit_wraps_other_failures_as_network_device_exception():
 
     with pytest.raises(NetworkDeviceException, match="Failed to commit session sess-1"):
         conn.commit_candidate_config("config", "new-diff", commit_confirm=False)
+
+
+def test_commit_preserves_diff_changed_when_abort_fails():
+    """Abort failure after a stale diff must not replace DiffChangedException."""
+    conn = _arista_connection()
+    conn._diff_eq = MagicMock(return_value=False)
+    conn._abort.side_effect = NetworkDeviceException("Failed to cleanup session sess-1")
+
+    with pytest.raises(DiffChangedException, match="changed since approval"):
+        conn.commit_candidate_config("config", "old-diff")
+
+    conn._abort.assert_called_once()
+
+
+def test_commit_preserves_config_syntax_when_abort_fails():
+    """Abort failure after invalid config must not replace ConfigSyntaxException."""
+    conn = _arista_connection()
+    conn._load_candidate_config.side_effect = ConfigSyntaxException(
+        "Invalid configuration supplied."
+    )
+    conn._abort.side_effect = NetworkDeviceException("Failed to cleanup session sess-1")
+
+    with pytest.raises(ConfigSyntaxException, match="Invalid configuration supplied"):
+        conn.commit_candidate_config("config", "old-diff")
+
+    conn._abort.assert_called_once()

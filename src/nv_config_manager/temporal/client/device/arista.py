@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import ssl
+import sys
 from typing import cast
 from uuid import uuid4
 
@@ -207,6 +208,20 @@ class AristaConnection(NetworkConnection):
                 f"Failed to cleanup session {self._session_id}, resolve manually."
             ) from exc
 
+    def _abort_preserving_pending(self) -> None:
+        """Abort the config session without masking an in-flight exception."""
+        pending = sys.exc_info()[1]
+        try:
+            self._abort()
+        except Exception:  # noqa: BLE001 - cleanup must not mask the original error
+            if pending is None:
+                raise
+            logger.warning(
+                "Failed to cleanup session %s, resolve manually.",
+                self._session_id,
+                exc_info=True,
+            )
+
     def _diff(self) -> str:
         diff = self._node.enable(
             f"show session-config named {self._session_id} diffs", encoding="text"
@@ -232,7 +247,7 @@ class AristaConnection(NetworkConnection):
         except Exception as exc:  # pylint: disable=broad-except
             raise NetworkDeviceException(f"Failed to diff session {self._session_id}") from exc
         finally:
-            self._abort()
+            self._abort_preserving_pending()
 
     def commit_candidate_config(
         self,
@@ -276,7 +291,7 @@ class AristaConnection(NetworkConnection):
         except Exception as exc:  # pylint: disable=broad-except
             raise NetworkDeviceException(f"Failed to commit session {self._session_id}") from exc
         finally:
-            self._abort()
+            self._abort_preserving_pending()
 
     def get_hostname(self) -> str:
         """Get the system hostname."""
