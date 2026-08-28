@@ -15,6 +15,7 @@
 """Simple Hello World Workflow Definition."""
 
 from datetime import timedelta
+from operator import truediv
 
 from pydantic import BaseModel, Field
 from temporalio import workflow
@@ -58,6 +59,7 @@ class HelloWorld(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Hello World"
     workflow_description = "Simple hello world workflow for testing and demonstration"
     workflow_input_class = HelloWorldInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/hello_world"
     workflow_namespace = "hello_world"
 
@@ -148,6 +150,7 @@ class HelloWorldApproval(WorkflowMetadataMixin, StageMixin):
     workflow_name = "Hello World Approval"
     workflow_description = "Hello world workflow with approval step for testing staged workflows"
     workflow_input_class = HelloWorldInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/hello_world_approval"
     workflow_namespace = "hello_world"
 

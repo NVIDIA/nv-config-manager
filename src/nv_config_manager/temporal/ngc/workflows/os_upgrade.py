@@ -88,6 +88,7 @@ class SwitchOSUpgradeWorkflow(WorkflowMetadataMixin, StageMixin, DeviceMixin, Ar
         "Upgrade network switch operating system with approval and validation workflow"
     )
     workflow_input_class = SwitchOSUpgradeInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/ngc/switch_os_upgrade"
     workflow_namespace = "ngc"
 
