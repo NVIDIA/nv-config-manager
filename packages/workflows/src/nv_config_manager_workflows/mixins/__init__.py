@@ -15,5 +15,9 @@
 """Mixins for Temporal Workflows."""
 
 from nv_config_manager_workflows.mixins.base import BaseMixin
+from nv_config_manager_workflows.mixins.device import DeviceMixin
 
-__all__ = ["BaseMixin"]
+__all__ = [
+    "BaseMixin",
+    "DeviceMixin",
+]

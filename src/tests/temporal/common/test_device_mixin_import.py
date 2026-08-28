@@ -12,25 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Temporal helpers built on DCIM SDK inventory models."""
+"""Compatibility coverage for the legacy device-mixin import path."""
 
-from nv_config_manager_dcim.workflow_models import (
-    DeviceBayData,
-    DeviceData,
-    HostDeviceData,
-    InterfaceData,
-    NetworkDeviceData,
-    Platform,
-)
+from nv_config_manager.temporal.common.mixins.device import DeviceMixin as LegacyDeviceMixin
+from nv_config_manager_workflows.mixins import DeviceMixin
 
-from nv_config_manager_workflows.mixins.device import DeviceMixin
 
-__all__ = [
-    "DeviceBayData",
-    "DeviceData",
-    "DeviceMixin",
-    "HostDeviceData",
-    "InterfaceData",
-    "NetworkDeviceData",
-    "Platform",
-]
+def test_legacy_device_mixin_is_the_package_class() -> None:
+    assert LegacyDeviceMixin is DeviceMixin
