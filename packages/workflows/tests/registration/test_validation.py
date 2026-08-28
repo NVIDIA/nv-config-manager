@@ -156,7 +156,11 @@ class UnlaunchableCliWorkflow(WorkflowMetadataMixin, StageMixin):
 @workflow.defn(dynamic=True)
 class CatchAllWorkflow(WorkflowMetadataMixin, StageMixin):
     @workflow.run
-    async def run(self, args: Sequence[RawValue]) -> None: ...
+    # This intentionally violates the normal workflow signature to exercise rejection
+    # of Temporal's dynamic workflow contract during plugin validation.
+    async def run(  # ty: ignore[invalid-method-override]
+        self, args: Sequence[RawValue]
+    ) -> None: ...
 
 
 class UndecoratedWorkflow(WorkflowMetadataMixin, StageMixin):

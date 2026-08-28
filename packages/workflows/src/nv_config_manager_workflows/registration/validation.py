@@ -16,7 +16,7 @@
 
 import inspect
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from pydantic import BaseModel
 
@@ -62,7 +62,8 @@ class _Owned[ItemT](NamedTuple):
     item: ItemT
 
 
-type _OwnedWorkflow = _Owned[type]
+type _OwnedWorkflowCandidate = _Owned[type]
+type _OwnedWorkflow = _Owned[type[WorkflowMetadataMixin]]
 type _OwnedActivity = _Owned[Callable[..., Any]]
 type _OwnedScheduler = _Owned[type[WorkflowScheduler]]
 
@@ -79,7 +80,7 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
         WorkflowRequiredActivityError: A workflow requires an activity that no
             plugin supplies.
     """
-    workflows: list[_OwnedWorkflow] = [
+    workflow_candidates: list[_OwnedWorkflowCandidate] = [
         _Owned(name, item) for name, d in plugins.items() for item in d.workflows
     ]
     activities: list[_OwnedActivity] = [
@@ -89,7 +90,7 @@ def validate_plugins(plugins: Mapping[str, WorkflowPluginDescriptor]) -> None:
         _Owned(name, item) for name, d in plugins.items() for item in d.schedulers
     ]
 
-    _require_plugin_workflow_bases(workflows)
+    workflows = _require_plugin_workflow_bases(workflow_candidates)
     _require_named_workflows(workflows)
     _require_named_activities(activities)
     _require_scheduler_contracts(schedulers)
@@ -142,10 +143,15 @@ def _require_named_workflows(workflows: list[_OwnedWorkflow]) -> None:
             )
 
 
-def _require_plugin_workflow_bases(workflows: list[_OwnedWorkflow]) -> None:
-    """Require plugin workflows to inherit every mandatory workflow base."""
+def _require_plugin_workflow_bases(
+    workflows: list[_OwnedWorkflowCandidate],
+) -> list[_OwnedWorkflow]:
+    """Require plugin workflows to inherit every mandatory base and narrow their type."""
+    validated: list[_OwnedWorkflow] = []
     for owned in workflows:
         _require_workflow_bases(owned.item, _label(owned, "Workflow"))
+        validated.append(_Owned(owned.plugin, cast(type[WorkflowMetadataMixin], owned.item)))
+    return validated
 
 
 def _require_workflow_bases(workflow: type, label: str) -> None:
@@ -203,7 +209,7 @@ def _dynamic_rejection[ItemT](owned: _Owned[ItemT], kind: str, decorator: str) -
     )
 
 
-def _require_input_class(workflow: type, label: str) -> None:
+def _require_input_class(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Require workflow inputs to use a Pydantic model class."""
     input_class = getattr(workflow, "workflow_input_class", None)
     if input_class is None:
@@ -219,7 +225,7 @@ def _require_input_class(workflow: type, label: str) -> None:
         )
 
 
-def _require_bool_api_flag(workflow: type, label: str) -> None:
+def _require_bool_api_flag(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Reject an API opt-in that is not a bool."""
     api_enabled = getattr(workflow, "workflow_api_enabled", False)
     if not isinstance(api_enabled, bool):
@@ -228,7 +234,7 @@ def _require_bool_api_flag(workflow: type, label: str) -> None:
         )
 
 
-def _require_bool_mcp_flag(workflow: type, label: str) -> None:
+def _require_bool_mcp_flag(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Reject an MCP opt-in that is not a bool."""
     mcp_enabled = getattr(workflow, "workflow_mcp_enabled", False)
     if not isinstance(mcp_enabled, bool):
@@ -237,7 +243,7 @@ def _require_bool_mcp_flag(workflow: type, label: str) -> None:
         )
 
 
-def _require_endpoint_wellformed(workflow: type, label: str) -> None:
+def _require_endpoint_wellformed(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Reject an API path the router could not serve."""
     endpoint = workflow_api_endpoint(workflow)
     if endpoint is None:
@@ -255,7 +261,9 @@ def _require_endpoint_wellformed(workflow: type, label: str) -> None:
         )
 
 
-def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
+def _require_metadata_for_exposed_surfaces(
+    workflow: type[WorkflowMetadataMixin], label: str
+) -> None:
     """Require the full metadata set from workflows the API or MCP exposes."""
 
     api_enabled = workflow_api_enabled(workflow)
@@ -275,7 +283,7 @@ def _require_metadata_for_exposed_surfaces(workflow: type, label: str) -> None:
     raise WorkflowRegistrationError(f"{label} enables API but is missing {missing}")
 
 
-def _require_cli_name(workflow: type, label: str) -> None:
+def _require_cli_name(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Reject a declared CLI accessor that does not return a usable name."""
     if not callable(getattr(workflow, "get_workflow_cli_name", None)):
         return
@@ -298,7 +306,7 @@ def _require_text(value: Any, attribute: str, label: str) -> None:
         )
 
 
-def _require_activity_names_wellformed(workflow: type, label: str) -> None:
+def _require_activity_names_wellformed(workflow: type[WorkflowMetadataMixin], label: str) -> None:
     """Reject a required-activity declaration that is not a sequence of activities."""
 
     declared = declared_required_activities(workflow)

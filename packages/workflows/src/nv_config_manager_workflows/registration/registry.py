@@ -16,8 +16,9 @@
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Self
+from typing import Any, Self, cast
 
+from nv_config_manager_workflows.metadata import WorkflowMetadataMixin
 from nv_config_manager_workflows.registration.contract import (
     workflow_api_enabled,
     workflow_mcp_enabled,
@@ -46,11 +47,11 @@ class PluginInfo:
 class WorkflowRegistry:
     """Built-in and plugin workflows merged into one validated catalog."""
 
-    all_workflows: list[type] = field(default_factory=list)
+    all_workflows: list[type[WorkflowMetadataMixin]] = field(default_factory=list)
     all_activities: list[Callable[..., Any]] = field(default_factory=list)
     all_schedulers: list[type[WorkflowScheduler]] = field(default_factory=list)
-    api_workflows: list[type] = field(default_factory=list)
-    mcp_workflows: list[type] = field(default_factory=list)
+    api_workflows: list[type[WorkflowMetadataMixin]] = field(default_factory=list)
+    mcp_workflows: list[type[WorkflowMetadataMixin]] = field(default_factory=list)
     plugin_diagnostics: list[PluginInfo] = field(default_factory=list)
 
     @classmethod
@@ -75,7 +76,12 @@ class WorkflowRegistry:
         ordered = dict(sorted(discovered.items()))
         validate_plugins(ordered)
 
-        all_workflows = list(dict.fromkeys(w for d in ordered.values() for w in d.workflows))
+        all_workflows = [
+            cast(type[WorkflowMetadataMixin], workflow)
+            for workflow in dict.fromkeys(
+                workflow for descriptor in ordered.values() for workflow in descriptor.workflows
+            )
+        ]
         all_activities = list(dict.fromkeys(a for d in ordered.values() for a in d.activities))
         all_schedulers = list(dict.fromkeys(s for d in ordered.values() for s in d.schedulers))
 

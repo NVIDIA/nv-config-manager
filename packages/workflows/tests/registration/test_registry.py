@@ -149,7 +149,13 @@ class TestEmptyRegistry:
 
         assert registry.all_workflows == []
         assert registry.plugin_diagnostics == [
-            PluginInfo(name="empty-plugin", version="1.0.0", workflow_count=0, activity_count=0)
+            PluginInfo(
+                name="empty-plugin",
+                version="1.0.0",
+                workflow_count=0,
+                activity_count=0,
+                scheduler_count=0,
+            )
         ]
 
 
@@ -268,7 +274,13 @@ class TestPluginDiagnostics:
         ]
 
     def test_diagnostics_cannot_be_edited_after_the_registry_is_built(self) -> None:
-        info = PluginInfo(name="alpha-plugin", version="1.0.0", workflow_count=1, activity_count=1)
+        info = PluginInfo(
+            name="alpha-plugin",
+            version="1.0.0",
+            workflow_count=1,
+            activity_count=1,
+            scheduler_count=0,
+        )
 
         with pytest.raises(dataclasses.FrozenInstanceError):
             setattr(info, "version", "2.0.0")
