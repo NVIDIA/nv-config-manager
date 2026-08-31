@@ -88,6 +88,7 @@ externalServices:
 monitoring:
   grafanaUrl: 'http://localhost:3000/d/nv-config-manager-overview?var-namespace={{ .Values.global.namespace }}'
   podMonitors:
+    enabled: true
     redis:
       enabled: true
   probes:
