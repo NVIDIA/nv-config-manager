@@ -266,13 +266,13 @@ docker-build-nb-test:
 	@echo "✅ Built $(NB_TEST_IMAGE)"
 
 lint: sort-check
-	uv run ruff check src/
-	uv run ty check src/nv_config_manager/
-	uv run mypy src/nv_config_manager --no-incremental
+	uv run ruff check src/ packages/
+	uv run ty check src/nv_config_manager/ packages/
+	uv run mypy src/nv_config_manager packages --no-incremental
 
 format: sort-fix
-	uv run ruff format src/
-	uv run ruff check --fix src/
+	uv run ruff format src/ packages/
+	uv run ruff check --fix src/ packages/
 
 # Enforces alphabetical order for lists marked with `# keep-sorted start` /
 # `# keep-sorted end` comments (see src/nv_config_manager/temporal/ngc/workflows/__init__.py).

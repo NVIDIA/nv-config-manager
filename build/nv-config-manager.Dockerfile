@@ -51,6 +51,8 @@ COPY components/dcim-nautobot-2x/pyproject.toml components/dcim-nautobot-2x/READ
 COPY components/dcim-nautobot-2x/src/ /code/nv-config-manager/components/dcim-nautobot-2x/src/
 COPY components/network-templates/pyproject.toml components/network-templates/README.md /code/nv-config-manager/components/network-templates/
 COPY components/network-templates/src/ /code/nv-config-manager/components/network-templates/src/
+COPY packages/workflows/pyproject.toml packages/workflows/README.md /code/nv-config-manager/packages/workflows/
+COPY packages/workflows/src/ /code/nv-config-manager/packages/workflows/src/
 COPY db/migrations/ /code/nv-config-manager/db/migrations/
 COPY db/alembic.ini /code/nv-config-manager/db/
 
