@@ -29,7 +29,7 @@ def from_device_data(device_data: NetworkDeviceData) -> NetworkConnection:
 
     config = load_config()
     connection: NetworkConnection | None = None
-    if config["device"].getboolean("mock"):
+    if config["device"].getboolean("mock", fallback=False):
         connection = device_clients.MockNetworkConnection(device_data.host, site=device_data.site)
     elif device_data.platform == Platform.ARISTA_EOS:
         connection = device_clients.AristaConnection(device_data.host, site=device_data.site)

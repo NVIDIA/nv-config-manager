@@ -47,11 +47,12 @@ _JUNIPER_DEVICE = NetworkDeviceData(
 )
 
 
-def _mock_config(*, mock: bool) -> ConfigParser:
+def _mock_config(*, mock: bool | None = False) -> ConfigParser:
     config = ConfigParser()
     config.add_section("device")
     config.set("device", "username", "admin")
-    config.set("device", "mock", "true" if mock else "false")
+    if mock is not None:
+        config.set("device", "mock", "true" if mock else "false")
     return config
 
 
@@ -87,3 +88,16 @@ def test_from_device_data_returns_juniper_when_mock_false(mock_base_load, mock_f
     conn = NetworkConnection.from_device_data(_JUNIPER_DEVICE)
     assert isinstance(conn, JuniperConnection)
     assert conn._port == 830
+
+
+@patch("nv_config_manager.temporal.client.device.factory.load_config")
+@patch("nv_config_manager.temporal.client.device.base.load_config")
+def test_from_device_data_selects_platform_when_mock_option_missing(
+    mock_base_load, mock_factory_load
+):
+    """A [device] section without mock continues with normal platform selection."""
+    config = _mock_config(mock=None)
+    mock_factory_load.return_value = config
+    mock_base_load.return_value = config
+    conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
+    assert isinstance(conn, CumulusConnection)

@@ -99,5 +99,6 @@ class DiffValidationError(NetworkDeviceException):
     ) -> None:
         super().__init__(message, non_retryable=True)
         self.invalid_diff = invalid_diff
+        self.valid_lines = valid_lines
         self.device_name = device_name
         self.username = username

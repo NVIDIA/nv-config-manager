@@ -262,11 +262,11 @@ class CumulusConnection(NetworkConnection):
 
             if not partial:
                 # Clear the root config for our revision
-                rsp = self._session.delete(self._base_url, params={"rev": revision})
+                rsp = self.delete(self._base_url, params={"rev": revision})
                 rsp.raise_for_status()
 
             # Apply the full new configuration object
-            rsp = self._session.patch(self._base_url, json=config_obj, params={"rev": revision})
+            rsp = self.patch(self._base_url, json=config_obj, params={"rev": revision})
             if rsp.status_code == 400:
                 raise ConfigSyntaxException(ConfigSyntaxException.format_nvue_error(rsp.json()))
             rsp.raise_for_status()
@@ -277,7 +277,7 @@ class CumulusConnection(NetworkConnection):
             raise NetworkDeviceException("Failed to load candidate configuration.") from exc
 
     def _get_revision_state(self, revision: str) -> tuple[str, dict[str, Any] | None]:
-        rsp = self._session.get(f"{self._base_url}revision/{revision}")
+        rsp = self.get(f"{self._base_url}revision/{revision}", raise_on_failure=False)
         rsp.raise_for_status()
         state = rsp.json()["state"]
         transition = rsp.json().get("transition")
@@ -491,13 +491,9 @@ class CumulusConnection(NetworkConnection):
                     if new_entry.age > result.by_mac[new_entry.mac].age:
                         continue
                 result.by_mac[new_entry.mac] = new_entry
-                if (
-                    new_entry.interface in result.by_interface
-                    and new_entry.mac not in result.by_interface[new_entry.interface]
-                ):
+                result.by_interface.setdefault(new_entry.interface, [])
+                if new_entry.mac not in result.by_interface[new_entry.interface]:
                     result.by_interface[new_entry.interface].append(new_entry.mac)
-                else:
-                    result.by_interface[new_entry.interface] = [new_entry.mac]
         return result
 
     def get_arp_table(self) -> DeviceArpTable:
@@ -599,7 +595,7 @@ class CumulusConnection(NetworkConnection):
         """Get the system hostname."""
         try:
             return str(self._get_system()["hostname"])
-        except ValueError as error:
+        except (KeyError, ValueError) as error:
             raise ApplicationError(
                 f"No hostname configured for {self._host}",
                 non_retryable=True,
