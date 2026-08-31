@@ -637,12 +637,11 @@ Gateway, TLS, database backups, monitoring, and load balancer configuration.
 | Redis metrics | Run the exporter for bundled Redis; unavailable when external Redis is configured |
 
 `infrastructure.monitoring.redis_metrics_enabled` stores the explicit Redis
-metrics preference. For bundled Redis, it enables the Redis exporter even when
-monitoring is disabled. When monitoring is enabled, the installer also enables
+metrics preference. For bundled Redis, it enables the Redis exporter _even when
+monitoring is disabled_. When monitoring is enabled, the installer also enables
 the Redis PodMonitor. The local observability stack automatically enables both
 without changing the explicit preference. External Redis suppresses both
 generated settings.
-
 For a headless local deployment that runs only the exporter:
 
 ```yaml

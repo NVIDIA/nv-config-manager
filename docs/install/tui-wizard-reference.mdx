@@ -278,11 +278,10 @@ Configure gateway behavior, TLS, database backups, monitoring resources, and loa
 | Enable local observability stack | Enable Grafana and Loki for local development |
 | Enable local Redis metrics exporter | Export metrics from bundled Redis; disabled when external Redis is configured |
 
-The Redis metrics switch stores only the explicit preference. Local
-observability automatically enables the exporter and Redis PodMonitor without
-changing that preference. With monitoring disabled, explicit Redis metrics run
-the exporter without creating a Redis PodMonitor. External Redis suppresses
-both generated values.
+The Redis metrics switch stores only the explicit preference to enable the metrics exporter on the bundled Redis instance.
+Turning on local monitoring automatically enables both the Redis metrics exporter and the Redis PodMonitor without changing that preference.
+Turning off local monitoring causes the Redis metrics exporter to be installed without creating a Redis PodMonitor.
+Using external Redis suppresses both the Redis metrics exporter and the Redis PodMonitor.
 
 Load balancer providers include None, MetalLB, Cilium, and AWS NLB. MetalLB and Cilium use static IPs and optional DNS names for ZTP and DHCP. AWS NLB can be configured separately for Gateway, ZTP, and DHCP.
 
