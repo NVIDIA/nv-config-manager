@@ -40,10 +40,10 @@ jobs:
       - name: Sorted list check (keep-sorted)
         run: make sort-check
       - run: uv sync --frozen
-      - run: uv run ruff format --check src/ components/network-templates/src components/network-templates/tests
-      - run: uv run ruff check src/ components/network-templates/src components/network-templates/tests
-      - run: uv run ty check src/nv_config_manager/
-      - run: uv run mypy src/nv_config_manager --no-incremental
+      - run: uv run ruff format --check src/ components/network-templates/src components/network-templates/tests packages
+      - run: uv run ruff check src/ components/network-templates/src components/network-templates/tests packages
+      - run: uv run ty check src/nv_config_manager/ packages
+      - run: uv run mypy src/nv_config_manager packages --no-incremental
       - name: Installer lint
         working-directory: installer
         run: |
