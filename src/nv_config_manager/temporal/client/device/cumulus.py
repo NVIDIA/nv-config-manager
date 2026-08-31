@@ -298,7 +298,6 @@ class CumulusConnection(NetworkConnection):
             params={"rev": revision, "diff": "applied", "filled": "false"},
             raise_on_failure=False,
         )
-        added_rsp.json()
         added = added_rsp.json()
 
         cli_diff = []
