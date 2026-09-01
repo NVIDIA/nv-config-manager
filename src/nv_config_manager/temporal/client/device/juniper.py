@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import ipaddress
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -114,14 +113,7 @@ def _arp_table_from_junos(entries: list[dict[str, Any]]) -> DeviceArpTable:
         if not (ip and mac and interface):
             logger.warning("ARP entry missing data, skipping: %s", entry)
             continue
-        try:
-            ip_std = str(ipaddress.ip_address(ip))
-            mac_std = str(netaddr.EUI(mac))
-        except (ValueError, netaddr.core.AddrFormatError):
-            logger.warning("Invalid IP/MAC in Junos ARP entry, skipping: %s", entry)
-            continue
-        result._add_ip_mac_mapping(ip_std, mac_std)
-        result._add_interface_mac_mapping(interface.split(".")[0], mac_std)
+        result.add_entry(ip, mac, interface.split(".")[0])
     return result
 
 

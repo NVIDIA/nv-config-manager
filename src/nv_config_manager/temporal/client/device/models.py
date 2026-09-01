@@ -30,6 +30,12 @@ from nv_config_manager.common.log import LogCategory, get_logger
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_ACTIVITY)
 
 
+def _append_unique(index: dict[str, list[str]], key: str, value: str) -> None:
+    values = index.setdefault(key, [])
+    if value not in values:
+        values.append(value)
+
+
 def is_mac_address(mac: str | None) -> bool:
     """Check if a string is a valid MAC address."""
     if mac is None:
@@ -86,21 +92,13 @@ class DeviceArpTable(BaseModel):
     mac_to_ip: dict[str, list[str]] = {}
     interface_to_mac: dict[str, list[str]] = {}
 
-    def _add_ip_mac_mapping(self, ip_std: str, mac_std: str) -> None:
-        """Add IP to MAC and MAC to IP mappings."""
-        if ip_std not in self.ip_to_mac:
-            self.ip_to_mac[ip_std] = []
-        if mac_std not in self.mac_to_ip:
-            self.mac_to_ip[mac_std] = []
-        self.ip_to_mac[ip_std].append(mac_std)
-        self.mac_to_ip[mac_std].append(ip_std)
-
-    def _add_interface_mac_mapping(self, interface: str, mac_std: str) -> None:
-        """Add interface to MAC mapping."""
-        if interface not in self.interface_to_mac:
-            self.interface_to_mac[interface] = []
-        if mac_std not in self.interface_to_mac[interface]:
-            self.interface_to_mac[interface].append(mac_std)
+    def add_entry(self, ip: str, mac: str, interface: str) -> None:
+        """Record one ARP entry after normalizing IP and MAC."""
+        ip_std = str(ipaddress.ip_address(ip))
+        mac_std = str(netaddr.EUI(mac))
+        _append_unique(self.ip_to_mac, ip_std, mac_std)
+        _append_unique(self.mac_to_ip, mac_std, ip_std)
+        _append_unique(self.interface_to_mac, interface, mac_std)
 
     def _process_eapi_neighbor(self, neighbor: dict[str, Any]) -> None:
         """Process a single EAPI neighbor entry."""
@@ -110,14 +108,8 @@ class DeviceArpTable(BaseModel):
             logger.warning("ARP entry missing data, skipping: %s", neighbor)
             return
 
-        ip_std = str(ipaddress.ip_address(neighbor["address"]))
-        mac_std = str(netaddr.EUI(neighbor["hwAddress"]))
-
-        self._add_ip_mac_mapping(ip_std, mac_std)
-
         for interface in neighbor["interface"].split(","):
-            interface = interface.strip()
-            self._add_interface_mac_mapping(interface, mac_std)
+            self.add_entry(neighbor["address"], neighbor["hwAddress"], interface.strip())
 
     @staticmethod
     def from_eapi(data: dict[str, list[dict[str, Any]]]) -> DeviceArpTable:
@@ -134,19 +126,10 @@ class DeviceArpTable(BaseModel):
         """ARP table from NVUE API."""
         result = DeviceArpTable()
         for interface, item in data.items():
-            result.interface_to_mac[interface] = []
+            result.interface_to_mac.setdefault(interface, [])
             for ipaddr, ip_data in item.get("ipv4", {}).items():
                 if ip_data.get("lladdr"):
-                    ip_std = str(ipaddress.ip_address(ipaddr))
-                    mac_std = str(netaddr.EUI(ip_data["lladdr"]))
-                    if not result.ip_to_mac.get(ip_std):
-                        result.ip_to_mac[ip_std] = []
-                    if not result.mac_to_ip.get(mac_std):
-                        result.mac_to_ip[mac_std] = []
-                    result.ip_to_mac[ip_std].append(mac_std)
-                    result.mac_to_ip[mac_std].append(ip_std)
-                    if mac_std not in result.interface_to_mac[interface]:
-                        result.interface_to_mac[interface].append(mac_std)
+                    result.add_entry(ipaddr, ip_data["lladdr"], interface)
                 else:
                     logger.warning("ARP entry missing data, skipping: %s %s", ipaddr, ip_data)
 

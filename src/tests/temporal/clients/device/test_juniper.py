@@ -978,8 +978,8 @@ def test_get_arp_table_skips_incomplete_entries(juniper_conn):
     assert result.mac_to_ip == {}
 
 
-def test_get_arp_table_skips_entries_with_invalid_ip_or_mac(juniper_conn):
-    """A malformed IP or MAC in one entry is skipped rather than aborting the whole table."""
+def test_get_arp_table_raises_on_invalid_ip_or_mac(juniper_conn):
+    """Malformed IP/MAC fails the table."""
     data = {
         "arp-table-information": [
             {
@@ -987,11 +987,6 @@ def test_get_arp_table_skips_entries_with_invalid_ip_or_mac(juniper_conn):
                     {
                         "ip-address": [{"data": "not-an-ip"}],
                         "mac-address": [{"data": "00:11:22:33:44:55"}],
-                        "interface-name": [{"data": "ge-0/0/0.0"}],
-                    },
-                    {
-                        "ip-address": [{"data": "10.0.0.1"}],
-                        "mac-address": [{"data": "not-a-mac"}],
                         "interface-name": [{"data": "ge-0/0/0.0"}],
                     },
                     {
@@ -1003,10 +998,11 @@ def test_get_arp_table_skips_entries_with_invalid_ip_or_mac(juniper_conn):
             }
         ]
     }
-    with patch.object(juniper_conn, "_rpc", return_value=data):
-        result = juniper_conn.get_arp_table()
-    assert result.ip_to_mac == {"10.0.0.2": ["00-11-22-33-44-66"]}
-    assert result.mac_to_ip == {"00-11-22-33-44-66": ["10.0.0.2"]}
+    with (
+        patch.object(juniper_conn, "_rpc", return_value=data),
+        pytest.raises(ValueError),
+    ):
+        juniper_conn.get_arp_table()
 
 
 def test_get_arp_table_returns_empty_for_empty_reply(juniper_conn):
