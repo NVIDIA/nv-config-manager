@@ -175,8 +175,9 @@ class AristaConnection(NetworkConnection):
 
         config_commands: list[str | dict[str, str]] = [
             f"configure session {self._session_id}",
-            "rollback clean-config" if not partial else "",
         ]
+        if not partial:
+            config_commands.append("rollback clean-config")
         configuration, banner_commands = self._extract_banner_commands(new_configuration)
         multiline_commands = [{"cmd": cmd[0], "input": cmd[1]} for cmd in banner_commands]
         config_commands.extend(multiline_commands)

@@ -109,3 +109,32 @@ def test_diff_and_commit_default_to_full_candidate_load():
     conn._load_candidate_config.reset_mock()
     conn.commit_candidate_config("full-config", "new-diff", commit_confirm=False)
     conn._load_candidate_config.assert_called_with("full-config", partial=False)
+
+
+def test_load_candidate_omits_empty_command_on_partial():
+    """Partial loads start the session without a blank rollback placeholder."""
+    conn = AristaConnection.__new__(AristaConnection)
+    conn._node = MagicMock()
+    conn._extract_banner_commands = MagicMock(return_value=("hostname leaf1\nend", []))
+
+    conn._load_candidate_config("hostname leaf1\nend", partial=True)
+
+    commands = conn._node.run_commands.call_args[0][0]
+    assert commands[0].startswith("configure session ")
+    assert "" not in commands
+    assert "rollback clean-config" not in commands
+    assert commands[1:] == ["hostname leaf1", "end"]
+
+
+def test_load_candidate_includes_rollback_on_full_load():
+    """Full loads still wipe the session with rollback clean-config."""
+    conn = AristaConnection.__new__(AristaConnection)
+    conn._node = MagicMock()
+    conn._extract_banner_commands = MagicMock(return_value=("hostname leaf1\nend", []))
+
+    conn._load_candidate_config("hostname leaf1\nend", partial=False)
+
+    commands = conn._node.run_commands.call_args[0][0]
+    assert commands[0].startswith("configure session ")
+    assert commands[1] == "rollback clean-config"
+    assert commands[2:] == ["hostname leaf1", "end"]

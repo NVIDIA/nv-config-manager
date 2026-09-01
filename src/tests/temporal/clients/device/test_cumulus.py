@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import paramiko
 import pytest
+import requests
 
 from nv_config_manager.temporal.client.device import CumulusConnection
 
@@ -50,3 +51,22 @@ def test_close_closes_nvue_session():
     session.close.assert_called_once_with()
     assert conn._session is None
     conn.close()
+
+
+def test_get_diff_raises_when_added_direction_response_fails():
+    """A failed added-direction GET must not be flattened into nv set lines."""
+
+    conn = CumulusConnection.__new__(CumulusConnection)
+    conn._base_url = f"https://{_TEST_HOST}:8765/nvue_v1/"
+    removed = MagicMock()
+    removed.raise_for_status = MagicMock()
+    removed.json.return_value = {}
+    added = MagicMock()
+    added.raise_for_status.side_effect = requests.HTTPError("500")
+    added.json.return_value = {"interface": {"swp1": {"description": "should-not-apply"}}}
+    conn.get = MagicMock(side_effect=[removed, added])
+
+    with pytest.raises(requests.HTTPError):
+        conn._get_diff("rev-1")
+
+    added.json.assert_not_called()

@@ -390,7 +390,7 @@ class JuniperConnection(NetworkConnection):
 
     def get_configuration_text(self) -> str:
         """Return the running configuration in hierarchical (curly-brace) text."""
-        return self._get_config("text")
+        return redact_junos_secrets(self._get_config("text"))
 
     def get_hostname(self) -> str:
         """Get the system hostname."""

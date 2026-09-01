@@ -245,8 +245,8 @@ def test_get_running_configuration_redacts_secrets(juniper_conn):
     assert '"$6$<redacted>"' in config
 
 
-def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
-    """Unlike get_running_configuration, the debug getter keeps secrets raw."""
+def test_get_configuration_text_redacts_secrets(juniper_conn):
+    """get_configuration_text redacts secrets, matching get_running_configuration."""
     device = MagicMock()
     device.rpc.get_config.return_value = etree.fromstring(
         "<configuration-information><configuration-output>"
@@ -256,7 +256,8 @@ def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
     )
     with patch.object(juniper_conn, "_get_device", return_value=device):
         text = juniper_conn.get_configuration_text()
-    assert '"$6$abcDE12$secretHash"' in text
+    assert "secretHash" not in text
+    assert '"$6$<redacted>"' in text
 
 
 def test_execute_ztp_issues_zeroize_and_closes(juniper_conn):
