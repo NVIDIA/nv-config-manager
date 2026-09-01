@@ -16,6 +16,8 @@
 from configparser import ConfigParser
 from unittest.mock import patch
 
+import pytest
+
 from nv_config_manager.temporal.client.device import (
     CumulusConnection,
     JuniperConnection,
@@ -43,6 +45,17 @@ _JUNIPER_DEVICE = NetworkDeviceData(
     site="SITEA",
     device_type="ptx10002-36qdd",
     primary_ip4="192.0.2.10",
+    primary_ip6=None,
+)
+
+_UFM_DEVICE = NetworkDeviceData(
+    id="b2c3d4e5-1111-2222-3333-444455556666",
+    name="test-ufm",
+    role="ufm",
+    platform="ufm",
+    site="SITEA",
+    device_type="ufm",
+    primary_ip4="192.0.2.50",
     primary_ip6=None,
 )
 
@@ -101,3 +114,14 @@ def test_from_device_data_selects_platform_when_mock_option_missing(
     mock_base_load.return_value = config
     conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
     assert isinstance(conn, CumulusConnection)
+
+
+@patch("nv_config_manager.temporal.client.device.factory.load_config")
+@patch("nv_config_manager.temporal.client.device.base.load_config")
+def test_from_device_data_rejects_ufm_platform(mock_base_load, mock_factory_load):
+    """UFM is inventoried as a platform but is not a NetworkConnection."""
+    config = _mock_config(mock=False)
+    mock_factory_load.return_value = config
+    mock_base_load.return_value = config
+    with pytest.raises(NotImplementedError, match="use UFMClient"):
+        NetworkConnection.from_device_data(_UFM_DEVICE)

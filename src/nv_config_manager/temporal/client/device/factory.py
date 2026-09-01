@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import assert_never
+
 from nv_config_manager.common.config import load_config
 from nv_config_manager.temporal.client.device.base import NetworkConnection
 from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
@@ -28,19 +31,25 @@ def from_device_data(device_data: NetworkDeviceData) -> NetworkConnection:
     from nv_config_manager.temporal.client import device as device_clients
 
     config = load_config()
-    connection: NetworkConnection | None = None
+    connection_cls: Callable[..., NetworkConnection]
     if config["device"].getboolean("mock", fallback=False):
-        connection = device_clients.MockNetworkConnection(device_data.host, site=device_data.site)
-    elif device_data.platform == Platform.ARISTA_EOS:
-        connection = device_clients.AristaConnection(device_data.host, site=device_data.site)
-    elif device_data.platform == Platform.CUMULUS_LINUX:
-        connection = device_clients.CumulusConnection(device_data.host, site=device_data.site)
-    elif device_data.platform == Platform.NV_OS:
-        connection = device_clients.NVOSConnection(device_data.host, site=device_data.site)
-    elif device_data.platform == Platform.MLNX_OS:
-        connection = device_clients.MellanoxConnection(device_data.host, site=device_data.site)
-    elif device_data.platform == Platform.JUNIPER_JUNOS:
-        connection = device_clients.JuniperConnection(device_data.host, site=device_data.site)
+        connection_cls = device_clients.MockNetworkConnection
     else:
-        raise NotImplementedError(f"No handler implemented for platform {device_data.platform}")
-    return connection
+        match device_data.platform:
+            case Platform.ARISTA_EOS:
+                connection_cls = device_clients.AristaConnection
+            case Platform.CUMULUS_LINUX:
+                connection_cls = device_clients.CumulusConnection
+            case Platform.NV_OS:
+                connection_cls = device_clients.NVOSConnection
+            case Platform.MLNX_OS:
+                connection_cls = device_clients.MellanoxConnection
+            case Platform.JUNIPER_JUNOS:
+                connection_cls = device_clients.JuniperConnection
+            case Platform.UFM:
+                raise NotImplementedError(
+                    f"No NetworkConnection for platform {device_data.platform}; use UFMClient"
+                )
+            case _ as unreachable:
+                assert_never(unreachable)
+    return connection_cls(device_data.host, site=device_data.site)
