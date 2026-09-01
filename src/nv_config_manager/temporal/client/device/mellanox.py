@@ -92,11 +92,12 @@ class MellanoxConnection(NetworkConnection):
         client = getattr(self, "client", None)
         if client is None:
             return
-        self.client = None
         try:
             client.disconnect()
         except Exception:  # noqa: BLE001 - cleanup must not raise
             logger.debug("Error closing SSH session to %s", self._host, exc_info=True)
+            return
+        self.client = None
 
     def __del__(self) -> None:
         """Best-effort cleanup of the SSH session on garbage collection."""
