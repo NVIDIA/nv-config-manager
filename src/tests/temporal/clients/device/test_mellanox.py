@@ -63,3 +63,17 @@ def test_commit_wraps_other_failures_as_network_device_exception():
 
     with pytest.raises(NetworkDeviceException, match="Failed to commit candidate configuration"):
         conn.commit_candidate_config("config", "old-diff")
+
+
+def test_close_disconnects_netmiko_client():
+    """closing() must disconnect the SSH session and tolerate a second close."""
+    conn = _mellanox_connection()
+    client = MagicMock()
+    conn.client = client
+
+    conn.close()
+
+    client.disconnect.assert_called_once_with()
+    assert conn.client is None
+    conn.close()
+    client.disconnect.assert_called_once_with()

@@ -240,7 +240,7 @@ class AristaConnection(NetworkConnection):
     def perform_candidate_diff(self, new_configuration: str, partial: bool = False) -> str:
         """Load the candidate configuration and perform a diff."""
         try:
-            self._load_candidate_config(new_configuration)
+            self._load_candidate_config(new_configuration, partial=partial)
             return self._diff()
         except ConfigSyntaxException as exc:
             raise exc
@@ -265,7 +265,7 @@ class AristaConnection(NetworkConnection):
         upstream VLAN change).
         """
         try:
-            self._load_candidate_config(new_configuration)
+            self._load_candidate_config(new_configuration, partial=partial)
             diff = self._diff()
             if not self._diff_eq(diff, approved_diff):
                 raise DiffChangedException("Diff has changed since approval, aborting.")

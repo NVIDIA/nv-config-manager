@@ -87,6 +87,17 @@ class CumulusConnection(NetworkConnection):
         self._base_url = f"https://{host}:{port}/nvue_v1/"
         self._authenticated = False
 
+    def close(self) -> None:
+        """Close the NVUE HTTP session."""
+        session = getattr(self, "_session", None)
+        if session is None:
+            return
+        try:
+            session.close()
+        except Exception:  # noqa: BLE001 - cleanup must not raise
+            logger.debug("Error closing NVUE session to %s", self._host, exc_info=True)
+        self._session = None
+
     def _make_request(
         self,
         method: str,

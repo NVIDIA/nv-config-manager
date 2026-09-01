@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import paramiko
 import pytest
@@ -36,3 +36,17 @@ def test_sftp_download_closes_client_when_connect_fails(mock_ssh_client):
         conn._sftp_download("password", "/tmp/support.tar", None)
 
     ssh.close.assert_called_once_with()
+
+
+def test_close_closes_nvue_session():
+    """closing() must release the pooled requests session."""
+    conn = CumulusConnection.__new__(CumulusConnection)
+    conn._host = _TEST_HOST
+    session = MagicMock()
+    conn._session = session
+
+    conn.close()
+
+    session.close.assert_called_once_with()
+    assert conn._session is None
+    conn.close()

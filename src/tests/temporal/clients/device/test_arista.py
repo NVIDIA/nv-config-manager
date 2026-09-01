@@ -81,3 +81,31 @@ def test_commit_preserves_config_syntax_when_abort_fails():
         conn.commit_candidate_config("config", "old-diff")
 
     conn._abort.assert_called_once()
+
+
+def test_diff_and_commit_pass_partial_to_load_candidate():
+    """Tenant (partial) deploys must not issue rollback clean-config."""
+    conn = _arista_connection()
+    conn._diff_eq = MagicMock(return_value=True)
+    conn._node = MagicMock()
+
+    conn.perform_candidate_diff("fragment", partial=True)
+    conn._load_candidate_config.assert_called_with("fragment", partial=True)
+
+    conn._load_candidate_config.reset_mock()
+    conn.commit_candidate_config("fragment", "new-diff", partial=True, commit_confirm=False)
+    conn._load_candidate_config.assert_called_with("fragment", partial=True)
+
+
+def test_diff_and_commit_default_to_full_candidate_load():
+    """Full deploys keep the default partial=False load."""
+    conn = _arista_connection()
+    conn._diff_eq = MagicMock(return_value=True)
+    conn._node = MagicMock()
+
+    conn.perform_candidate_diff("full-config")
+    conn._load_candidate_config.assert_called_with("full-config", partial=False)
+
+    conn._load_candidate_config.reset_mock()
+    conn.commit_candidate_config("full-config", "new-diff", commit_confirm=False)
+    conn._load_candidate_config.assert_called_with("full-config", partial=False)

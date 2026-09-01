@@ -34,11 +34,7 @@ from nv_config_manager.temporal.client.device.exceptions import (
     InvalidConfigException,
     NetworkDeviceException,
 )
-from nv_config_manager.temporal.client.device.juniper import (
-    JuniperConnection,
-    _junos_list,
-    _junos_string,
-)
+from nv_config_manager.temporal.client.device.juniper import JuniperConnection
 from nv_config_manager.temporal.client.device.mellanox import MellanoxConnection
 from nv_config_manager.temporal.client.device.mock import MockNetworkConnection
 from nv_config_manager.temporal.client.device.models import (
@@ -78,8 +74,6 @@ __all__ = [
     "NetworkConnection",
     "NetworkDeviceData",
     "NetworkDeviceException",
-    "_junos_list",
-    "_junos_string",
     "format_mac",
     "is_mac_address",
 ]

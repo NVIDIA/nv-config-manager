@@ -36,8 +36,8 @@ from nv_config_manager.temporal.client.device import (
     DiffChangedException,
     JuniperConnection,
     NetworkDeviceException,
-    _junos_list,
 )
+from nv_config_manager.temporal.client.device.juniper import _junos_list
 
 
 class _FakeConfigCM:

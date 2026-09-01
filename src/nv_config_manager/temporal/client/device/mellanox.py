@@ -20,11 +20,14 @@ from netmiko import ConnectHandler  # type: ignore[import-untyped]
 from netmiko.base_connection import BaseConnection  # type: ignore[import-untyped]
 from netmiko.exceptions import NetmikoAuthenticationException  # type: ignore[import-untyped]
 
+from nv_config_manager.common.log import LogCategory, get_logger
 from nv_config_manager.temporal.client.device.base import NetworkConnection
 from nv_config_manager.temporal.client.device.exceptions import (
     DiffChangedException,
     NetworkDeviceException,
 )
+
+logger = get_logger(__name__, category=LogCategory.TEMPORAL_ACTIVITY)
 
 
 class MellanoxConnection(NetworkConnection):
@@ -84,10 +87,20 @@ class MellanoxConnection(NetworkConnection):
         output = self.client.send_command(command, expect_string=r"#", read_timeout=timeout)
         return str(output)
 
+    def close(self) -> None:
+        """Disconnect the netmiko session if it is open."""
+        client = getattr(self, "client", None)
+        if client is None:
+            return
+        self.client = None
+        try:
+            client.disconnect()
+        except Exception:  # noqa: BLE001 - cleanup must not raise
+            logger.debug("Error closing SSH session to %s", self._host, exc_info=True)
+
     def __del__(self) -> None:
-        """Clean up the connection."""
-        if self.client:
-            self.client.disconnect()
+        """Best-effort cleanup of the SSH session on garbage collection."""
+        self.close()
 
     def _get_diff(self, current_config: str, new_configuration: str) -> str:
         """Get the diff between the current and new configuration in git style."""
