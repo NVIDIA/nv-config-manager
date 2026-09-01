@@ -40,10 +40,10 @@ jobs:
       - name: Sorted list check (keep-sorted)
         run: make sort-check
       - run: uv sync --frozen
-      - run: uv run ruff format --check src/ components/network-templates/src components/network-templates/tests packages
-      - run: uv run ruff check src/ components/network-templates/src components/network-templates/tests packages
-      - run: uv run ty check src/nv_config_manager/ packages
-      - run: uv run mypy src/nv_config_manager packages --no-incremental
+      - run: uv run ruff format --check src/ packages plugins/dcim/nautobot-2x
+      - run: uv run ruff check src/ packages plugins/dcim/nautobot-2x
+      - run: uv run ty check src/nv_config_manager/ packages/dcim/src packages/workflows
+      - run: uv run mypy src/nv_config_manager packages/dcim/src packages/workflows --no-incremental
       - name: Installer lint
         working-directory: installer
         run: |
@@ -128,7 +128,7 @@ jobs:
         run: |
           SPDX_ID="SPDX-License-Identifier: Apache-2.0"
           LICENSE_TEXT="Licensed under the Apache License"
-          CHECK_DIRS="src/ ui/src/ ui/tests/ components/ db/migrations/ scripts/ development/ installer/src/"
+          CHECK_DIRS="src/ ui/src/ ui/tests/ packages/ plugins/ components/ db/migrations/ scripts/ development/ installer/src/"
           EXTENSIONS="py ts tsx go"
           FAILED=0
           for dir in $CHECK_DIRS; do
@@ -163,6 +163,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - run: uv run pytest packages/dcim/tests -v
       - run: uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
       - name: Nautobot tests
         working-directory: components/nautobot
@@ -223,12 +224,12 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run pytest components/network-templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:components/network-templates/coverage.xml --cov-report=term
+      - run: uv run pytest packages/templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:packages/templates/coverage.xml --cov-report=term
       - uses: *upload_artifact
         if: always()
         with:
           name: network-template-test-artifacts
-          path: components/network-templates/coverage.xml
+          path: packages/templates/coverage.xml
 
   go-lint:
     name: Go Module Check

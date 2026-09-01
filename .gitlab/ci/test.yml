@@ -1,5 +1,5 @@
 .network-template-paths: &network-template-paths
-  - "components/network-templates/**/*"
+  - "packages/templates/**/*"
   - pyproject.toml
   - uv.lock
 
@@ -21,6 +21,9 @@ test-mr-py:
       changes:
         - "src/**/*"
         - "components/nautobot/**/*"
+        - "packages/dcim/**/*"
+        - "packages/workflows/**/*"
+        - "plugins/dcim/nautobot-2x/**/*"
         - pyproject.toml
         - uv.lock
       when: on_success
@@ -43,6 +46,7 @@ test-mr-py:
     - pip install uv
     - uv sync --frozen
   script:
+    - uv run pytest packages/dcim/tests -v
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
     - *nautobot-coverage-script
   artifacts:
@@ -76,15 +80,15 @@ test-mr-network-templates:
     - pip install uv
     - uv sync --frozen
   script:
-    - uv run pytest components/network-templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:components/network-templates/coverage.xml --cov-report=term
+    - uv run pytest packages/templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:packages/templates/coverage.xml --cov-report=term
   artifacts:
     when: always
     paths:
-      - components/network-templates/coverage.xml
+      - packages/templates/coverage.xml
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: components/network-templates/coverage.xml
+        path: packages/templates/coverage.xml
     expire_in: 1 week
   coverage: '/TOTAL.*\s+(\d+%)/'
 
@@ -440,6 +444,7 @@ test-main-py:
     - pip install uv
     - uv sync --frozen
   script:
+    - uv run pytest packages/dcim/tests -v
     - uv run pytest -n auto --cov=src/nv_config_manager --cov-report=xml:coverage.xml --cov-report=term
     - *nautobot-coverage-script
   artifacts:
@@ -478,15 +483,15 @@ test-main-network-templates:
     - pip install uv
     - uv sync --frozen
   script:
-    - uv run pytest components/network-templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:components/network-templates/coverage.xml --cov-report=term
+    - uv run pytest packages/templates/tests -v --cov=nv_config_manager_templates --cov-report=xml:packages/templates/coverage.xml --cov-report=term
   artifacts:
     when: always
     paths:
-      - components/network-templates/coverage.xml
+      - packages/templates/coverage.xml
     reports:
       coverage_report:
         coverage_format: cobertura
-        path: components/network-templates/coverage.xml
+        path: packages/templates/coverage.xml
     expire_in: 1 week
   coverage: '/TOTAL.*\s+(\d+%)/'
 
