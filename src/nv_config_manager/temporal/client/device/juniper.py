@@ -113,7 +113,11 @@ def _arp_table_from_junos(entries: list[dict[str, Any]]) -> DeviceArpTable:
         if not (ip and mac and interface):
             logger.warning("ARP entry missing data, skipping: %s", entry)
             continue
-        result.add_entry(ip, mac, interface.split(".")[0])
+        try:
+            result.add_entry(ip, mac, interface.split(".")[0])
+        except (ValueError, netaddr.core.AddrFormatError):
+            logger.warning("Invalid IP/MAC in Junos ARP entry, skipping: %s", entry)
+            continue
     return result
 
 
