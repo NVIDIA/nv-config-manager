@@ -8,6 +8,8 @@
   - ".gitlab/**/*"
   - "build/**/*"
   - "components/**/*"
+  - "packages/**/*"
+  - "plugins/**/*"
   - "db/**/*"
   - "deploy/**/*"
   - "development/**/*"
@@ -65,7 +67,7 @@ sonar-scanner:
         for report in \
           coverage.xml \
           components/nautobot/coverage.xml \
-          components/network-templates/coverage.xml \
+          packages/templates/coverage.xml \
           installer/coverage.xml; do
           if [ ! -s "$report" ]; then
             echo "Missing required Sonar coverage report: $report" >&2

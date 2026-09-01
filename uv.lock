@@ -2386,9 +2386,9 @@ requires-dist = [
     { name = "netmiko", specifier = ">=4.3.0" },
     { name = "nkeys", specifier = ">=0.2.0" },
     { name = "numpy", specifier = ">=2.1.0,<3.0.0" },
-    { name = "nv-config-manager-dcim", editable = "components/dcim" },
-    { name = "nv-config-manager-dcim-nautobot-2x", editable = "components/dcim-nautobot-2x" },
-    { name = "nv-config-manager-templates", editable = "components/network-templates" },
+    { name = "nv-config-manager-dcim", editable = "packages/dcim" },
+    { name = "nv-config-manager-dcim-nautobot-2x", editable = "plugins/dcim/nautobot-2x" },
+    { name = "nv-config-manager-templates", editable = "packages/templates" },
     { name = "nv-config-manager-workflows", editable = "packages/workflows" },
     { name = "openpyxl", specifier = ">=3.1.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.11.1,<2" },
@@ -2472,7 +2472,7 @@ ipython = [{ name = "ipython", specifier = ">=8.28.0" }]
 [[package]]
 name = "nv-config-manager-dcim"
 version = "1.0.0"
-source = { editable = "components/dcim" }
+source = { editable = "packages/dcim" }
 dependencies = [
     { name = "netaddr" },
     { name = "pydantic" },
@@ -2501,7 +2501,7 @@ dev = [
 [[package]]
 name = "nv-config-manager-dcim-nautobot-2x"
 version = "1.0.0"
-source = { editable = "components/dcim-nautobot-2x" }
+source = { editable = "plugins/dcim/nautobot-2x" }
 dependencies = [
     { name = "aiohttp", extra = ["speedups"] },
     { name = "graphql-core" },
@@ -2519,7 +2519,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", extras = ["speedups"], specifier = ">=3.14.1" },
     { name = "graphql-core", specifier = ">=3.2.7,<3.3" },
-    { name = "nv-config-manager-dcim", editable = "components/dcim" },
+    { name = "nv-config-manager-dcim", editable = "packages/dcim" },
 ]
 
 [package.metadata.requires-dev]
@@ -2531,7 +2531,7 @@ dev = [
 
 [[package]]
 name = "nv-config-manager-templates"
-source = { editable = "components/network-templates" }
+source = { editable = "packages/templates" }
 dependencies = [
     { name = "click" },
     { name = "hvac" },
@@ -2555,7 +2555,7 @@ requires-dist = [
     { name = "importlib-metadata", marker = "python_full_version < '3.10'", specifier = ">=6.0.0" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "libpass", specifier = ">=1.9.3" },
-    { name = "nv-config-manager-dcim", editable = "components/dcim" },
+    { name = "nv-config-manager-dcim", editable = "packages/dcim" },
     { name = "packaging", specifier = ">=24.0" },
 ]
 
@@ -2588,7 +2588,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "netaddr", specifier = ">=1.3.0" },
-    { name = "nv-config-manager-dcim", editable = "components/dcim" },
+    { name = "nv-config-manager-dcim", editable = "packages/dcim" },
     { name = "py-markdown-table", specifier = ">=1.1.0" },
     { name = "pydantic", specifier = ">=2.10.2" },
     { name = "temporalio", specifier = ">=1.29.0,<1.32.0" },

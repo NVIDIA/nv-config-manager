@@ -464,7 +464,7 @@ Plugins should not:
 Run the rendering-engine checks from this directory:
 
 ```bash
-cd components/network-templates
+cd packages/templates
 uv sync
 uv run pytest
 uv run ruff check src tests

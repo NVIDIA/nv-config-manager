@@ -81,10 +81,10 @@ PYTHON_DIRS = [
     "src/tests",
     "db/migrations",
     "scripts",
-    "components/dcim",
-    "components/dcim-nautobot-2x",
+    "packages/dcim",
+    "plugins/dcim/nautobot-2x",
     "components/nautobot",
-    "components/network-templates",
+    "packages/templates",
     "development/",
     "installer/",
 ]

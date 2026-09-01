@@ -291,7 +291,9 @@ nv-config-manager/
 ├── src/nv_config_manager/       # Python services and shared libraries
 ├── src/tests/                   # Python test suites
 ├── ui/                          # React/Next.js UI
-├── components/                  # Standalone DCIM SDK/providers, template library, and service assets
+├── packages/                    # Public, independently installable libraries
+├── plugins/                     # Installable extension implementations
+├── components/                  # Separately built or deployed infrastructure components
 ├── development/mock_topology/   # Local development topology job data
 ├── installer/                   # Interactive and headless installer package
 ├── deploy/helm/                 # Helm chart and values overlays
