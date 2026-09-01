@@ -69,6 +69,8 @@ def _parse_cl_support_path(output: str) -> str | None:
 class CumulusConnection(NetworkConnection):
     """Cumulus Device Connection."""
 
+    _session: requests.Session | None
+
     def __init__(
         self,
         host: str,
