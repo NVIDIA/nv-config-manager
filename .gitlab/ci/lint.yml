@@ -45,9 +45,9 @@ lint-mr-py:
   script:
     - uv run ruff format --check src/ packages/ plugins/
     - uv run ruff check src/ packages/ plugins/
-    - uv run ty check src/nv_config_manager
+    - uv run ty check src/nv_config_manager packages/dcim/src
     # ty doesn't have full coverage of mypy yet
-    - uv run mypy src/nv_config_manager
+    - uv run mypy src/nv_config_manager packages/dcim/src
 
 # Installer linting for merge requests
 lint-mr-installer:

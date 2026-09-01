@@ -42,8 +42,8 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff format --check src/ packages plugins/dcim/nautobot-2x
       - run: uv run ruff check src/ packages plugins/dcim/nautobot-2x
-      - run: uv run ty check src/nv_config_manager/ packages/workflows
-      - run: uv run mypy src/nv_config_manager packages/workflows --no-incremental
+      - run: uv run ty check src/nv_config_manager/ packages/dcim/src packages/workflows
+      - run: uv run mypy src/nv_config_manager packages/dcim/src packages/workflows --no-incremental
       - name: Installer lint
         working-directory: installer
         run: |
