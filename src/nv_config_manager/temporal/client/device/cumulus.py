@@ -117,16 +117,19 @@ class CumulusConnection(NetworkConnection):
         Raises:
             NetworkDeviceException: If all password attempts fail or other errors occur
         """
+        session = self._session
+        if session is None:
+            raise NetworkDeviceException(f"NVUE session to {self._host} is closed")
 
         def try_request_with_password(password: str) -> requests.Response:
-            self._session.auth = (self._username, password)
-            rsp = self._session.request(method, url, **kwargs)
+            session.auth = (self._username, password)
+            rsp = session.request(method, url, **kwargs)
             if rsp.status_code in (401, 403):
                 raise NetworkDeviceException(f"Authentication failed: HTTP {rsp.status_code}")
             return rsp
 
         if self._authenticated:
-            rsp = self._session.request(method, url, **kwargs)
+            rsp = session.request(method, url, **kwargs)
             if rsp.status_code not in (401, 403):
                 return rsp
             logger.info(
