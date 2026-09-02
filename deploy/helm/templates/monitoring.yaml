@@ -794,11 +794,16 @@ spec:
 {{- range $clusterKey := .Values.cnpg.clusterList }}
 {{- $config := index $.Values.cnpg $clusterKey }}
 {{- if $config.enabled }}
+{{- $podMonitorName := include "nv-config-manager.cnpgPodMonitorName" (dict "root" $ "clusterName" $config.clusterName) }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: {{ $config.clusterName }}
+  # This chart deliberately leaves Cluster.spec.monitoring.enablePodMonitor
+  # disabled. CloudNativePG may still delete a same-name PodMonitor it does not
+  # own, so keep chart-owned monitors release-scoped. Upstream diagnosis:
+  # https://github.com/cloudnative-pg/cloudnative-pg/issues/6109
+  name: {{ $podMonitorName }}
   namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" $ | nindent 4 }}
@@ -829,11 +834,12 @@ spec:
 {{- /* Nautobot CNPG cluster — same enable conditions as cnpg-clusters.yaml */}}
 {{- $nautobotConfig := .Values.cnpg.nautobot }}
 {{- if or $nautobotConfig.enabled (and .Values.nautobot.enabled .Values.externalServices.nautobot.local) }}
+{{- $nautobotPodMonitorName := include "nv-config-manager.cnpgPodMonitorName" (dict "root" . "clusterName" $nautobotConfig.clusterName) }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: {{ $nautobotConfig.clusterName }}
+  name: {{ $nautobotPodMonitorName }}
   namespace: {{ $namespace }}
   labels:
     {{- include "nv-config-manager.labels" . | nindent 4 }}
