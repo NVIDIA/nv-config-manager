@@ -76,6 +76,22 @@ def test_add_header_rejects_symlink_outside_allowed_root(tmp_path, add_header, s
     assert external_file.read_text(encoding="utf-8") == "external content\n"
 
 
+def test_add_header_rejects_symlink_directory_within_allowed_root(tmp_path):
+    allowed_root = tmp_path / "repository"
+    allowed_root.mkdir()
+    real_directory = allowed_root / "real"
+    real_directory.mkdir()
+    source_file = real_directory / "source.py"
+    source_file.write_text("source content\n", encoding="utf-8")
+    link_directory = allowed_root / "link"
+    link_directory.symlink_to(real_directory, target_is_directory=True)
+
+    result = add_header_to_python(link_directory / source_file.name, allowed_root)
+
+    assert result is HeaderResult.FAILED
+    assert source_file.read_text(encoding="utf-8") == "source content\n"
+
+
 def test_add_header_rejects_file_outside_allowed_root(tmp_path):
     allowed_root = tmp_path / "repository"
     allowed_root.mkdir()
@@ -85,4 +101,27 @@ def test_add_header_rejects_file_outside_allowed_root(tmp_path):
     result = add_header_to_python(external_file, allowed_root)
 
     assert result is HeaderResult.FAILED
+    assert external_file.read_text(encoding="utf-8") == "external content\n"
+
+
+def test_add_header_does_not_follow_file_replaced_before_write(tmp_path, monkeypatch):
+    allowed_root = tmp_path / "repository"
+    allowed_root.mkdir()
+    source_file = allowed_root / "source.py"
+    source_file.write_text("source content\n", encoding="utf-8")
+    external_file = tmp_path / "external.py"
+    external_file.write_text("external content\n", encoding="utf-8")
+    write_open_file = _SCRIPT_MODULE._write_open_file
+
+    def replace_candidate_then_write(open_file, content):
+        source_file.unlink()
+        source_file.symlink_to(external_file)
+        write_open_file(open_file, content)
+
+    monkeypatch.setattr(_SCRIPT_MODULE, "_write_open_file", replace_candidate_then_write)
+
+    result = add_header_to_python(source_file, allowed_root)
+
+    assert result is HeaderResult.ADDED
+    assert source_file.is_symlink()
     assert external_file.read_text(encoding="utf-8") == "external content\n"
