@@ -35,9 +35,9 @@ only the selected operation and its fragment closure with GraphQL's standard
 `operationName` field. Keep dynamic field selections in the dedicated
 `*_fields.graphql` files; they preserve the legacy `fields=` extension point.
 
-Until the publishing story is finalized, install this component and the SDK
+Until the publishing story is finalized, install this provider plugin and the SDK
 from sibling Git checkouts. The NVCM host image installs the reference provider
 by default; a template plugin can install the same two components directly to
 exercise live provider queries without installing core NVCM.
 
-For the complete provider authoring contract, see [Contribute a DCIM Provider](../../docs/development/contributing-dcim-provider.mdx).
+For the complete provider authoring contract, see [Contribute a DCIM Provider](../../../docs/development/contributing-dcim-provider.mdx).

@@ -205,7 +205,7 @@ docs = [
 package = true
 
 [tool.uv.workspace]
-members = ["components/dcim", "components/dcim-nautobot-2x", "components/network-templates", "packages/workflows"]
+members = ["packages/dcim", "packages/templates", "packages/workflows", "plugins/dcim/nautobot-2x"]
 
 [tool.uv.sources]
 nv-config-manager-dcim = { workspace = true }
