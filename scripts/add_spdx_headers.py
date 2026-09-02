@@ -168,6 +168,22 @@ def _replace_short_header(content: str, pattern: re.Pattern[str], header: str) -
     return (match.group("preamble") or "") + header + content[match.end("header") :]
 
 
+def resolve_path_within(base_path: Path, candidate_path: Path) -> Path:
+    """Resolve a non-symlink path and ensure it remains beneath a trusted directory."""
+    trusted_root = base_path.resolve(strict=True)
+    if candidate_path.is_symlink():
+        raise OSError(f"Refusing to process symbolic link: {candidate_path}")
+
+    resolved_path = candidate_path.resolve(strict=True)
+    try:
+        resolved_path.relative_to(trusted_root)
+    except ValueError as error:
+        raise OSError(
+            f"Path is outside trusted directory {trusted_root}: {candidate_path}"
+        ) from error
+    return resolved_path
+
+
 def replace_existing_short_header(
     file_path: Path,
     content: str,
@@ -182,8 +198,9 @@ def replace_existing_short_header(
     return HeaderResult.ADDED
 
 
-def add_header_to_python(file_path: Path) -> HeaderResult:
+def add_header_to_python(file_path: Path, allowed_root: Path) -> HeaderResult:
     try:
+        file_path = resolve_path_within(allowed_root, file_path)
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
@@ -205,8 +222,9 @@ def add_header_to_python(file_path: Path) -> HeaderResult:
         return HeaderResult.FAILED
 
 
-def add_header_to_js_ts(file_path: Path) -> HeaderResult:
+def add_header_to_js_ts(file_path: Path, allowed_root: Path) -> HeaderResult:
     try:
+        file_path = resolve_path_within(allowed_root, file_path)
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
@@ -229,8 +247,9 @@ def add_header_to_js_ts(file_path: Path) -> HeaderResult:
         return HeaderResult.FAILED
 
 
-def add_header_to_go(file_path: Path) -> HeaderResult:
+def add_header_to_go(file_path: Path, allowed_root: Path) -> HeaderResult:
     try:
+        file_path = resolve_path_within(allowed_root, file_path)
         content = file_path.read_text(encoding="utf-8")
 
         if has_full_header(content):
@@ -267,10 +286,21 @@ def process_directory(
     base_path: Path,
     dir_path: str,
     extension: str,
-    add_header_func: Callable[[Path], HeaderResult],
+    add_header_func: Callable[[Path, Path], HeaderResult],
 ) -> tuple[int, int, int]:
-    full_path = base_path / dir_path
-    if not full_path.exists():
+    candidate_path = base_path / dir_path
+    try:
+        trusted_base = base_path.resolve(strict=True)
+        candidate_path = trusted_base / dir_path
+        full_path = resolve_path_within(trusted_base, candidate_path)
+    except FileNotFoundError:
+        print(f"  Directory not found: {candidate_path}")
+        return 0, 0, 0
+    except OSError as error:
+        print(f"  Error processing directory {candidate_path}: {error}")
+        return 0, 0, 1
+
+    if not full_path.is_dir():
         print(f"  Directory not found: {full_path}")
         return 0, 0, 0
 
@@ -281,9 +311,9 @@ def process_directory(
     for file_path in sorted(full_path.rglob(f"*{extension}")):
         if should_skip(file_path):
             continue
-        result = add_header_func(file_path)
+        result = add_header_func(file_path, full_path)
         if result is HeaderResult.ADDED:
-            print(f"  Added header: {file_path.relative_to(base_path)}")
+            print(f"  Added header: {file_path.relative_to(trusted_base)}")
             modified += 1
         elif result is HeaderResult.SKIPPED:
             skipped += 1
