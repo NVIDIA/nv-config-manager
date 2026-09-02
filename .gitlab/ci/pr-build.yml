@@ -36,9 +36,9 @@ pr-build-image:
     - docker
     - linux/amd64
   needs: []
-  image: $NVCM_CI_IMAGE_DOCKER
+  image: $NVCM_PR_IMAGE_DOCKER_DIND
   services:
-    - name: $NVCM_CI_IMAGE_DOCKER_DIND
+    - name: $NVCM_PR_IMAGE_DOCKER_DIND
       alias: docker
       command: ["--tls=false"]
   variables:
@@ -131,7 +131,7 @@ pr-build-chart:
     - docker
     - linux/amd64
   needs: []
-  image: $NVCM_CI_IMAGE_ALPINE
+  image: $NVCM_PR_IMAGE_ALPINE
   # Same registry-proxy flakiness as pr-build-image; retry system failures.
   retry:
     max: 2
