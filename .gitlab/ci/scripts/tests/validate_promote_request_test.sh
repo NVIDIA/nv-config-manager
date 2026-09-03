@@ -16,7 +16,7 @@ main_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 curl() {
     local args=("$@") output_file="" has_job_token=false
     local has_https_proto=false has_https_redirect_proto=false
-    local i arg
+    local pipeline_name="" i arg
     for ((i = 0; i < ${#args[@]}; i++)); do
         arg="${args[$i]}"
         if [[ "$arg" == "JOB-TOKEN: job-token" ]]; then
@@ -27,6 +27,8 @@ curl() {
             has_https_proto=true
         elif [[ "$arg" == "--proto-redir" && "${args[$((i + 1))]}" == "=https" ]]; then
             has_https_redirect_proto=true
+        elif [[ "$arg" == name=* ]]; then
+            pipeline_name="${arg#name=}"
         fi
     done
     local url="${!#}"
@@ -36,8 +38,9 @@ curl() {
     fi
     case "$url" in
         */api/v4/job)
-            printf '{"source":"%s","pipeline":{"id":%s,"ref":"main"},"user":{"id":%s}}\n' \
-                "${MOCK_CURRENT_SOURCE}" "${MOCK_CURRENT_PIPELINE_ID}" "${MOCK_CURRENT_USER_ID}"
+            # The mirror's GET /job response omits source.
+            printf '{"pipeline":{"id":%s,"ref":"%s"},"user":{"id":%s}}\n' \
+                "${MOCK_CURRENT_PIPELINE_ID}" "${MOCK_CURRENT_JOB_REF}" "${MOCK_CURRENT_USER_ID}"
             ;;
         */projects/7/pipelines\?ref=*)
             printf '[{"id":100,"ref":"pull-request/123","sha":"%s","source":"push"}]\n' \
@@ -62,7 +65,16 @@ curl() {
                 "$main_sha"
             ;;
         */projects/7/pipelines/300/metadata)
+            [[ "$pipeline_name" == "Promote PR #123 (${pr_sha:0:8})" ]] || return 96
             printf '{}\n'
+            ;;
+        */projects/7/pipelines/300)
+            printf '{"ref":"%s","sha":"%s","status":"running","source":"%s"}\n' \
+                "${MOCK_CURRENT_PIPELINE_REF}" "$main_sha" "${MOCK_CURRENT_SOURCE}"
+            ;;
+        */projects/7/pipelines/400)
+            printf '{"ref":"%s","sha":"%s","status":"running","source":"%s"}\n' \
+                "${MOCK_CURRENT_PIPELINE_REF}" "$main_sha" "${MOCK_CURRENT_SOURCE}"
             ;;
         */projects/7/jobs/202/artifacts/promote-request.env)
             [[ "$has_job_token" == true && "$has_https_proto" == true && -n "$output_file" ]] || return 97
@@ -119,7 +131,9 @@ run_source_validator() (
          | .checkout_sha = $checkout_sha
          | .user_id = $user_id' \
         "$webhook_fixture" > "$payload_file"
-    export MOCK_CURRENT_SOURCE=trigger MOCK_CURRENT_PIPELINE_ID=300 MOCK_CURRENT_USER_ID=7
+    export MOCK_CURRENT_SOURCE="${TEST_CURRENT_SOURCE:-trigger}" MOCK_CURRENT_PIPELINE_ID=300 MOCK_CURRENT_USER_ID=7
+    export MOCK_CURRENT_JOB_REF="${TEST_CURRENT_JOB_REF:-main}"
+    export MOCK_CURRENT_PIPELINE_REF="${TEST_CURRENT_PIPELINE_REF:-main}"
     export MOCK_BUILD_USER_ID="${TEST_BUILD_USER_ID:-7}"
     export MOCK_BRANCH_SHA="${TEST_BRANCH_SHA:-$pr_sha}"
     export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
@@ -131,7 +145,9 @@ run_source_validator() (
 )
 
 run_final_validator() (
-    export MOCK_CURRENT_SOURCE=parent_pipeline MOCK_CURRENT_PIPELINE_ID=400 MOCK_CURRENT_USER_ID=42
+    export MOCK_CURRENT_SOURCE="${TEST_CURRENT_SOURCE:-parent_pipeline}" MOCK_CURRENT_PIPELINE_ID=400 MOCK_CURRENT_USER_ID=42
+    export MOCK_CURRENT_JOB_REF="${TEST_CURRENT_JOB_REF:-main}"
+    export MOCK_CURRENT_PIPELINE_REF="${TEST_CURRENT_PIPELINE_REF:-main}"
     export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
     export NVCM_MIRROR_API_TOKEN=read-token
     export NVCM_PROMOTE_PR=123 NVCM_PROMOTE_PR_SHA="$pr_sha"
@@ -167,6 +183,8 @@ run_source_validator
 run_final_validator
 TEST_ARTIFACT_DIRECT=true run_final_validator
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_source_rejected "CI_API_V4_URL must use HTTPS"
+TEST_CURRENT_SOURCE=web assert_source_rejected "pipeline source 'web' is not a push webhook trigger"
+TEST_CURRENT_PIPELINE_REF=other assert_source_rejected "current job and pipeline refs do not match"
 TEST_OBJECT_KIND=pipeline assert_source_rejected "webhook event is not a push"
 TEST_PROJECT_ID=8 assert_source_rejected "webhook project does not match"
 TEST_REF=refs/heads/main assert_source_rejected "is not refs/heads/pull-request/<number>"
@@ -174,6 +192,8 @@ TEST_AFTER=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "afte
 TEST_BUILD_USER_ID=8 assert_source_rejected "build pipeline user does not match"
 TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "moved to"
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_final_rejected "CI_API_V4_URL must use HTTPS"
+TEST_CURRENT_SOURCE=push assert_final_rejected "pipeline source 'push' is not a PR promotion child pipeline"
+TEST_CURRENT_PIPELINE_REF=other assert_final_rejected "current job and pipeline refs do not match"
 TEST_ARTIFACT_REDIRECT_URL=http://artifacts.example/promote-request.env assert_final_rejected "artifact redirect must use HTTPS"
 TEST_VERIFIED_PR=999 assert_final_rejected "verified request PR does not match"
 TEST_BRIDGE_NAME=promote-to-test01 assert_final_rejected "source trigger job"
