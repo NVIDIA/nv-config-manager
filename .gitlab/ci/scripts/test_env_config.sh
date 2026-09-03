@@ -65,6 +65,11 @@ while IFS= read -r raw_record; do
   record="$(trim "$raw_record")"
   [[ -z "$record" || "$record" == \#* ]] && continue
 
+  separators="${record//[!|]/}"
+  if (( ${#separators} != 6 )); then
+    echo "NVCM_TEST_ENV_TARGETS record must contain exactly seven fields." >&2
+    exit 1
+  fi
   IFS='|' read -r env env_branch namespace release_name baseline_values state_dir argocd_application <<< "$record"
   env="$(trim "$env")"
   [[ "$env" == "$requested_env" ]] || continue

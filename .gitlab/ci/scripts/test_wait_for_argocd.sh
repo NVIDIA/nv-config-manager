@@ -15,11 +15,14 @@ old_git='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 resolved_env="$(NVCM_TEST_ENV_TARGETS='test|test-branch|test-namespace|test-release|baseline.yaml|state-dir|test-application' \
     bash "${script_dir}/test_env_config.sh" test)"
 grep -Fqx 'export NVCM_ENV_ARGOCD_APPLICATION=test-application' <<<"$resolved_env"
-if NVCM_TEST_ENV_TARGETS='test|test-branch|test-namespace|test-release|baseline.yaml|state-dir' \
-    bash "${script_dir}/test_env_config.sh" test >/dev/null 2>&1; then
-    echo 'ERROR: environment target without an ArgoCD Application was accepted' >&2
-    exit 1
-fi
+for malformed_target in \
+    'test|test-branch|test-namespace|test-release|baseline.yaml|state-dir' \
+    'test|test-branch|test-namespace|test-release|baseline.yaml|state-dir|test-application|extra'; do
+    if NVCM_TEST_ENV_TARGETS="$malformed_target" bash "${script_dir}/test_env_config.sh" test >/dev/null 2>&1; then
+        echo 'ERROR: environment target without exactly seven fields was accepted' >&2
+        exit 1
+    fi
+done
 
 {
     printf 'ARGOCD_APPLICATION=test-application\n'
