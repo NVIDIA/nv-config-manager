@@ -42,13 +42,18 @@ curl() {
             printf '{"pipeline":{"id":%s,"ref":"%s"},"user":{"id":%s}}\n' \
                 "${MOCK_CURRENT_PIPELINE_ID}" "${MOCK_CURRENT_JOB_REF}" "${MOCK_CURRENT_USER_ID}"
             ;;
-        */projects/7/pipelines\?ref=*)
-            printf '[{"id":100,"ref":"pull-request/123","sha":"%s","source":"push"}]\n' \
-                "$pr_sha"
+        */projects/7/pipelines\?sha=*)
+            if [[ "${MOCK_AMBIGUOUS_BUILD_REFS}" == true ]]; then
+                printf '[{"id":100,"ref":"pull-request/123","sha":"%s","source":"push"},{"id":101,"ref":"pull-request/456","sha":"%s","source":"push"}]\n' \
+                    "$pr_sha" "$pr_sha"
+            else
+                printf '[{"id":100,"ref":"%s","sha":"%s","source":"push"}]\n' \
+                    "${MOCK_BUILD_REF}" "$pr_sha"
+            fi
             ;;
         */projects/7/pipelines/100)
-            printf '{"ref":"pull-request/123","sha":"%s","status":"success","source":"push","user":{"id":7}}\n' \
-                "$pr_sha" \
+            printf '{"ref":"%s","sha":"%s","status":"success","source":"push","user":{"id":7}}\n' \
+                "${MOCK_BUILD_REF}" "$pr_sha" \
                 | jq --arg status "${MOCK_BUILD_STATUS:-running}" \
                     --argjson user_id "${MOCK_BUILD_USER_ID:-7}" \
                     '.status = $status | .user.id = $user_id'
@@ -135,6 +140,8 @@ run_source_validator() (
     export MOCK_CURRENT_JOB_REF="${TEST_CURRENT_JOB_REF:-main}"
     export MOCK_CURRENT_PIPELINE_REF="${TEST_CURRENT_PIPELINE_REF:-main}"
     export MOCK_BUILD_USER_ID="${TEST_BUILD_USER_ID:-7}"
+    export MOCK_BUILD_REF="${TEST_BUILD_REF:-pull-request/123}"
+    export MOCK_AMBIGUOUS_BUILD_REFS="${TEST_AMBIGUOUS_BUILD_REFS:-false}"
     export MOCK_BRANCH_SHA="${TEST_BRANCH_SHA:-$pr_sha}"
     export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
     export NVCM_MIRROR_API_TOKEN=read-token TRIGGER_PAYLOAD="$payload_file"
@@ -180,6 +187,8 @@ assert_source_rejected() {
 }
 
 run_source_validator
+TEST_AMBIGUOUS_BUILD_REFS=true run_source_validator
+TEST_REF=main run_source_validator
 run_final_validator
 TEST_ARTIFACT_DIRECT=true run_final_validator
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_source_rejected "CI_API_V4_URL must use HTTPS"
@@ -187,7 +196,8 @@ TEST_CURRENT_SOURCE=web assert_source_rejected "pipeline source 'web' is not a p
 TEST_CURRENT_PIPELINE_REF=other assert_source_rejected "current job and pipeline refs do not match"
 TEST_OBJECT_KIND=pipeline assert_source_rejected "webhook event is not a push"
 TEST_PROJECT_ID=8 assert_source_rejected "webhook project does not match"
-TEST_REF=refs/heads/main assert_source_rejected "is not refs/heads/pull-request/<number>"
+TEST_REF=refs/heads/main assert_source_rejected "is not a PR ref or GitLab-rewritten default branch"
+TEST_REF=main TEST_AMBIGUOUS_BUILD_REFS=true assert_source_rejected "matches multiple pull-request refs"
 TEST_AFTER=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "after/checkout SHA mismatch"
 TEST_BUILD_USER_ID=8 assert_source_rejected "build pipeline user does not match"
 TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "moved to"
