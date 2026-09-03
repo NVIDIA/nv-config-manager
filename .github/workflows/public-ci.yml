@@ -627,6 +627,8 @@ jobs:
         with:
           node-version: "24"
       - run: node --test .github/scripts/*.test.js
+      - name: GitLab promotion authorization tests
+        run: .gitlab/ci/scripts/tests/validate_promote_request_test.sh
 
   ui-lint:
     name: UI Lint
