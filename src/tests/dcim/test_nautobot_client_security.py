@@ -65,6 +65,19 @@ async def test_patch_rejects_an_unsafe_path_before_opening_a_session():
 
 
 @pytest.mark.asyncio
+async def test_backup_config_rejects_unsafe_device_id_before_opening_a_session():
+    """Backup lookups validate device IDs before making a connection."""
+    client = NautobotWorkflowClient(
+        {"server": "https://nautobot.example", "token": "token", "verify": True}
+    )
+
+    with pytest.raises(ValueError, match="safe relative path"):
+        await client.load_config_manager_plugin_backup_config("../../users")
+
+    assert client._session is None
+
+
+@pytest.mark.asyncio
 async def test_graphql_logs_exclude_query_and_variable_data(caplog):
     """GraphQL diagnostics do not allow caller data to forge log entries."""
     client = NautobotWorkflowClient(

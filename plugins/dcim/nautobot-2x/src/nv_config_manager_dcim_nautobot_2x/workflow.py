@@ -710,9 +710,10 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def load_config_manager_plugin_backup_config(self, device_id: str) -> dict[str, Any]:
         """Load the most recent NVIDIA Config Manager backup data."""
+        request_url = self._rest_url(f"{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/{device_id}/")
         session = await self._ensure_session()
         async with session.get(
-            f"{self.rest_endpoint}{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/{device_id}/",
+            request_url,
             headers=self._resolve_headers(),
         ) as rsp:
             if rsp.status == 404:
