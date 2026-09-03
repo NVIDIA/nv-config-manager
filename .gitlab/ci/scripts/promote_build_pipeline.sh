@@ -4,13 +4,12 @@
 #
 # Resolves the snapshot's HEAD SHA, confirms the PR is still open upstream and
 # warns if the snapshot lags the PR's live HEAD, then verifies and consumes the
-# successful build pipeline that exposed the promotion button. The build
-# pipeline runs on an UNPROTECTED ref, so it executes the untrusted PR code
-# without any protected variables. Provenance is asserted from GitLab's own
-# pipeline metadata.
+# identified automatic build pipeline for that exact snapshot. It runs on
+# an UNPROTECTED ref, so it executes the untrusted PR code without any protected
+# variables. Provenance is asserted from GitLab's own pipeline metadata.
 #
-# Inputs (pipeline variables): NVCM_PROMOTE_PR, NVCM_PROMOTE_ENV and the
-#                             NVCM_PROMOTE_SOURCE_* button provenance fields
+# Inputs (pipeline variables): NVCM_PROMOTE_PR, NVCM_PROMOTE_PR_SHA,
+#                             NVCM_PROMOTE_BUILD_PIPELINE_ID, NVCM_PROMOTE_ENV
 #   Optional: NVCM_PROMOTE_REQUIRE_PR_HEAD (default false),
 #             NVCM_PROMOTE_ALLOW_UNVERIFIED_PR_STATE (default false)
 # Requires: NVCM_MIRROR_API_TOKEN (read_api; polling/job-listing endpoints are
@@ -22,6 +21,8 @@
 set -euo pipefail
 
 : "${NVCM_PROMOTE_PR:?Set NVCM_PROMOTE_PR to the GitHub PR number}"
+: "${NVCM_PROMOTE_PR_SHA:?NVCM_PROMOTE_PR_SHA is required}"
+: "${NVCM_PROMOTE_BUILD_PIPELINE_ID:?NVCM_PROMOTE_BUILD_PIPELINE_ID is required}"
 : "${NVCM_PROMOTE_ENV:?Set NVCM_PROMOTE_ENV to the target environment}"
 : "${NVCM_MIRROR_API_TOKEN:?NVCM_MIRROR_API_TOKEN (read_api) is required}"
 
@@ -34,8 +35,7 @@ github_repo="${NVCM_UPSTREAM_GITHUB_REPO:-dsx-ai-factory/nv-config-manager}"
 api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
 
 # Promotions consume only the automatic copy-pr-bot mirror-sync build. Manual
-# and API-triggered PR pipelines can still be useful for diagnostics, but they
-# do not expose promotion buttons.
+# and API-triggered PR pipelines can still be useful for diagnostics.
 allowed_build_sources='["push"]'
 
 PR_NUM="$NVCM_PROMOTE_PR"
@@ -67,6 +67,13 @@ if [[ -z "$PR_SHA" ]]; then
     echo "ERROR: ${PR_REF} does not exist on the mirror." >&2
     echo "Either the PR is closed/merged, copy-pr-bot has not vetted it, or"
     echo "pull-mirroring has not replicated the branch yet."
+    exit 1
+fi
+if [[ "$PR_SHA" != "$NVCM_PROMOTE_PR_SHA" ]]; then
+    echo "ERROR: ${PR_REF} moved after its promotion request was created." >&2
+    echo "  request SHA: ${NVCM_PROMOTE_PR_SHA}" >&2
+    echo "  current SHA: ${PR_SHA}" >&2
+    echo "Use the promotion buttons from the latest PR pipeline." >&2
     exit 1
 fi
 PR_SHORT_SHA="$(printf '%s' "$PR_SHA" | cut -c1-8)"
@@ -110,18 +117,11 @@ else
 fi
 bash "$(dirname "$0")/pr_ref_guard.sh" "$PR_REF" "$PR_SHA"
 
-# The protected-side request validator wrote this from GitLab API metadata for
-# the exact button job that started us. No pipeline search or rebuild is needed.
-[[ -f promote-request.env ]] || {
-    echo "ERROR: missing promote-request.env from validate_promote_request.sh" >&2
-    exit 1
-}
-BUILD_PIPELINE_ID="$(grep -m1 '^PROMOTE_REQUEST_BUILD_PIPELINE_ID=' promote-request.env | cut -d= -f2- || true)"
+BUILD_PIPELINE_ID="$NVCM_PROMOTE_BUILD_PIPELINE_ID"
 [[ "$BUILD_PIPELINE_ID" =~ ^[0-9]+$ ]] || {
     echo "ERROR: verified source build pipeline id is missing or invalid" >&2
     exit 1
 }
-button_build_pipeline_id="$BUILD_PIPELINE_ID"
 echo "Using source PR pipeline ${BUILD_PIPELINE_ID}; will verify its provenance and artifacts."
 
 # -----------------------------------------------------------------------------
@@ -135,19 +135,10 @@ build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha')"
 build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref')"
 build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status')"
 build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source')"
-build_status_ok=false
-if [[ "$build_status" == "success" ]]; then
-    build_status_ok=true
-elif [[ -n "$button_build_pipeline_id" && "$BUILD_PIPELINE_ID" == "$button_build_pipeline_id" && "$build_status" == "running" ]]; then
-    # The only running job is normally the button that created this downstream
-    # pipeline. Every consumed build job is independently required to have
-    # status=success below before any artifact is accepted.
-    build_status_ok=true
-fi
-if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status_ok" != "true" ]]; then
+if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status" != "success" ]]; then
     echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch." >&2
     echo "  got ref=${build_ref} sha=${build_sha} status=${build_status}"
-    echo "  expected ref=${PR_REF} sha=${PR_SHA} status=success (or the verified button pipeline still running)"
+    echo "  expected ref=${PR_REF} sha=${PR_SHA} status=success"
     echo "Re-run the pull-request pipeline to create a fresh build."
     exit 1
 fi
@@ -160,7 +151,7 @@ fi
 echo "Provenance OK: ${build_source} pipeline ${BUILD_PIPELINE_ID} ran on ${PR_REF}@${PR_SHA}"
 
 # -----------------------------------------------------------------------------
-# Collect the six pr-build-image job ids and confirm artifacts are usable.
+# Collect the nine pr-build-image job ids and confirm artifacts are usable.
 # -----------------------------------------------------------------------------
 jobs_json="$(api_get "${api}/pipelines/${BUILD_PIPELINE_ID}/jobs?per_page=100")"
 

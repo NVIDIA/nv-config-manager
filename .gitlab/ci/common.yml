@@ -15,8 +15,8 @@ stages:
 # Run automatic pipelines for merge requests, the default branch, tags, and
 # vetted copy-pr-bot refs. Mirrored feature branches can be deleted upstream
 # while jobs are queued, so do not create push pipelines for ordinary feature
-# branches. A pull-request/<n> sync is different: it is the vetted snapshot and
-# its secret-free build produces the per-environment promotion buttons.
+# branches. A pull-request/<n> sync is different: it is the vetted snapshot for
+# the secret-free build and its webhook-created promotion buttons.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"

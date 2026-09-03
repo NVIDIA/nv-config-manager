@@ -134,13 +134,16 @@ to the environment's branch in the downstream ArgoCD values repository. It
 targets ONLY the shared test environments; production stays on the tag-driven
 release flow.
 
-Security model: the image build runs in a separate pipeline on the unprotected
-`pull-request/<n>` mirror ref with no secrets (no registry login; images are
-handed over as job artifacts). The promote pipeline runs on protected `main`,
-holds the protected variables, and only operates on the finished artifacts.
-Because of that split, **every secret CI/CD variable in this project and its
-groups must be flagged Protected** - unprotected variables are visible to the
-untrusted `pull-request/*` builds. Never protect `pull-request/*` refs.
+Security model: after copy-pr-bot's `/ok to test` gate, the image build runs
+automatically on the unprotected `pull-request/<n>` mirror ref with no secrets
+(no registry login; images are handed over as job artifacts). A push webhook
+independently creates a request pipeline from the protected `main`
+configuration; no credential is handed to PR-controlled YAML. The environment
+buttons and credentialed promote jobs run only from that trusted configuration
+and only operate on the finished artifacts. Because of that split, **every
+secret CI/CD variable in this project and its groups must be flagged
+Protected** - unprotected variables are visible to the untrusted
+`pull-request/*` builds. Never protect `pull-request/*` refs.
 
 | Variable | Purpose |
 | -------- | ------- |
@@ -155,14 +158,16 @@ untrusted `pull-request/*` builds. Never protect `pull-request/*` refs.
 Runbooks:
 
 - **Deploy a PR**: a vetted `pull-request/<n>` mirror sync automatically starts
-  the no-secrets build. Open that pipeline and select **promote-to-test** or
-  **promote-to-test01**. The job derives the PR number from the branch name and
-  starts the protected `main` promotion pipeline; no variables are entered by
-  hand. The protected pipeline verifies the source pipeline, SHA, button job,
-  and environment, pushes images (capturing digests), publishes the chart as
+  the no-secrets build and a protected `main` request pipeline named for the
+  PR. Once its validator has observed a successful build, select
+  **promote-to-test** or **promote-to-test01**; there is no separate **Run
+  pipeline** step and no variables to enter. The protected promotion verifies
+  the webhook payload, original build pipeline, PR SHA, trusted button job,
+  and environment, then pushes images (capturing digests) and publishes the
+  chart as
   `0.0.0-pr<n>.<sha>`, validates the render against the environment's baseline
-  + overrides, and commits the deploy-state. Re-run the PR pipeline when a
-  fresh build is needed.
+  + overrides, and commits the deploy-state. Re-vet and sync a newer PR
+  snapshot when a fresh build is needed.
   - What deploys is the *vetted snapshot*, which can lag the PR's live HEAD
     (untrusted authors re-copy only on `/ok to test`). If they differ, the run
     warns and proceeds; to deploy newer commits, re-vet them first. Set
@@ -207,6 +212,14 @@ Project settings required (GitLab UI):
 - Maximum artifacts size ≥ 1.5 GB (the build hands images over as artifacts).
 - Pull mirroring must replicate `pull-request/*` branches.
 - Only `main` and release-tag patterns protected; `pull-request/*` unprotected.
+- Create a pipeline trigger token whose owner can run pipelines on protected
+  `main`. Store it only in a **Push events** project webhook with URL
+  `https://<gitlab>/api/v4/projects/<project-id>/ref/main/trigger/pipeline?token=<token>`.
+  Select **Wildcard pattern** with `pull-request/*`; do not enable pipeline
+  events. No trigger token is exposed as a CI/CD variable.
+- On GitLab Self-Managed, the administrator must allow webhook requests to the
+  instance's own hostname (Settings > Network > Outbound requests), or add that
+  hostname to the local-request allowlist.
 - Protect the `test` and `test01` GitLab environments and grant deploy access
   only to the people or groups allowed to use the promotion buttons.
 - The **values repo** (`NVCM_VALUES_REPO_PATH`) must allow this project in its

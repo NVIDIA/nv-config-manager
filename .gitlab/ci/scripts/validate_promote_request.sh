@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 # Validate how a protected test-environment promotion was started.
 #
-# Promotions must originate from the matching manual job on a
-# pull-request/<n> pipeline for the exact vetted SHA being promoted. The checks
-# use GitLab API metadata rather than trusting the variables supplied by the
-# untrusted PR pipeline.
-#
-# Output: promote-request.env, consumed by promote_build_pipeline.sh.
+# Promotions must originate from the matching manual job in a protected
+# default-branch request pipeline. The PR build itself is untrusted and never
+# receives the operator's CI_JOB_TOKEN.
 set -euo pipefail
 
 : "${CI_JOB_TOKEN:?CI_JOB_TOKEN is required}"
@@ -14,6 +11,8 @@ set -euo pipefail
 : "${CI_PROJECT_ID:?CI_PROJECT_ID is required}"
 : "${NVCM_MIRROR_API_TOKEN:?NVCM_MIRROR_API_TOKEN (read_api) is required}"
 : "${NVCM_PROMOTE_PR:?NVCM_PROMOTE_PR is required}"
+: "${NVCM_PROMOTE_PR_SHA:?NVCM_PROMOTE_PR_SHA is required}"
+: "${NVCM_PROMOTE_BUILD_PIPELINE_ID:?NVCM_PROMOTE_BUILD_PIPELINE_ID is required}"
 : "${NVCM_PROMOTE_ENV:?NVCM_PROMOTE_ENV is required}"
 
 api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
@@ -31,7 +30,7 @@ fail() {
 # metadata cannot be redirected by overriding a predefined CI variable.
 current_job_json="$(curl -fsS --max-time 30 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" "${CI_API_V4_URL}/job")"
 request_source="$(printf '%s' "$current_job_json" | jq -r '.source // empty')"
-current_ref="$(printf '%s' "$current_job_json" | jq -r '.pipeline.ref // empty')"
+current_ref="$(printf '%s' "$current_job_json" | jq -r '.pipeline.ref // .ref // empty')"
 current_user_id="$(printf '%s' "$current_job_json" | jq -r '.user.id // empty')"
 
 project_json="$(api_get "$api")"
@@ -44,7 +43,8 @@ default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty'
     || fail "pipeline source '${request_source:-unknown}' is not a PR promotion button"
 
 for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_JOB_ID \
-    NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA; do
+    NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA \
+    NVCM_PROMOTE_SOURCE_ENVIRONMENT NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION; do
     [[ -n "${!key:-}" ]] || fail "${key} is required for a button-triggered promotion"
 done
 [[ "$NVCM_PROMOTE_SOURCE_PIPELINE_ID" =~ ^[0-9]+$ ]] \
@@ -52,8 +52,10 @@ done
 [[ "$NVCM_PROMOTE_SOURCE_JOB_ID" =~ ^[0-9]+$ ]] \
     || fail "source job id is not numeric"
 [[ "$NVCM_PROMOTE_PR" =~ ^[0-9]+$ ]] || fail "PR number is not numeric"
-[[ "$NVCM_PROMOTE_SOURCE_REF" == "pull-request/${NVCM_PROMOTE_PR}" ]] \
-    || fail "source ref '${NVCM_PROMOTE_SOURCE_REF}' does not match PR #${NVCM_PROMOTE_PR}"
+[[ "$NVCM_PROMOTE_BUILD_PIPELINE_ID" =~ ^[0-9]+$ ]] \
+    || fail "build pipeline id is not numeric"
+[[ "$NVCM_PROMOTE_PR_SHA" =~ ^[0-9a-f]{40}$ ]] \
+    || fail "PR SHA is not a full lowercase Git SHA"
 [[ "$NVCM_PROMOTE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] \
     || fail "source SHA is not a full lowercase Git SHA"
 
@@ -61,6 +63,15 @@ case "$NVCM_PROMOTE_ENV" in
     test|test01) ;;
     *) fail "unsupported target environment '${NVCM_PROMOTE_ENV}'" ;;
 esac
+# GitLab's Jobs REST response does not expose environment metadata. The exact
+# trusted-main job name checked below binds the target, while these values come
+# from that job's CI_ENVIRONMENT_* predefined variables.
+[[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT" == "$NVCM_PROMOTE_ENV" ]] \
+    || fail "source environment '${NVCM_PROMOTE_SOURCE_ENVIRONMENT}' does not match '${NVCM_PROMOTE_ENV}'"
+[[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION" == "prepare" ]] \
+    || fail "source environment action is not 'prepare'"
+[[ "$NVCM_PROMOTE_SOURCE_REF" == "$default_branch" ]] \
+    || fail "source request ref '${NVCM_PROMOTE_SOURCE_REF}' is not the default branch"
 
 source_pipeline_json="$(api_get "${api}/pipelines/${NVCM_PROMOTE_SOURCE_PIPELINE_ID}")"
 source_pipeline_ref="$(printf '%s' "$source_pipeline_json" | jq -r '.ref // empty')"
@@ -76,9 +87,33 @@ case "$source_pipeline_status" in
     running|success) ;;
     *) fail "source pipeline status is '${source_pipeline_status}'" ;;
 esac
-[[ "$source_pipeline_source" == "push" ]] \
-    || fail "source pipeline was not created by the vetted mirror sync"
-source_pipeline_user_id="$(printf '%s' "$source_pipeline_json" | jq -r '.user.id // empty')"
+[[ "$source_pipeline_source" == "trigger" ]] \
+    || fail "source pipeline was not created by the protected push webhook"
+
+source_jobs_json="$(api_get "${api}/pipelines/${NVCM_PROMOTE_SOURCE_PIPELINE_ID}/jobs?per_page=100")"
+validation_job_id="$(printf '%s' "$source_jobs_json" \
+    | jq -r '[.[] | select(.name == "test-promote-request-validate")] | sort_by(.id) | last | .id // empty')"
+validation_job_status="$(printf '%s' "$source_jobs_json" \
+    | jq -r '[.[] | select(.name == "test-promote-request-validate")] | sort_by(.id) | last | .status // empty')"
+[[ "$validation_job_id" =~ ^[0-9]+$ ]] || fail "source request validation job is missing"
+[[ "$validation_job_status" == "success" ]] \
+    || fail "source request validation job is '${validation_job_status:-missing}', not successful"
+
+# The trusted webhook validator records the verified PR/build identity in a
+# file artifact. Read that file rather than pipeline variables, whose values
+# can have been supplied by the trigger caller at the highest precedence.
+verified_request="$(curl -fsSL --max-time 30 \
+    "${api}/jobs/${validation_job_id}/artifacts/promote-request.env?job_token=${CI_JOB_TOKEN}")"
+verified_value() {
+    local key="$1"
+    printf '%s\n' "$verified_request" | grep -m1 "^${key}=" | cut -d= -f2-
+}
+[[ "$(verified_value VERIFIED_PROMOTE_PR)" == "$NVCM_PROMOTE_PR" ]] \
+    || fail "verified request PR does not match PR #${NVCM_PROMOTE_PR}"
+[[ "$(verified_value VERIFIED_PROMOTE_PR_SHA)" == "$NVCM_PROMOTE_PR_SHA" ]] \
+    || fail "verified request SHA does not match PR SHA"
+[[ "$(verified_value VERIFIED_PROMOTE_BUILD_PIPELINE_ID)" == "$NVCM_PROMOTE_BUILD_PIPELINE_ID" ]] \
+    || fail "verified request build pipeline does not match the promotion"
 
 source_job_json="$(api_get "${api}/jobs/${NVCM_PROMOTE_SOURCE_JOB_ID}")"
 source_job_name="$(printf '%s' "$source_job_json" | jq -r '.name // empty')"
@@ -100,16 +135,9 @@ case "$source_job_status" in
     running|success) ;;
     *) fail "source job status is '${source_job_status}'" ;;
 esac
-[[ -n "$source_pipeline_user_id" && -n "$source_job_user_id" && -n "$current_user_id" ]] \
-    || fail "GitLab did not report complete pipeline/job user provenance"
-[[ "$source_job_user_id" != "$source_pipeline_user_id" ]] \
-    || fail "source job was not started by a human promotion action"
+[[ -n "$source_job_user_id" && -n "$current_user_id" ]] \
+    || fail "GitLab did not report complete job user provenance"
 [[ "$current_user_id" == "$source_job_user_id" ]] \
     || fail "protected pipeline user does not match the person who pressed the button"
 
-{
-    echo "PROMOTE_REQUEST_SOURCE=button"
-    echo "PROMOTE_REQUEST_BUILD_PIPELINE_ID=${NVCM_PROMOTE_SOURCE_PIPELINE_ID}"
-} > promote-request.env
-
-echo "Promotion button authorized: ${source_job_name} from ${source_pipeline_ref}@${source_pipeline_sha}."
+echo "Promotion button authorized: ${source_job_name} from protected ${source_pipeline_ref}@${source_pipeline_sha}."
