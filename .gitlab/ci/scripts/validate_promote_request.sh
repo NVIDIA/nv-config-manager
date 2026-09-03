@@ -47,8 +47,7 @@ default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty'
     || fail "pipeline source '${request_source:-unknown}' is not a PR promotion child pipeline"
 [[ "$current_pipeline_id" =~ ^[0-9]+$ ]] || fail "current child pipeline id is missing"
 
-for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA \
-    NVCM_PROMOTE_SOURCE_ENVIRONMENT NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION; do
+for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA; do
     [[ -n "${!key:-}" ]] || fail "${key} is required for a button-triggered promotion"
 done
 [[ "$NVCM_PROMOTE_SOURCE_PIPELINE_ID" =~ ^[0-9]+$ ]] \
@@ -65,13 +64,6 @@ case "$NVCM_PROMOTE_ENV" in
     test|test01) ;;
     *) fail "unsupported target environment '${NVCM_PROMOTE_ENV}'" ;;
 esac
-# GitLab's trigger-job response does not expose environment metadata. The exact
-# trusted-main job name checked below binds the target, while these fixed values
-# come from that protected environment trigger's trusted YAML configuration.
-[[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT" == "$NVCM_PROMOTE_ENV" ]] \
-    || fail "source environment '${NVCM_PROMOTE_SOURCE_ENVIRONMENT}' does not match '${NVCM_PROMOTE_ENV}'"
-[[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION" == "prepare" ]] \
-    || fail "source environment action is not 'prepare'"
 [[ "$NVCM_PROMOTE_SOURCE_REF" == "$default_branch" ]] \
     || fail "source request ref '${NVCM_PROMOTE_SOURCE_REF}' is not the default branch"
 
@@ -142,6 +134,10 @@ verified_value() {
     || fail "verified request build pipeline does not match the promotion"
 
 source_bridges_json="$(api_get "${api}/pipelines/${NVCM_PROMOTE_SOURCE_PIPELINE_ID}/bridges?per_page=100")"
+# The exact trusted-main bridge name binds the target environment, and its
+# downstream id proves that this bridge created the current child pipeline.
+# GitLab applies the protected-environment ACL to the literal environment on
+# that bridge before an operator can play it.
 source_job_json="$(printf '%s' "$source_bridges_json" \
     | jq -c --arg name "promote-to-${NVCM_PROMOTE_ENV}" --arg child_id "$current_pipeline_id" \
         '[.[] | select(.name == $name and (.downstream_pipeline.id | tostring) == $child_id)] | sort_by(.id) | last // empty')"

@@ -85,8 +85,8 @@ curl() {
                 "${MOCK_VERIFIED_PR:-123}" "$pr_sha"
             ;;
         */projects/7/pipelines/200/bridges\?per_page=100)
-            printf '[{"id":201,"name":"promote-to-test","status":"success","pipeline":{"id":200,"ref":"main","sha":"%s"},"user":{"id":42},"downstream_pipeline":{"id":400}}]\n' \
-                "$main_sha"
+            printf '[{"id":201,"name":"%s","status":"success","pipeline":{"id":200,"ref":"main","sha":"%s"},"user":{"id":42},"downstream_pipeline":{"id":400}}]\n' \
+                "${MOCK_BRIDGE_NAME:-promote-to-test}" "$main_sha"
             ;;
         */projects/7)
             printf '{"default_branch":"main"}\n'
@@ -138,8 +138,7 @@ run_final_validator() (
     export NVCM_PROMOTE_BUILD_PIPELINE_ID=100 NVCM_PROMOTE_ENV=test
     export NVCM_PROMOTE_SOURCE_PIPELINE_ID=200
     export NVCM_PROMOTE_SOURCE_REF=main NVCM_PROMOTE_SOURCE_SHA="$main_sha"
-    export NVCM_PROMOTE_SOURCE_ENVIRONMENT="${TEST_SOURCE_ENVIRONMENT:-test}"
-    export NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION="${TEST_SOURCE_ACTION:-prepare}"
+    export MOCK_BRIDGE_NAME="${TEST_BRIDGE_NAME:-promote-to-test}"
     export MOCK_VERIFIED_PR="${TEST_VERIFIED_PR:-123}"
     export MOCK_ARTIFACT_REDIRECT_URL="${TEST_ARTIFACT_REDIRECT_URL:-https://artifacts.example/promote-request.env}"
     export MOCK_ARTIFACT_DIRECT="${TEST_ARTIFACT_DIRECT:-false}"
@@ -177,7 +176,6 @@ TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected 
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_final_rejected "CI_API_V4_URL must use HTTPS"
 TEST_ARTIFACT_REDIRECT_URL=http://artifacts.example/promote-request.env assert_final_rejected "artifact redirect must use HTTPS"
 TEST_VERIFIED_PR=999 assert_final_rejected "verified request PR does not match"
-TEST_SOURCE_ENVIRONMENT=test01 assert_final_rejected "does not match 'test'"
-TEST_SOURCE_ACTION=start assert_final_rejected "action is not 'prepare'"
+TEST_BRIDGE_NAME=promote-to-test01 assert_final_rejected "source trigger job"
 
 echo "validate promote request tests passed"

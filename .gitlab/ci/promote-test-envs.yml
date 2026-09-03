@@ -32,7 +32,7 @@
 # =============================================================================
 
 .test-promote-rules: &test-promote-rules
-  - if: $CI_PIPELINE_SOURCE == "parent_pipeline" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_PR && $NVCM_PROMOTE_PR_SHA && $NVCM_PROMOTE_BUILD_PIPELINE_ID && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/ && $NVCM_PROMOTE_SOURCE_PIPELINE_ID && $NVCM_PROMOTE_SOURCE_REF && $NVCM_PROMOTE_SOURCE_SHA && $NVCM_PROMOTE_SOURCE_ENVIRONMENT && $NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION
+  - if: $CI_PIPELINE_SOURCE == "parent_pipeline" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_PR && $NVCM_PROMOTE_PR_SHA && $NVCM_PROMOTE_BUILD_PIPELINE_ID && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/ && $NVCM_PROMOTE_SOURCE_PIPELINE_ID && $NVCM_PROMOTE_SOURCE_REF && $NVCM_PROMOTE_SOURCE_SHA
     when: always
   - when: never
 
@@ -99,6 +99,8 @@ test-promote-request-validate:
 # needed and untrusted pull-request pipelines never receive an operator token.
 .promote-request-button:
   stage: deploy
+  inherit:
+    variables: false
   needs:
     - job: test-promote-request-validate
       artifacts: true
@@ -109,7 +111,6 @@ test-promote-request-validate:
     NVCM_PROMOTE_SOURCE_PIPELINE_ID: $CI_PIPELINE_ID
     NVCM_PROMOTE_SOURCE_REF: $CI_COMMIT_REF_NAME
     NVCM_PROMOTE_SOURCE_SHA: $CI_COMMIT_SHA
-    NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION: prepare
   rules: *test-promote-button-rules
   trigger:
     include:
@@ -122,7 +123,6 @@ promote-to-test:
   extends: .promote-request-button
   variables:
     NVCM_PROMOTE_ENV: test
-    NVCM_PROMOTE_SOURCE_ENVIRONMENT: test
   environment:
     name: test
     action: prepare
@@ -131,7 +131,6 @@ promote-to-test01:
   extends: .promote-request-button
   variables:
     NVCM_PROMOTE_ENV: test01
-    NVCM_PROMOTE_SOURCE_ENVIRONMENT: test01
   environment:
     name: test01
     action: prepare
