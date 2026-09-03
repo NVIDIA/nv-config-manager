@@ -5,6 +5,9 @@
 stages:
   - deploy
 
+workflow:
+  name: "Promote PR #${NVCM_PROMOTE_PR} to ${NVCM_PROMOTE_ENV}"
+
 include:
   # Import only the shared image pins, not common.yml's workflow or full stage
   # list, so top-level and child pipelines cannot drift independently.

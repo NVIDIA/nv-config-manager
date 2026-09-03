@@ -33,9 +33,17 @@ api_get() {
 # /job is authenticated by this job's short-lived token, so its source/ref
 # cannot be redirected by overriding predefined CI variables.
 current_job_json="$(curl -fsS --max-time 30 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" "${CI_API_V4_URL}/job")"
-request_source="$(printf '%s' "$current_job_json" | jq -r '.source // empty')"
 current_ref="$(printf '%s' "$current_job_json" | jq -r '.pipeline.ref // .ref // empty')"
 request_pipeline_id="$(printf '%s' "$current_job_json" | jq -r '.pipeline.id // empty')"
+[[ "$request_pipeline_id" =~ ^[0-9]+$ ]] || fail "request pipeline id is missing"
+
+# Some GitLab versions omit source from GET /job. Resolve it from the current
+# pipeline id reported by that authenticated endpoint instead.
+current_pipeline_json="$(api_get "${api}/pipelines/${request_pipeline_id}")"
+request_source="$(printf '%s' "$current_pipeline_json" | jq -r '.source // empty')"
+pipeline_ref="$(printf '%s' "$current_pipeline_json" | jq -r '.ref // empty')"
+[[ "$pipeline_ref" == "$current_ref" ]] \
+    || fail "current job and pipeline refs do not match"
 
 project_json="$(api_get "$api")"
 default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty')"
@@ -44,7 +52,6 @@ default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty'
     || fail "promotion request runs on '${current_ref:-unknown}', expected '${default_branch}'"
 [[ "$request_source" == "trigger" ]] \
     || fail "pipeline source '${request_source:-unknown}' is not a push webhook trigger"
-[[ "$request_pipeline_id" =~ ^[0-9]+$ ]] || fail "request pipeline id is missing"
 
 payload="$(<"$TRIGGER_PAYLOAD")"
 object_kind="$(printf '%s' "$payload" | jq -r '.object_kind // empty')"
@@ -67,7 +74,8 @@ pr_ref="${payload_ref#refs/heads/}"
 # Make the automatically-created pipeline easy to locate in GitLab. Naming is
 # best-effort and has no role in authorization.
 if ! curl -fsS --max-time 30 --request PUT -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
-    -F "name=Promote PR #${pr_num}" "${api}/pipelines/${request_pipeline_id}/metadata" >/dev/null; then
+    -F "name=Promote PR #${pr_num} (${payload_sha:0:8})" \
+    "${api}/pipelines/${request_pipeline_id}/metadata" >/dev/null; then
     echo "WARN: could not name request pipeline ${request_pipeline_id}" >&2
 fi
 
