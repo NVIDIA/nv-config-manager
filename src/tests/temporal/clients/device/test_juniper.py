@@ -12,12 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import json
 from configparser import ConfigParser
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import paramiko
 import pytest
 from jnpr.junos.exception import (
     CommitError,
@@ -33,307 +33,11 @@ from temporalio.exceptions import ApplicationError
 
 from nv_config_manager.temporal.client.device import (
     ConfigSyntaxException,
-    CumulusConnection,
     DiffChangedException,
     JuniperConnection,
-    MockNetworkConnection,
-    NetworkConnection,
     NetworkDeviceException,
-    _junos_list,
 )
-from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData
-from nv_config_manager.temporal.common.secrets import clear_secrets_cache
-
-
-@pytest.fixture(autouse=True)
-def reset_secrets_cache():
-    """Clear the secrets config cache before and after each test."""
-    clear_secrets_cache()
-    yield
-    clear_secrets_cache()
-
-
-class TestNetworkConnectionPasswordRotation:
-    """Tests for NetworkConnection password initialization behavior."""
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_uses_rotation_passwords_sorted_by_revision(self, mock_load_config):
-        """Test that rotation passwords are used in order of revision (newest first)."""
-        config = ConfigParser()
-        config.add_section("device")
-        config.set("device", "username", "admin")
-        config.set("device", "api_user_key_r1", "old_pw")
-        config.set("device", "api_user_key_r2", "new_pw")
-        mock_load_config.return_value = config
-
-        conn = NetworkConnection("host", 22)
-
-        assert conn._passwords_to_try == ["new_pw", "old_pw"]
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_falls_back_to_password_when_no_rotation_keys(self, mock_load_config):
-        """Test fallback to password field when no rotation keys exist."""
-        config = ConfigParser()
-        config.add_section("device")
-        config.set("device", "username", "admin")
-        config.set("device", "password", "fallback_pw")
-        mock_load_config.return_value = config
-
-        conn = NetworkConnection("host", 22)
-
-        assert conn._passwords_to_try == ["fallback_pw"]
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_uses_explicit_password_only(self, mock_load_config):
-        """Test that explicit password is used exclusively, ignoring config passwords."""
-        config = ConfigParser()
-        config.add_section("device")
-        config.set("device", "username", "admin")
-        config.set("device", "api_user_key_r1", "config_pw")
-        mock_load_config.return_value = config
-
-        conn = NetworkConnection("host", 22, password="explicit_pw")
-
-        assert conn._passwords_to_try == ["explicit_pw"]
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_no_passwords_available(self, mock_load_config):
-        """Test empty password list when no passwords configured."""
-        config = ConfigParser()
-        config.add_section("device")
-        config.set("device", "username", "admin")
-        mock_load_config.return_value = config
-
-        conn = NetworkConnection("host", 22)
-
-        assert conn._passwords_to_try == []
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_uses_secrets_config_for_site_passwords(self, mock_load_config, tmp_path):
-        """Test that secrets config is used for site-specific passwords when available."""
-        # Setup main config (will be used for username only)
-        main_config = ConfigParser()
-        main_config.add_section("device")
-        main_config.set("device", "username", "admin")
-        main_config.set("device", "api_user_key_r1", "main_pw")
-        mock_load_config.return_value = main_config
-
-        # Create secrets config file
-        secrets_file = tmp_path / "config-secrets.ini"
-        secrets_file.write_text("[site.site-a]\napi_user_key_r1 = secrets_pw\n")
-
-        with patch.dict("os.environ", {"NV_CONFIG_MANAGER_CONFIG_SECRET_PATH": str(secrets_file)}):
-            conn = NetworkConnection("host", 22, site="Site A")
-
-            assert conn._passwords_to_try == ["secrets_pw"]
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_falls_back_to_main_config_when_no_secrets_file(self, mock_load_config):
-        """Test fallback to main config global section when secrets file doesn't exist."""
-        # Setup main config with global device section only
-        main_config = ConfigParser()
-        main_config.add_section("device")
-        main_config.set("device", "username", "admin")
-        main_config.set("device", "api_user_key_r1", "main_global_pw")
-        mock_load_config.return_value = main_config
-
-        # Point to non-existent file
-        with patch.dict(
-            "os.environ",
-            {"NV_CONFIG_MANAGER_CONFIG_SECRET_PATH": "/nonexistent/config-secrets.ini"},
-        ):
-            # Site is provided but secrets file doesn't exist, falls back to global
-            conn = NetworkConnection("host", 22, site="Site A")
-
-            assert conn._passwords_to_try == ["main_global_pw"]
-
-    @patch("nv_config_manager.temporal.client.device.load_config")
-    def test_falls_back_to_global_when_site_not_in_secrets(self, mock_load_config):
-        """Test fallback to global device section when secrets env var is not set."""
-        # Setup main config with global section only
-        main_config = ConfigParser()
-        main_config.add_section("device")
-        main_config.set("device", "username", "admin")
-        main_config.set("device", "api_user_key_r1", "main_global_pw")
-        mock_load_config.return_value = main_config
-
-        # Don't set NV_CONFIG_MANAGER_CONFIG_SECRET_PATH - secrets config won't be loaded
-        # This tests the fallback to main config when no secrets file is configured
-        conn = NetworkConnection("host", 22, site="Site B")
-
-        # No secrets config, falls back to main config's global device section
-        assert conn._passwords_to_try == ["main_global_pw"]
-
-
-def test_format_nvue_config_syntax_error():
-    """Test formatting of NVUE API syntax error JSON."""
-    error_json = {
-        "detail": "Error: Unevaluated properties are not "
-        "allowed ('ROUTE-SERVER-CLIENTS' was "
-        "unexpected: expected ['@clear', "
-        "'address-family', "
-        "'autonomous-system', 'confederation', "
-        "'dynamic-neighbor', 'enable', 'in', "
-        "'neighbor', 'out', 'path-selection', "
-        "'peer-group', 'rd', 'route-export', "
-        "'route-import', 'route-reflection', "
-        "'router-id', 'soft', 'timers'])",
-        "status": 400,
-        "title": "Bad Request",
-        "type": "about:blank",
-        "validation": {
-            "selected_errors": [
-                {
-                    "error": "Unevaluated "
-                    "properties "
-                    "are "
-                    "not "
-                    "allowed "
-                    "('ROUTE-SERVER-CLIENTS' "
-                    "was "
-                    "unexpected: "
-                    "expected "
-                    "['@clear', "
-                    "'address-family', "
-                    "'autonomous-system', "
-                    "'confederation', "
-                    "'dynamic-neighbor', "
-                    "'enable', "
-                    "'in', "
-                    "'neighbor', "
-                    "'out', "
-                    "'path-selection', "
-                    "'peer-group', "
-                    "'rd', "
-                    "'route-export', "
-                    "'route-import', "
-                    "'route-reflection', "
-                    "'router-id', "
-                    "'soft', "
-                    "'timers'])",
-                    "instanceLocation": "#/vrf/default/router/bgp",
-                    "keywordLocation": "#/allOf/0/properties/vrf/allOf/0/additionalProperties/allOf/0/properties/router/allOf/0/properties/bgp/x-unevaluatedProperties",
-                }
-            ]
-        },
-    }
-    expected_output = (
-        "Error at '#/vrf/default/router/bgp': "
-        "Unevaluated properties are not allowed ('ROUTE-SERVER-CLIENTS' was "
-        "unexpected: expected ['@clear', "
-        "'address-family', "
-        "'autonomous-system', "
-        "'confederation', "
-        "'dynamic-neighbor', "
-        "'enable', 'in', 'neighbor', 'out', 'path-selection', "
-        "'peer-group', 'rd', 'route-export', 'route-import', "
-        "'route-reflection', 'router-id', 'soft', 'timers'])"
-    )
-    assert ConfigSyntaxException.format_nvue_error(error_json) == expected_output
-
-
-# =============================================================================
-# MockNetworkConnection — diagnostic methods
-# =============================================================================
-
-_TEST_HOST = "192.0.2.1"
-
-
-def test_mock_run_diagnostic_command_returns_valid_json():
-    """run_diagnostic_command returns a valid JSON string with the expected keys."""
-    conn = MockNetworkConnection(_TEST_HOST)
-    raw = conn.run_diagnostic_command("show_version")
-    parsed = json.loads(raw)
-    assert "mock" in parsed
-    assert "command" in parsed
-
-
-def test_mock_run_diagnostic_command_includes_command_name():
-    """The 'command' field in the returned JSON matches the input name."""
-    conn = MockNetworkConnection(_TEST_HOST)
-    raw = conn.run_diagnostic_command("show_bgp_summary")
-    parsed = json.loads(raw)
-    assert parsed["command"] == "show_bgp_summary"
-
-
-def test_mock_get_tech_support_bundle_returns_bytes():
-    """get_tech_support_bundle returns (bytes, log_str)."""
-    conn = MockNetworkConnection(_TEST_HOST)
-    content, log = conn.get_tech_support_bundle()
-    assert isinstance(content, bytes)
-    assert content == b"[mock tech-support bundle]"
-    assert isinstance(log, str)
-
-
-@patch("nv_config_manager.temporal.client.device.paramiko.SSHClient")
-def test_sftp_download_closes_client_when_connect_fails(mock_ssh_client):
-    """SFTP closes the SSH client when connection setup fails."""
-    ssh = mock_ssh_client.return_value
-    ssh.connect.side_effect = paramiko.SSHException("connection failed")
-    conn = CumulusConnection.__new__(CumulusConnection)
-    conn._host = _TEST_HOST
-    conn._username = "admin"
-
-    with pytest.raises(paramiko.SSHException, match="connection failed"):
-        conn._sftp_download("password", "/tmp/support.tar", None)
-
-    ssh.close.assert_called_once_with()
-
-
-# =============================================================================
-# NetworkConnection.from_device_data — mock routing
-# =============================================================================
-
-_CUMULUS_DEVICE = NetworkDeviceData(
-    id="c8f7a95e-4b2a-4e8c-9d5f-1a2b3c4d5e6f",
-    name="test-switch",
-    role="tor-switch",
-    platform="cumulus-linux",
-    site="SITEA",
-    device_type="sn5600",
-    primary_ip4="192.0.2.100",
-    primary_ip6=None,
-)
-
-
-def _mock_config(*, mock: bool) -> ConfigParser:
-    config = ConfigParser()
-    config.add_section("device")
-    config.set("device", "username", "admin")
-    config.set("device", "mock", "true" if mock else "false")
-    return config
-
-
-@patch("nv_config_manager.temporal.client.device.load_config")
-def test_from_device_data_returns_mock_when_config_mock_true(mock_load_config):
-    """Config with [device] mock = true → from_device_data() returns MockNetworkConnection."""
-    mock_load_config.return_value = _mock_config(mock=True)
-    conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
-    assert isinstance(conn, MockNetworkConnection)
-
-
-@patch("nv_config_manager.temporal.client.device.load_config")
-def test_from_device_data_returns_cumulus_when_mock_false(mock_load_config):
-    """Config with [device] mock = false + cumulus-linux platform → returns CumulusConnection."""
-    mock_load_config.return_value = _mock_config(mock=False)
-    conn = NetworkConnection.from_device_data(_CUMULUS_DEVICE)
-    assert isinstance(conn, CumulusConnection)
-
-
-# =============================================================================
-# JuniperConnection (PyEZ / NETCONF)
-# =============================================================================
-
-_JUNIPER_DEVICE = NetworkDeviceData(
-    id="a1b2c3d4-1111-2222-3333-444455556666",
-    name="test-router",
-    role="backbone-router",
-    platform="juniper-junos",
-    site="SITEA",
-    device_type="ptx10002-36qdd",
-    primary_ip4="192.0.2.10",
-    primary_ip6=None,
-)
+from nv_config_manager.temporal.client.device.juniper import _junos_list
 
 
 class _FakeConfigCM:
@@ -364,24 +68,15 @@ def juniper_conn():
     config.add_section("device")
     config.set("device", "username", "shooks")
     config.set("device", "password", "pw")
-    with patch("nv_config_manager.temporal.client.device.load_config", return_value=config):
+    with patch("nv_config_manager.temporal.client.device.base.load_config", return_value=config):
         yield JuniperConnection("192.0.2.10", password="pw")
-
-
-@patch("nv_config_manager.temporal.client.device.load_config")
-def test_from_device_data_returns_juniper_when_mock_false(mock_load_config):
-    """Config with mock = false + juniper-junos platform → JuniperConnection on the NETCONF port."""
-    mock_load_config.return_value = _mock_config(mock=False)
-    conn = NetworkConnection.from_device_data(_JUNIPER_DEVICE)
-    assert isinstance(conn, JuniperConnection)
-    assert conn._port == 830
 
 
 def test_get_device_connects_once_and_caches(juniper_conn):
     """The NETCONF session is opened lazily on first use and reused afterwards."""
     fake_device = MagicMock()
     with patch(
-        "nv_config_manager.temporal.client.device.Device", return_value=fake_device
+        "nv_config_manager.temporal.client.device.juniper.Device", return_value=fake_device
     ) as mock_device:
         first = juniper_conn._get_device()
         second = juniper_conn._get_device()
@@ -417,7 +112,7 @@ def test_perform_candidate_diff_uses_config_op_timeout(juniper_conn):
 
     with (
         patch.object(juniper_conn, "_get_device", return_value=device),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=cu),
+        patch("nv_config_manager.temporal.client.device.juniper.Config", return_value=cu),
         patch.object(juniper_conn, "_load_full_config"),
     ):
         assert juniper_conn.perform_candidate_diff("system { host-name RTR1; }") == "diff"
@@ -428,7 +123,7 @@ def test_perform_candidate_diff_uses_config_op_timeout(juniper_conn):
 
 def test_connect_rotates_then_raises_on_auth_failure(juniper_conn):
     """Genuine auth failures exhaust password rotation and raise NetworkDeviceException."""
-    with patch("nv_config_manager.temporal.client.device.Device") as mock_device:
+    with patch("nv_config_manager.temporal.client.device.juniper.Device") as mock_device:
         mock_device.return_value.open.side_effect = ConnectAuthError(
             dev=SimpleNamespace(hostname="test-router")
         )
@@ -438,7 +133,7 @@ def test_connect_rotates_then_raises_on_auth_failure(juniper_conn):
 
 def test_connect_raises_clear_error_on_probe_failure(juniper_conn):
     """A probe (reachability) failure raises immediately with a NETCONF-specific message."""
-    with patch("nv_config_manager.temporal.client.device.Device") as mock_device:
+    with patch("nv_config_manager.temporal.client.device.juniper.Device") as mock_device:
         mock_device.return_value.open.side_effect = ProbeError(
             dev=SimpleNamespace(hostname="test-router")
         )
@@ -550,8 +245,8 @@ def test_get_running_configuration_redacts_secrets(juniper_conn):
     assert '"$6$<redacted>"' in config
 
 
-def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
-    """Unlike get_running_configuration, the debug getter keeps secrets raw."""
+def test_get_configuration_text_redacts_secrets(juniper_conn):
+    """get_configuration_text redacts secrets, matching get_running_configuration."""
     device = MagicMock()
     device.rpc.get_config.return_value = etree.fromstring(
         "<configuration-information><configuration-output>"
@@ -561,7 +256,8 @@ def test_get_configuration_text_keeps_secrets_raw(juniper_conn):
     )
     with patch.object(juniper_conn, "_get_device", return_value=device):
         text = juniper_conn.get_configuration_text()
-    assert '"$6$abcDE12$secretHash"' in text
+    assert "secretHash" not in text
+    assert '"$6$<redacted>"' in text
 
 
 def test_execute_ztp_issues_zeroize_and_closes(juniper_conn):
@@ -688,7 +384,10 @@ def test_perform_candidate_diff_loads_full_config_rolls_back_and_returns_diff(ju
     cu.diff.return_value = "[edit system]\n-  host-name OLD;\n+  host-name RTR1;"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         diff = juniper_conn.perform_candidate_diff("system { host-name RTR1; }")
     assert "host-name" in diff
@@ -699,7 +398,7 @@ def test_perform_candidate_diff_loads_full_config_rolls_back_and_returns_diff(ju
 
 def test_perform_candidate_diff_rejects_partial(juniper_conn):
     """Partial diffs are rejected; no config session is opened."""
-    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
+    with patch("nv_config_manager.temporal.client.device.juniper.Config") as mock_config:
         with pytest.raises(NetworkDeviceException, match="Partial configuration is not supported"):
             juniper_conn.perform_candidate_diff("system { host-name RTR1; }", partial=True)
     mock_config.assert_not_called()
@@ -707,7 +406,7 @@ def test_perform_candidate_diff_rejects_partial(juniper_conn):
 
 def test_commit_candidate_config_rejects_partial(juniper_conn):
     """Partial commits are rejected; no config session is opened."""
-    with patch("nv_config_manager.temporal.client.device.Config") as mock_config:
+    with patch("nv_config_manager.temporal.client.device.juniper.Config") as mock_config:
         with pytest.raises(NetworkDeviceException, match="Partial configuration is not supported"):
             juniper_conn.commit_candidate_config(
                 "system { host-name RTR1; }", approved_diff="d", partial=True
@@ -721,7 +420,10 @@ def test_perform_candidate_diff_raises_config_syntax_on_load_error(juniper_conn)
     cu.load.side_effect = ConfigLoadError(rsp=_rpc_error_rsp("syntax error"))
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         with pytest.raises(ConfigSyntaxException):
             juniper_conn.perform_candidate_diff("set nonsense")
@@ -734,7 +436,10 @@ def test_perform_candidate_diff_rolls_back_when_diff_rpc_fails(juniper_conn):
     cu.diff.side_effect = RpcError(rsp=_rpc_error_rsp("diff failed"))
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
         patch.object(juniper_conn, "_load_full_config"),
     ):
         with pytest.raises(NetworkDeviceException, match="candidate diff"):
@@ -748,7 +453,10 @@ def test_commit_candidate_config_raises_when_diff_changed(juniper_conn):
     cu.diff.return_value = "new-diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         with pytest.raises(DiffChangedException):
             juniper_conn.commit_candidate_config("config", approved_diff="old-diff")
@@ -762,7 +470,10 @@ def test_commit_candidate_config_no_diff_confirms_pending_commit(juniper_conn):
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.commit_candidate_config("config", approved_diff="", commit_confirm=True)
     cu.rollback.assert_called_once()
@@ -776,7 +487,10 @@ def test_commit_candidate_config_no_diff_direct_does_not_commit(juniper_conn):
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.commit_candidate_config("config", approved_diff="", commit_confirm=False)
     cu.commit.assert_not_called()
@@ -789,7 +503,10 @@ def test_commit_candidate_config_commit_confirm_then_confirms(juniper_conn):
     cu.diff.return_value = "diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.commit_candidate_config("config", approved_diff="diff", commit_confirm=True)
     # First commit carries the confirm timer; the follow-up confirm commit does not.
@@ -804,7 +521,10 @@ def test_commit_candidate_config_direct_commit(juniper_conn):
     cu.diff.return_value = "diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.commit_candidate_config("config", approved_diff="diff", commit_confirm=False)
     cu.commit.assert_called_once()
@@ -818,7 +538,10 @@ def test_commit_candidate_config_raises_on_commit_error(juniper_conn):
     cu.commit.side_effect = CommitError(rsp=_rpc_error_rsp("commit failed"))
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         with pytest.raises(NetworkDeviceException):
             juniper_conn.commit_candidate_config("config", approved_diff="diff")
@@ -835,7 +558,10 @@ def test_get_rollback_diff_returns_diff(juniper_conn):
     cu.diff.return_value = "rollback-diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         diff = juniper_conn.get_rollback_diff(3)
     assert diff == "rollback-diff"
@@ -849,7 +575,10 @@ def test_rollback_configuration_commits_when_diff(juniper_conn):
     cu.diff.return_value = "diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.rollback_configuration(2, commit_confirm=False)
     cu.rollback.assert_called_once_with(rb_id=2)
@@ -862,7 +591,10 @@ def test_rollback_configuration_noop_when_no_diff(juniper_conn):
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.rollback_configuration(2, commit_confirm=False)
     # rollback(rb_id=2) to load, then rollback() to discard the unchanged candidate.
@@ -874,7 +606,7 @@ def test_save_rescue_configuration_calls_rescue_save(juniper_conn):
     """save_rescue_configuration issues a rescue save."""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+        patch("nv_config_manager.temporal.client.device.juniper.Config") as mock_config,
     ):
         juniper_conn.save_rescue_configuration()
     mock_config.return_value.rescue.assert_called_once_with(action="save")
@@ -930,7 +662,7 @@ def test_delete_rescue_configuration_calls_rescue_delete(juniper_conn):
     """delete_rescue_configuration issues a rescue delete."""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config") as mock_config,
+        patch("nv_config_manager.temporal.client.device.juniper.Config") as mock_config,
     ):
         juniper_conn.delete_rescue_configuration()
     mock_config.return_value.rescue.assert_called_once_with(action="delete")
@@ -943,7 +675,10 @@ def test_rollback_to_rescue_reloads_and_commits(juniper_conn):
     cu.diff.return_value = "diff"
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.rollback_to_rescue(commit_confirm=False)
     cu.rescue.assert_called_once_with(action="reload")
@@ -957,7 +692,10 @@ def test_rollback_to_rescue_noop_when_no_diff(juniper_conn):
     cu.diff.return_value = ""
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         juniper_conn.rollback_to_rescue(commit_confirm=False)
     cu.commit.assert_not_called()
@@ -970,7 +708,10 @@ def test_rollback_to_rescue_raises_when_rescue_missing(juniper_conn):
     cu.rescue.return_value = False
     with (
         patch.object(juniper_conn, "_get_device", return_value=MagicMock()),
-        patch("nv_config_manager.temporal.client.device.Config", return_value=_FakeConfigCM(cu)),
+        patch(
+            "nv_config_manager.temporal.client.device.juniper.Config",
+            return_value=_FakeConfigCM(cu),
+        ),
     ):
         with pytest.raises(NetworkDeviceException, match="No rescue configuration"):
             juniper_conn.rollback_to_rescue(commit_confirm=False)
