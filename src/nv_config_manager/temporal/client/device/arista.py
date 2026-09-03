@@ -298,7 +298,7 @@ class AristaConnection(NetworkConnection):
         """Get the system hostname."""
         try:
             return str(self._node.enable("show hostname")[0]["result"]["hostname"])
-        except ValueError as error:
+        except (KeyError, IndexError, ValueError) as error:
             raise ApplicationError(
                 f"No hostname configured for {self._host}",
                 non_retryable=True,
