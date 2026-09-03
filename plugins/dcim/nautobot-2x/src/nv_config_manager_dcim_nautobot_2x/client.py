@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import ssl
 import types
 from collections.abc import Callable
@@ -27,6 +28,8 @@ from aiohttp import ClientTimeout, TCPConnector
 from nv_config_manager_dcim.errors import DCIMError
 
 logger = logging.getLogger(__name__)
+
+_SAFE_REST_PATH = re.compile(r"[A-Za-z0-9._~/-]+")
 
 
 class NautobotException(DCIMError):
@@ -140,6 +143,20 @@ class NautobotClient:
             return {"Authorization": f"Token {self.token}"}
         return None
 
+    def _rest_url(self, path: str) -> str:
+        """Return a URL for a safe path relative to the Nautobot REST API root."""
+        path_parts = path.split("/")
+        if (
+            not path
+            or path.startswith("/")
+            or "\\" in path
+            or _SAFE_REST_PATH.fullmatch(path) is None
+            or any(part in {".", ".."} for part in path_parts)
+            or any(not part for part in path_parts[:-1])
+        ):
+            raise ValueError("Nautobot API path must be a safe relative path")
+        return f"{self.rest_endpoint}{path}"
+
     async def close(self) -> None:
         """Close the HTTP client session.
 
@@ -200,7 +217,7 @@ class NautobotClient:
         if operation_name is not None:
             payload["operationName"] = operation_name
 
-        logger.debug("Executing GraphQL query: %s with variables: %s", query[:100], variables)
+        logger.debug("Executing GraphQL query")
 
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.post(
@@ -233,10 +250,11 @@ class NautobotClient:
         Returns:
             Response JSON data
         """
+        request_url = self._rest_url(path)
         session = await self._ensure_session()
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.get(
-            f"{self.rest_endpoint}{path}",
+            request_url,
             params=params,
             timeout=request_timeout,
             headers=self._resolve_headers(),
@@ -278,10 +296,11 @@ class NautobotClient:
         Returns:
             Response JSON data
         """
+        request_url = self._rest_url(path)
         session = await self._ensure_session()
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.post(
-            f"{self.rest_endpoint}{path}",
+            request_url,
             json=data,
             timeout=request_timeout,
             headers=self._resolve_headers(),
@@ -301,10 +320,11 @@ class NautobotClient:
         Returns:
             Response JSON data
         """
+        request_url = self._rest_url(path)
         session = await self._ensure_session()
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.patch(
-            f"{self.rest_endpoint}{path}",
+            request_url,
             json=data,
             timeout=request_timeout,
             headers=self._resolve_headers(),
@@ -320,10 +340,11 @@ class NautobotClient:
             path: API path (relative to /api/)
             timeout: Request timeout in seconds
         """
+        request_url = self._rest_url(path)
         session = await self._ensure_session()
         request_timeout = aiohttp.ClientTimeout(total=timeout or self._timeout)
         async with session.delete(
-            f"{self.rest_endpoint}{path}",
+            request_url,
             timeout=request_timeout,
             headers=self._resolve_headers(),
         ) as rsp:

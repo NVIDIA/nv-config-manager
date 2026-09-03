@@ -170,11 +170,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
         self, query: str, variables: dict[str, Any] | None = None, timeout: int | None = 10
     ) -> dict[str, Any]:
         """Execute a graphql query with Temporal-specific error handling."""
-        logger.info(
-            "%s: Sending graphql query with variables %s",
-            self.graphql_endpoint,
-            variables,
-        )
+        logger.info("Sending GraphQL query to Nautobot")
         try:
             return await super().graphql_query(query, variables, timeout)
         except NautobotException as e:
