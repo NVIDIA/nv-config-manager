@@ -154,10 +154,10 @@ Protected** - unprotected variables are visible to the untrusted
 | `NVCM_TEST_ENV_TARGETS` | One record per env: `env\|env_branch\|namespace\|release_name\|baseline_values\|state_dir` (see `scripts/test_env_config.sh`) |
 | `NVCM_CHART_REPO` | Helm repo URL ArgoCD reads the promoted chart from, e.g. `https://helm.ngc.nvidia.com/nvidian/cfa` (must match the `ngc` target in `NVCM_CHART_TARGETS`); written into deploy-state as `chartRepo` |
 | `NVCM_ARGOCD_SERVER` | ArgoCD API base URL used by the post-deployment health gate |
-| `NVCM_ARGOCD_AUTH_TOKEN` | Protected + masked (or masked and hidden) token for a least-privilege ArgoCD role allowed to `get` and `sync` only `nv-config-manager-test` and `nv-config-manager-test01`; disable **Expand variable reference** and confirm the saved variable remains masked |
+| `NVCM_ARGOCD_AUTH_TOKEN` | Protected, masked, and hidden token for a least-privilege ArgoCD role allowed to `get` and `sync` only `nv-config-manager-test` and `nv-config-manager-test01`; disable **Expand variable reference** and confirm the saved variable remains masked |
 | `NVCM_ARGOCD_APPLICATION_NAMESPACE` | Optional namespace containing the Applications; defaults to `argocd` |
 | `NVCM_ARGOCD_PROJECT` | Optional ArgoCD project containing the Applications; defaults to `kiwi` |
-| `NVCM_ARGOCD_SYNC_TIMEOUT` / `NVCM_ARGOCD_POLL_INTERVAL` | Optional health-gate tuning in seconds; defaults to 1800 / 10. Keep the sync timeout below the job's 35-minute timeout; the poll interval must be greater than zero in CI |
+| `NVCM_ARGOCD_SYNC_TIMEOUT` / `NVCM_ARGOCD_POLL_INTERVAL` | Optional health-gate tuning in seconds; defaults to 1800 / 10. The sync timeout may be lowered but must not exceed 1800, preserving headroom under the job's 35-minute timeout; the poll interval must be greater than zero |
 | `NVCM_ARGOCD_MAX_SYNC_ATTEMPTS` / `NVCM_ARGOCD_MAX_STALE_TERMINATIONS` | Optional mutation bounds; both default to 2. Sync requests consume their attempt when sent; stale-operation terminations consume their budget only when accepted. After the sync limit, the gate observes without further mutations until convergence or timeout |
 | `NVCM_UPSTREAM_GITHUB_REPO` | Optional override for the upstream GitHub repo checked by the stale-HEAD guard (default `dsx-ai-factory/nv-config-manager`) |
 
@@ -170,6 +170,10 @@ p, proj:kiwi:nvcm-promoter, applications, sync, kiwi/nv-config-manager-test, all
 p, proj:kiwi:nvcm-promoter, applications, get, kiwi/nv-config-manager-test01, allow
 p, proj:kiwi:nvcm-promoter, applications, sync, kiwi/nv-config-manager-test01, allow
 ```
+
+This is a deployment credential: anyone who can read it can ask ArgoCD to sync
+an arbitrary revision to either shared test Application. Keep it available only
+to the protected promotion pipeline; never expose it to a PR build job.
 
 Runbooks:
 

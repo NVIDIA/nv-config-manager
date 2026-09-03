@@ -95,23 +95,33 @@ case "${method}:${url}" in
             0)
                 response_body="$(jq -cn \
                     --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --arg old "$MOCK_OLD_GIT" --argjson prune "$automated_prune" \
-                    '{spec:{syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Running",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
+                    '{spec:{sources:[{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Running",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
                 ;;
             1)
                 response_body="$(jq -cn \
                     --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --arg old "$MOCK_OLD_GIT" --argjson prune "$automated_prune" \
-                    '{spec:{syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Terminating",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
+                    '{spec:{sources:[{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Terminating",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
                 printf '2' > "${MOCK_ARGO_ROOT}/state"
                 ;;
             2)
                 response_body="$(jq -cn \
                     --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --arg old "$MOCK_OLD_GIT" --argjson prune "$automated_prune" \
-                    '{spec:{syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Failed",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
+                    '{spec:{sources:[{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Failed",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
                 ;;
             3)
                 response_body="$(jq -cn \
                     --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --argjson prune "$automated_prune" \
-                    '{spec:{syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"Synced",revisions:[$chart,$git]},health:{status:"Healthy"},operationState:{phase:"Succeeded",operation:{sync:{revisions:[$chart,$git]}}},resources:[]}}')"
+                    '{spec:{sources:[{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"Synced",revisions:[$chart,$git]},health:{status:"Healthy"},operationState:{phase:"Succeeded",operation:{sync:{revisions:[$chart,$git]}}},resources:[]}}')"
+                ;;
+            4)
+                response_body="$(jq -cn \
+                    --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --arg old "$MOCK_OLD_GIT" --argjson prune "$automated_prune" \
+                    '{spec:{sources:[{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"Synced",revisions:[$chart,$git]},health:{status:"Healthy"},operationState:{phase:"Succeeded",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
+                ;;
+            5)
+                response_body="$(jq -cn \
+                    --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --arg old "$MOCK_OLD_GIT" --argjson prune "$automated_prune" \
+                    '{spec:{sources:[{},{},{}],syncPolicy:{automated:{prune:$prune}}},status:{sync:{status:"OutOfSync",revisions:[$chart,$git]},health:{status:"Progressing"},operationState:{phase:"Failed",operation:{sync:{revisions:["0.0.0-pr998.deadbeef",$old]}}},resources:[]}}')"
                 ;;
         esac
         respond 200 "$response_body"
@@ -138,7 +148,7 @@ case "${method}:${url}" in
             respond 409 '{"message":"operation is terminating"}'
             exit 0
         fi
-        [[ "$state" == 2 ]]
+        [[ "$state" == 2 || "$state" == 4 ]]
         jq -e \
             --arg chart "$MOCK_EXPECTED_CHART" --arg git "$MOCK_EXPECTED_GIT" --argjson prune "$automated_prune" \
             '.project == "kiwi" and .prune == $prune and .revisions == [$chart, $git] and .sourcePositions == [1, 2]' \
@@ -165,6 +175,15 @@ esac
 MOCK_CURL
 chmod +x "${test_root}/bin/curl"
 
+cat > "${test_root}/bin/sleep" <<'MOCK_SLEEP'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${MOCK_REAL_SLEEP:-false}" == "true" ]]; then
+    /bin/sleep "$@"
+fi
+MOCK_SLEEP
+chmod +x "${test_root}/bin/sleep"
+
 reset_mock() {
     printf '%s' "${1:-0}" > "${test_root}/state"
     printf '0' > "${test_root}/get-attempts"
@@ -178,12 +197,12 @@ export MOCK_ARGO_ROOT="$test_root"
 export MOCK_EXPECTED_CHART="$expected_chart"
 export MOCK_EXPECTED_GIT="$expected_git"
 export MOCK_OLD_GIT="$old_git"
-export MOCK_EXPECTED_TOKEN='eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwcm9qZWN0In0.signature_123'
+printf -v MOCK_EXPECTED_TOKEN '%s.%s.%s' 'test-header' 'test-payload' 'test-signature'
+export MOCK_EXPECTED_TOKEN
 export CI_PROJECT_DIR="${test_root}/project"
 export NVCM_ARGOCD_SERVER='https://argocd.example.test'
 export NVCM_ARGOCD_AUTH_TOKEN="$MOCK_EXPECTED_TOKEN"
-export NVCM_ARGOCD_POLL_INTERVAL=0
-export NVCM_ARGOCD_ALLOW_ZERO_POLL_INTERVAL_FOR_TESTS=true
+export NVCM_ARGOCD_POLL_INTERVAL=1
 export NVCM_ARGOCD_SYNC_TIMEOUT=10
 export NVCM_ARGOCD_MAX_SYNC_ATTEMPTS=2
 
@@ -191,8 +210,12 @@ if NVCM_ARGOCD_SERVER='http://argocd.example.test' bash "${script_dir}/wait_for_
     echo 'ERROR: health gate accepted a non-HTTPS ArgoCD server' >&2
     exit 1
 fi
-if NVCM_ARGOCD_ALLOW_ZERO_POLL_INTERVAL_FOR_TESTS=false bash "${script_dir}/wait_for_argocd.sh" >/dev/null 2>&1; then
-    echo 'ERROR: health gate accepted a zero poll interval outside test mode' >&2
+if NVCM_ARGOCD_POLL_INTERVAL=0 bash "${script_dir}/wait_for_argocd.sh" >/dev/null 2>&1; then
+    echo 'ERROR: health gate accepted a zero poll interval' >&2
+    exit 1
+fi
+if NVCM_ARGOCD_SYNC_TIMEOUT=1801 bash "${script_dir}/wait_for_argocd.sh" >/dev/null 2>&1; then
+    echo 'ERROR: health gate accepted a timeout without job-level diagnostic headroom' >&2
     exit 1
 fi
 
@@ -227,13 +250,34 @@ MOCK_ALWAYS_REJECT_SYNC=true MOCK_CONVERGE_AFTER_REJECTED_SYNCS=true \
 # Without external convergence, exhausting the sync mutation budget keeps
 # polling until the convergence deadline and still sends no third mutation.
 reset_mock 2
-if bounded_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=2 NVCM_ARGOCD_POLL_INTERVAL=1 MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
+if bounded_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=2 MOCK_REAL_SLEEP=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
     echo 'ERROR: health gate unexpectedly converged while syncs were rejected' >&2
     exit 1
 fi
 grep -q 'continuing observation without further mutations' <<<"$bounded_output"
 grep -q 'timed out waiting for exact-revision ArgoCD convergence' <<<"$bounded_output"
 [[ "$(cat "${test_root}/post-attempts")" == 2 ]]
+
+# A Synced/Healthy desired state is not sufficient when the recorded successful
+# operation belongs to an older deployment. The gate must try an exact sync and
+# fail if that operation never converges to the promoted revisions.
+reset_mock 4
+if stale_terminal_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=2 NVCM_ARGOCD_MAX_SYNC_ATTEMPTS=1 MOCK_REAL_SLEEP=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
+    echo 'ERROR: health gate accepted a successful operation for stale revisions' >&2
+    exit 1
+fi
+grep -q 'timed out waiting for exact-revision ArgoCD convergence' <<<"$stale_terminal_output"
+[[ "$(cat "${test_root}/post-attempts")" == 1 ]]
+
+# Positional revision overrides are unsafe unless Argo reports one resolved
+# revision for every configured source.
+reset_mock 5
+if source_mismatch_output="$(bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
+    echo 'ERROR: health gate accepted mismatched source and revision counts' >&2
+    exit 1
+fi
+grep -q 'reports 2 resolved revisions for 3 configured sources' <<<"$source_mismatch_output"
+[[ "$(cat "${test_root}/post-attempts")" == 0 ]]
 
 # A rejected DELETE does not consume the successful-termination budget. With a
 # limit of one, the next termination succeeds and the gate still converges.

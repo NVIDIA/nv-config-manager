@@ -30,22 +30,22 @@ max_sync_attempts="${NVCM_ARGOCD_MAX_SYNC_ATTEMPTS:-2}"
 max_stale_terminations="${NVCM_ARGOCD_MAX_STALE_TERMINATIONS:-2}"
 request_connect_timeout="${NVCM_ARGOCD_CONNECT_TIMEOUT:-10}"
 request_timeout="${NVCM_ARGOCD_REQUEST_TIMEOUT:-60}"
-allow_zero_poll_interval="${NVCM_ARGOCD_ALLOW_ZERO_POLL_INTERVAL_FOR_TESTS:-false}"
 
 for numeric_value in "$poll_interval" "$timeout" "$max_sync_attempts" "$max_stale_terminations" "$request_connect_timeout" "$request_timeout"; do
     [[ "$numeric_value" =~ ^[0-9]+$ ]] || { echo "ERROR: ArgoCD timing/attempt settings must be non-negative integers" >&2; exit 1; }
 done
-(( timeout > 0 && max_sync_attempts > 0 && max_stale_terminations > 0 && request_connect_timeout > 0 && request_timeout > 0 )) || {
-    echo "ERROR: ArgoCD timeout, request bounds, and attempt limits must be greater than zero" >&2
+(( poll_interval > 0 && timeout > 0 && max_sync_attempts > 0 && max_stale_terminations > 0 && request_connect_timeout > 0 && request_timeout > 0 )) || {
+    echo "ERROR: ArgoCD timing, request bounds, and attempt limits must be greater than zero" >&2
     exit 1
 }
-if (( poll_interval == 0 )) && [[ "$allow_zero_poll_interval" != "true" ]]; then
-    echo "ERROR: NVCM_ARGOCD_POLL_INTERVAL must be greater than zero outside explicit test mode" >&2
+if (( timeout > 1800 )); then
+    echo "ERROR: NVCM_ARGOCD_SYNC_TIMEOUT must not exceed 1800 seconds so the 35-minute job retains diagnostic headroom" >&2
     exit 1
 fi
 [[ "$application" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD application name '${application}'" >&2; exit 1; }
 [[ "$app_namespace" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD application namespace '${app_namespace}'" >&2; exit 1; }
 [[ "$argocd_project" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD project '${argocd_project}'" >&2; exit 1; }
+[[ "$expected_chart_revision" =~ ^0\.0\.0-pr[0-9]+\.[0-9a-f]{8}$ ]] || { echo "ERROR: expected chart revision is not a PR promotion version" >&2; exit 1; }
 [[ "$expected_git_revision" =~ ^[0-9a-f]{40}$ ]] || { echo "ERROR: expected Git revision is not a full SHA-1" >&2; exit 1; }
 [[ "$NVCM_ARGOCD_SERVER" == https://* ]] || { echo "ERROR: NVCM_ARGOCD_SERVER must use https://" >&2; exit 1; }
 [[ "$NVCM_ARGOCD_AUTH_TOKEN" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]] || {
@@ -247,8 +247,14 @@ while (( $(date +%s) <= deadline )); do
                 sync_budget_exhausted_reported=true
             fi
         else
-            sync_attempts=$((sync_attempts + 1))
             desired_revisions="$(jq -c '.status.sync.revisions' <<<"$last_payload")"
+            source_count="$(jq -r '(.spec.sources // []) | length' <<<"$last_payload")"
+            revision_count="$(jq -r '(.status.sync.revisions // []) | length' <<<"$last_payload")"
+            if (( source_count != revision_count )); then
+                failure_reason="ArgoCD reports ${revision_count} resolved revisions for ${source_count} configured sources; refusing a positional sync"
+                break
+            fi
+            sync_attempts=$((sync_attempts + 1))
             desired_source_positions="$(jq -c '[.status.sync.revisions | to_entries[] | .key + 1]' <<<"$last_payload")"
             sync_prune="$(jq -c '(.spec.syncPolicy.automated.prune // false) == true' <<<"$last_payload")"
             sync_request="$(jq -cn \
