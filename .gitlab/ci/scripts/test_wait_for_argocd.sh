@@ -11,8 +11,18 @@ mkdir -p "${test_root}/bin" "${test_root}/project"
 expected_chart='0.0.0-pr999.01234567'
 expected_git='0123456789abcdef0123456789abcdef01234567'
 old_git='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+resolved_env="$(NVCM_TEST_ENV_TARGETS='test|test-branch|test-namespace|test-release|baseline.yaml|state-dir|test-application' \
+    bash "${script_dir}/test_env_config.sh" test)"
+grep -Fqx 'export NVCM_ENV_ARGOCD_APPLICATION=test-application' <<<"$resolved_env"
+if NVCM_TEST_ENV_TARGETS='test|test-branch|test-namespace|test-release|baseline.yaml|state-dir' \
+    bash "${script_dir}/test_env_config.sh" test >/dev/null 2>&1; then
+    echo 'ERROR: environment target without an ArgoCD Application was accepted' >&2
+    exit 1
+fi
+
 {
-    printf 'ARGOCD_APPLICATION=nv-config-manager-test\n'
+    printf 'ARGOCD_APPLICATION=test-application\n'
     printf 'ARGOCD_EXPECTED_CHART_REVISION=%s\n' "$expected_chart"
     printf 'ARGOCD_EXPECTED_GIT_REVISION=%s\n' "$expected_git"
 } > "${test_root}/project/deploy.env"
@@ -79,7 +89,7 @@ respond() {
 state="$(cat "${MOCK_ARGO_ROOT}/state")"
 automated_prune="${MOCK_AUTOMATED_PRUNE:-true}"
 case "${method}:${url}" in
-    GET:*/api/v1/applications/nv-config-manager-test\?appNamespace=argocd\&project=kiwi)
+    GET:*/api/v1/applications/test-application\?appNamespace=argocd\&project=kiwi)
         get_attempts="$(cat "${MOCK_ARGO_ROOT}/get-attempts")"
         printf '%s' "$((get_attempts + 1))" > "${MOCK_ARGO_ROOT}/get-attempts"
         if [[ -n "${MOCK_GET_HTTP_STATUS:-}" ]]; then
@@ -126,7 +136,7 @@ case "${method}:${url}" in
         esac
         respond 200 "$response_body"
         ;;
-    DELETE:*/api/v1/applications/nv-config-manager-test/operation\?appNamespace=argocd\&project=kiwi)
+    DELETE:*/api/v1/applications/test-application/operation\?appNamespace=argocd\&project=kiwi)
         [[ "$state" == 0 ]]
         delete_attempts="$(cat "${MOCK_ARGO_ROOT}/delete-attempts")"
         delete_attempts=$((delete_attempts + 1))
@@ -142,7 +152,7 @@ case "${method}:${url}" in
         printf '1' > "${MOCK_ARGO_ROOT}/state"
         respond 200 '{}'
         ;;
-    POST:*/api/v1/applications/nv-config-manager-test/sync\?appNamespace=argocd\&project=kiwi)
+    POST:*/api/v1/applications/test-application/sync\?appNamespace=argocd\&project=kiwi)
         if [[ "$state" == 1 ]]; then
             printf 'yes' > "${MOCK_ARGO_ROOT}/synced-while-terminating"
             respond 409 '{"message":"operation is terminating"}'
@@ -178,17 +188,29 @@ chmod +x "${test_root}/bin/curl"
 cat > "${test_root}/bin/sleep" <<'MOCK_SLEEP'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${MOCK_REAL_SLEEP:-false}" == "true" ]]; then
-    /bin/sleep "$@"
-fi
 MOCK_SLEEP
 chmod +x "${test_root}/bin/sleep"
+
+cat > "${test_root}/bin/date" <<'MOCK_DATE'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${MOCK_STEP_CLOCK:-false}" == "true" ]]; then
+    [[ "$*" == "+%s" ]]
+    clock="$(cat "${MOCK_ARGO_ROOT}/clock")"
+    printf '%s\n' "$clock"
+    printf '%s' "$((clock + 1))" > "${MOCK_ARGO_ROOT}/clock"
+else
+    /bin/date "$@"
+fi
+MOCK_DATE
+chmod +x "${test_root}/bin/date"
 
 reset_mock() {
     printf '%s' "${1:-0}" > "${test_root}/state"
     printf '0' > "${test_root}/get-attempts"
     printf '0' > "${test_root}/delete-attempts"
     printf '0' > "${test_root}/post-attempts"
+    printf '0' > "${test_root}/clock"
     rm -f "${test_root}/synced-while-terminating"
 }
 
@@ -250,7 +272,7 @@ MOCK_ALWAYS_REJECT_SYNC=true MOCK_CONVERGE_AFTER_REJECTED_SYNCS=true \
 # Without external convergence, exhausting the sync mutation budget keeps
 # polling until the convergence deadline and still sends no third mutation.
 reset_mock 2
-if bounded_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=2 MOCK_REAL_SLEEP=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
+if bounded_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=4 MOCK_STEP_CLOCK=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
     echo 'ERROR: health gate unexpectedly converged while syncs were rejected' >&2
     exit 1
 fi
@@ -262,7 +284,7 @@ grep -q 'timed out waiting for exact-revision ArgoCD convergence' <<<"$bounded_o
 # operation belongs to an older deployment. The gate must try an exact sync and
 # fail if that operation never converges to the promoted revisions.
 reset_mock 4
-if stale_terminal_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=2 NVCM_ARGOCD_MAX_SYNC_ATTEMPTS=1 MOCK_REAL_SLEEP=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
+if stale_terminal_output="$(NVCM_ARGOCD_SYNC_TIMEOUT=3 NVCM_ARGOCD_MAX_SYNC_ATTEMPTS=1 MOCK_STEP_CLOCK=true MOCK_ALWAYS_REJECT_SYNC=true bash "${script_dir}/wait_for_argocd.sh" 2>&1)"; then
     echo 'ERROR: health gate accepted a successful operation for stale revisions' >&2
     exit 1
 fi

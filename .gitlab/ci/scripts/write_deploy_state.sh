@@ -13,7 +13,8 @@
 #          BASELINE_REVISION, ENV_BRANCH_REVISION), and digests.env from
 #          test-promote-push-images (DIGEST_<IMAGE> x9)
 # Requires (eval of test_env_config.sh): NVCM_ENV, NVCM_ENV_BRANCH,
-#          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR
+#          NVCM_ENV_NAMESPACE, NVCM_ENV_RELEASE_NAME, NVCM_ENV_STATE_DIR,
+#          NVCM_ENV_ARGOCD_APPLICATION
 # Requires (protected variables): NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN,
 #          NVCM_VALUES_REPO_PATH (or NV_CONFIG_MANAGER_VALUES_REPO_URL),
 #          NVCM_CHART_REPO (Helm repo URL ArgoCD reads the chart from, e.g.
@@ -25,6 +26,7 @@ set -euo pipefail
 : "${NVCM_ENV_NAMESPACE:?eval test_env_config.sh first}"
 : "${NVCM_ENV_RELEASE_NAME:?eval test_env_config.sh first}"
 : "${NVCM_ENV_STATE_DIR:?eval test_env_config.sh first}"
+: "${NVCM_ENV_ARGOCD_APPLICATION:?eval test_env_config.sh first}"
 : "${NVCM_CHART_REPO:?Set NVCM_CHART_REPO to the Helm repo URL ArgoCD reads the chart from}"
 
 # ---------------------------------------------------------------------------
@@ -89,7 +91,7 @@ deploy_attest="${CI_PROJECT_DIR}/deploy.env"
 write_deploy_attestation() {
     local git_revision="$1"
     {
-        printf 'ARGOCD_APPLICATION=nv-config-manager-%s\n' "$NVCM_ENV"
+        printf 'ARGOCD_APPLICATION=%s\n' "$NVCM_ENV_ARGOCD_APPLICATION"
         printf 'ARGOCD_EXPECTED_CHART_REVISION=%s\n' "$PROMOTE_VERSION"
         printf 'ARGOCD_EXPECTED_GIT_REVISION=%s\n' "$git_revision"
     } > "$deploy_attest"

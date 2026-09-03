@@ -45,7 +45,6 @@ fi
 [[ "$application" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD application name '${application}'" >&2; exit 1; }
 [[ "$app_namespace" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD application namespace '${app_namespace}'" >&2; exit 1; }
 [[ "$argocd_project" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ ]] || { echo "ERROR: invalid ArgoCD project '${argocd_project}'" >&2; exit 1; }
-[[ "$expected_chart_revision" =~ ^0\.0\.0-pr[0-9]+\.[0-9a-f]{8}$ ]] || { echo "ERROR: expected chart revision is not a PR promotion version" >&2; exit 1; }
 [[ "$expected_git_revision" =~ ^[0-9a-f]{40}$ ]] || { echo "ERROR: expected Git revision is not a full SHA-1" >&2; exit 1; }
 [[ "$NVCM_ARGOCD_SERVER" == https://* ]] || { echo "ERROR: NVCM_ARGOCD_SERVER must use https://" >&2; exit 1; }
 [[ "$NVCM_ARGOCD_AUTH_TOKEN" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]] || {
