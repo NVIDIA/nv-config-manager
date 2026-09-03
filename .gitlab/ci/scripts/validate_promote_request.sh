@@ -104,9 +104,32 @@ validation_job_status="$(printf '%s' "$source_jobs_json" \
 # The trusted webhook validator records the verified PR/build identity in a
 # file artifact. Read that file rather than pipeline variables, whose values
 # can have been supplied by the trigger caller at the highest precedence.
-verified_request="$(curl -fsSL --max-time 30 \
+artifact_body="$(mktemp)"
+trap 'rm -f "$artifact_body"' EXIT
+artifact_result="$(curl -sS --max-time 30 --proto '=https' \
+    -o "$artifact_body" -w '%{http_code}\n%{redirect_url}' \
     -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
     "${api}/jobs/${validation_job_id}/artifacts/promote-request.env")"
+artifact_http="${artifact_result%%$'\n'*}"
+artifact_redirect="${artifact_result#*$'\n'}"
+case "$artifact_http" in
+    200)
+        verified_request="$(<"$artifact_body")"
+        ;;
+    301|302|303|307|308)
+        [[ "$artifact_redirect" == https://* ]] \
+            || fail "artifact redirect must use HTTPS"
+        # Do not send the GitLab job token to object storage or a CDN. The
+        # redirect URL is already authorized by GitLab and is fetched alone.
+        verified_request="$(curl -fsSL --max-time 30 --max-redirs 3 \
+            --proto '=https' --proto-redir '=https' "$artifact_redirect")"
+        ;;
+    *)
+        fail "could not download verified request artifact (HTTP ${artifact_http:-000})"
+        ;;
+esac
+rm -f "$artifact_body"
+trap - EXIT
 verified_value() {
     local key="$1"
     printf '%s\n' "$verified_request" | grep -m1 "^${key}=" | cut -d= -f2-

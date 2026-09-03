@@ -14,6 +14,21 @@ main_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 # The validators call only GitLab read endpoints. Return deterministic API
 # metadata so the authorization boundary can be tested without network access.
 curl() {
+    local args=("$@") output_file="" has_job_token=false
+    local has_https_proto=false has_https_redirect_proto=false
+    local i arg
+    for ((i = 0; i < ${#args[@]}; i++)); do
+        arg="${args[$i]}"
+        if [[ "$arg" == "JOB-TOKEN: job-token" ]]; then
+            has_job_token=true
+        elif [[ "$arg" == "-o" || "$arg" == "--output" ]]; then
+            output_file="${args[$((i + 1))]}"
+        elif [[ "$arg" == "--proto" && "${args[$((i + 1))]}" == "=https" ]]; then
+            has_https_proto=true
+        elif [[ "$arg" == "--proto-redir" && "${args[$((i + 1))]}" == "=https" ]]; then
+            has_https_redirect_proto=true
+        fi
+    done
     local url="${!#}"
     if [[ "${CI_API_V4_URL:-}" != https://* ]]; then
         echo "curl must not be called for a non-HTTPS CI_API_V4_URL" >&2
@@ -50,6 +65,22 @@ curl() {
             printf '{}\n'
             ;;
         */projects/7/jobs/202/artifacts/promote-request.env)
+            [[ "$has_job_token" == true && "$has_https_proto" == true && -n "$output_file" ]] || return 97
+            if [[ "${MOCK_ARTIFACT_DIRECT:-false}" == true ]]; then
+                printf 'VERIFIED_PROMOTE_PR=%s\nVERIFIED_PROMOTE_PR_SHA=%s\nVERIFIED_PROMOTE_BUILD_PIPELINE_ID=100\n' \
+                    "${MOCK_VERIFIED_PR:-123}" "$pr_sha" > "$output_file"
+                printf '200\n'
+            else
+                : > "$output_file"
+                printf '302\n%s\n' "${MOCK_ARTIFACT_REDIRECT_URL}"
+            fi
+            ;;
+        https://artifacts.example/promote-request.env)
+            [[ "$has_job_token" == false && "$has_https_proto" == true \
+                && "$has_https_redirect_proto" == true ]] || {
+                echo "job token leaked to artifact redirect" >&2
+                return 98
+            }
             printf 'VERIFIED_PROMOTE_PR=%s\nVERIFIED_PROMOTE_PR_SHA=%s\nVERIFIED_PROMOTE_BUILD_PIPELINE_ID=100\n' \
                 "${MOCK_VERIFIED_PR:-123}" "$pr_sha"
             ;;
@@ -110,6 +141,8 @@ run_final_validator() (
     export NVCM_PROMOTE_SOURCE_ENVIRONMENT="${TEST_SOURCE_ENVIRONMENT:-test}"
     export NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION="${TEST_SOURCE_ACTION:-prepare}"
     export MOCK_VERIFIED_PR="${TEST_VERIFIED_PR:-123}"
+    export MOCK_ARTIFACT_REDIRECT_URL="${TEST_ARTIFACT_REDIRECT_URL:-https://artifacts.example/promote-request.env}"
+    export MOCK_ARTIFACT_DIRECT="${TEST_ARTIFACT_DIRECT:-false}"
     bash "$final_validator"
 )
 
@@ -133,6 +166,7 @@ assert_source_rejected() {
 
 run_source_validator
 run_final_validator
+TEST_ARTIFACT_DIRECT=true run_final_validator
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_source_rejected "CI_API_V4_URL must use HTTPS"
 TEST_OBJECT_KIND=pipeline assert_source_rejected "webhook event is not a push"
 TEST_PROJECT_ID=8 assert_source_rejected "webhook project does not match"
@@ -141,6 +175,7 @@ TEST_AFTER=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "afte
 TEST_BUILD_USER_ID=8 assert_source_rejected "build pipeline user does not match"
 TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "moved to"
 TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_final_rejected "CI_API_V4_URL must use HTTPS"
+TEST_ARTIFACT_REDIRECT_URL=http://artifacts.example/promote-request.env assert_final_rejected "artifact redirect must use HTTPS"
 TEST_VERIFIED_PR=999 assert_final_rejected "verified request PR does not match"
 TEST_SOURCE_ENVIRONMENT=test01 assert_final_rejected "does not match 'test'"
 TEST_SOURCE_ACTION=start assert_final_rejected "action is not 'prepare'"
