@@ -159,9 +159,15 @@ Runbooks:
 
 - **Deploy a PR**: a vetted `pull-request/<n>` mirror sync automatically starts
   the no-secrets build and a protected `main` request pipeline named for the
-  PR. Once its validator has observed a successful build, select
-  **promote-to-test** or **promote-to-test01**; there is no separate **Run
-  pipeline** step and no variables to enter. The protected promotion verifies
+  PR. Select **promote-to-test** or **promote-to-test01**; there is no separate
+  **Run pipeline** step and no variables to enter. The runnerless button creates
+  a same-project child pipeline, which waits for the build if necessary. The
+  request validator does not occupy a runner while the PR build runs, and the
+  child is intentionally triggered without a status-mirroring strategy so a
+  promotion failure does not replace the default branch's ref status. The
+  small request validator still fails visibly for a malformed or superseded
+  webhook event; the newer sync creates the later request pipeline. The
+  protected promotion verifies
   the webhook payload, original build pipeline, PR SHA, trusted button job,
   and environment, then pushes images (capturing digests) and publishes the
   chart as

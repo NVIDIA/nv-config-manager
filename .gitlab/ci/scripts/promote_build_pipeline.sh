@@ -129,25 +129,57 @@ echo "Using source PR pipeline ${BUILD_PIPELINE_ID}; will verify its provenance 
 # ran on; assert the build pipeline ran on the PR HEAD we resolved and guarded.
 # This is the ONLY provenance check that matters: it uses GitLab metadata, not
 # any file the untrusted build produced (which the PR author fully controls).
+# The automatic request pipeline resolves the build id without occupying a
+# runner while the build runs. If the button is pressed early, wait here in the
+# user-requested promotion and fail immediately if the vetted branch moves.
 # -----------------------------------------------------------------------------
-build_pipeline_json="$(api_get "${api}/pipelines/${BUILD_PIPELINE_ID}")"
-build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha')"
-build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref')"
-build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status')"
-build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source')"
-if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" || "$build_status" != "success" ]]; then
-    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch." >&2
-    echo "  got ref=${build_ref} sha=${build_sha} status=${build_status}"
-    echo "  expected ref=${PR_REF} sha=${PR_SHA} status=success"
-    echo "Re-run the pull-request pipeline to create a fresh build."
-    exit 1
-fi
-if ! printf '%s' "$allowed_build_sources" \
-    | jq -e --arg s "$build_source" 'index($s) != null' >/dev/null; then
-    echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'." >&2
-    echo "Expected a vetted PR build pipeline ($(printf '%s' "$allowed_build_sources" | jq -r 'join(", ")'))."
-    exit 1
-fi
+poll_interval=15
+build_timeout=7200
+build_deadline=$((SECONDS + build_timeout))
+while :; do
+    build_pipeline_json="$(api_get "${api}/pipelines/${BUILD_PIPELINE_ID}")"
+    build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha')"
+    build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref')"
+    build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status')"
+    build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source')"
+    if [[ "$build_sha" != "$PR_SHA" || "$build_ref" != "$PR_REF" ]]; then
+        echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} provenance mismatch." >&2
+        echo "  got ref=${build_ref} sha=${build_sha} status=${build_status}"
+        echo "  expected ref=${PR_REF} sha=${PR_SHA}"
+        exit 1
+    fi
+    if ! printf '%s' "$allowed_build_sources" \
+        | jq -e --arg s "$build_source" 'index($s) != null' >/dev/null; then
+        echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} has disallowed source '${build_source}'." >&2
+        echo "Expected a vetted PR build pipeline ($(printf '%s' "$allowed_build_sources" | jq -r 'join(", ")'))."
+        exit 1
+    fi
+
+    current_pr_sha="$(git ls-remote "$CI_REPOSITORY_URL" "refs/heads/${PR_REF}" | cut -f1)"
+    if [[ "$current_pr_sha" != "$PR_SHA" ]]; then
+        echo "ERROR: ${PR_REF} moved while build pipeline ${BUILD_PIPELINE_ID} was running." >&2
+        echo "  request SHA: ${PR_SHA}" >&2
+        echo "  current SHA: ${current_pr_sha:-missing}" >&2
+        echo "Use the promotion buttons from the latest request pipeline." >&2
+        exit 1
+    fi
+
+    case "$build_status" in
+        success) break ;;
+        created|waiting_for_resource|preparing|pending|running)
+            (( SECONDS < build_deadline )) || {
+                echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} timed out after ${build_timeout}s." >&2
+                exit 1
+            }
+            echo "Build pipeline ${BUILD_PIPELINE_ID} is ${build_status}; waiting..."
+            sleep "$poll_interval"
+            ;;
+        *)
+            echo "ERROR: build pipeline ${BUILD_PIPELINE_ID} ended with status '${build_status}'." >&2
+            exit 1
+            ;;
+    esac
+done
 echo "Provenance OK: ${build_source} pipeline ${BUILD_PIPELINE_ID} ran on ${PR_REF}@${PR_SHA}"
 
 # -----------------------------------------------------------------------------

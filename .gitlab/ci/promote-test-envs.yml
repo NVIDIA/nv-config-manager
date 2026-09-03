@@ -10,8 +10,9 @@
 #
 # How to deploy a PR:
 #   A push webhook for the vetted pull-request/<n> mirror sync creates a trusted
-#   default-branch request pipeline, which waits for the PR build. Start
-#   promote-to-test or promote-to-test01 there; no variables are entered.
+#   default-branch request pipeline. Start promote-to-test or
+#   promote-to-test01 there; its child pipeline waits for the PR build if
+#   necessary, and no variables are entered.
 #
 # How to rollback / free a test env (manual jobs):
 #   Run pipeline on the default branch with only NVCM_PROMOTE_ENV set, then
@@ -31,11 +32,13 @@
 # =============================================================================
 
 .test-promote-rules: &test-promote-rules
-  - if: $CI_PIPELINE_SOURCE == "pipeline" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_PR && $NVCM_PROMOTE_PR_SHA && $NVCM_PROMOTE_BUILD_PIPELINE_ID && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/ && $NVCM_PROMOTE_SOURCE_PIPELINE_ID && $NVCM_PROMOTE_SOURCE_JOB_ID && $NVCM_PROMOTE_SOURCE_REF && $NVCM_PROMOTE_SOURCE_SHA && $NVCM_PROMOTE_SOURCE_ENVIRONMENT && $NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION
+  - if: $CI_PIPELINE_SOURCE == "parent_pipeline" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_PR && $NVCM_PROMOTE_PR_SHA && $NVCM_PROMOTE_BUILD_PIPELINE_ID && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/ && $NVCM_PROMOTE_SOURCE_PIPELINE_ID && $NVCM_PROMOTE_SOURCE_REF && $NVCM_PROMOTE_SOURCE_SHA && $NVCM_PROMOTE_SOURCE_ENVIRONMENT && $NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION
     when: always
   - when: never
 
 .test-promote-request-rules: &test-promote-request-rules
+  # CI_PIPELINE_TRIGGERED is redundant for source=trigger today, but retaining
+  # both assertions makes the intended webhook provenance explicit.
   - if: $CI_PIPELINE_SOURCE == "trigger" && $CI_PIPELINE_TRIGGERED == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     when: always
   - when: never
@@ -78,82 +81,48 @@ test-promote-request-validate:
   <<: *test-promote-runner
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
-  timeout: 2h 15m
+  timeout: 5m
   rules: *test-promote-request-rules
   before_script:
     - apk add --no-cache bash curl jq
   script:
     - bash .gitlab/ci/scripts/validate_promote_source_pipeline.sh
   artifacts:
+    reports:
+      dotenv: promote-request.env
     paths:
       - promote-request.env
     expire_in: 3 days
 
 # Fixed-target buttons run only from the protected default-branch
-# configuration. Untrusted pull-request pipelines never execute with the
-# operator's CI_JOB_TOKEN.
+# configuration. Each is a runnerless parent-child trigger, so no API token is
+# needed and untrusted pull-request pipelines never receive an operator token.
 .promote-request-button:
   stage: deploy
-  <<: *test-promote-runner
   needs:
     - job: test-promote-request-validate
       artifacts: true
-  image: $NVCM_CI_IMAGE_ALPINE
   variables:
-    GIT_STRATEGY: empty
+    NVCM_PROMOTE_PR: $VERIFIED_PROMOTE_PR
+    NVCM_PROMOTE_PR_SHA: $VERIFIED_PROMOTE_PR_SHA
+    NVCM_PROMOTE_BUILD_PIPELINE_ID: $VERIFIED_PROMOTE_BUILD_PIPELINE_ID
+    NVCM_PROMOTE_SOURCE_PIPELINE_ID: $CI_PIPELINE_ID
+    NVCM_PROMOTE_SOURCE_REF: $CI_COMMIT_REF_NAME
+    NVCM_PROMOTE_SOURCE_SHA: $CI_COMMIT_SHA
+    NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION: prepare
   rules: *test-promote-button-rules
-  before_script:
-    - apk add -q curl jq
-  script:
-    - |
-      set -eu
-      pr_num="$(grep -m1 '^VERIFIED_PROMOTE_PR=' promote-request.env | cut -d= -f2-)"
-      pr_sha="$(grep -m1 '^VERIFIED_PROMOTE_PR_SHA=' promote-request.env | cut -d= -f2-)"
-      build_pipeline_id="$(grep -m1 '^VERIFIED_PROMOTE_BUILD_PIPELINE_ID=' promote-request.env | cut -d= -f2-)"
-      case "$pr_num" in
-        ''|*[!0-9]*) echo "ERROR: invalid verified PR number '${pr_num}'" >&2; exit 1 ;;
-      esac
-      case "$build_pipeline_id" in
-        ''|*[!0-9]*) echo "ERROR: invalid verified build pipeline id '${build_pipeline_id}'" >&2; exit 1 ;;
-      esac
-      printf '%s' "$pr_sha" | grep -Eq '^[0-9a-f]{40}$'
-      case "${NVCM_PROMOTE_ENV}" in
-        test|test01) ;;
-        *) echo "ERROR: unsupported promote target '${NVCM_PROMOTE_ENV}'" >&2; exit 1 ;;
-      esac
-      test "${CI_ENVIRONMENT_NAME}" = "${NVCM_PROMOTE_ENV}"
-      test "${CI_ENVIRONMENT_ACTION}" = "prepare"
-
-      echo "Starting protected promotion of PR #${pr_num} (${pr_sha}) to ${NVCM_PROMOTE_ENV}..."
-      trigger_raw="$(curl -sS --max-time 30 -X POST -w '\n%{http_code}' \
-        -F "token=${CI_JOB_TOKEN}" \
-        -F "ref=${CI_DEFAULT_BRANCH}" \
-        -F "variables[NVCM_PROMOTE_PR]=${pr_num}" \
-        -F "variables[NVCM_PROMOTE_PR_SHA]=${pr_sha}" \
-        -F "variables[NVCM_PROMOTE_BUILD_PIPELINE_ID]=${build_pipeline_id}" \
-        -F "variables[NVCM_PROMOTE_ENV]=${NVCM_PROMOTE_ENV}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_PIPELINE_ID]=${CI_PIPELINE_ID}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_JOB_ID]=${CI_JOB_ID}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_REF]=${CI_COMMIT_REF_NAME}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_SHA]=${CI_COMMIT_SHA}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_ENVIRONMENT]=${CI_ENVIRONMENT_NAME}" \
-        -F "variables[NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION]=${CI_ENVIRONMENT_ACTION}" \
-        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/trigger/pipeline" || true)"
-      trigger_http="$(printf '%s' "$trigger_raw" | tail -n 1)"
-      trigger_response="$(printf '%s' "$trigger_raw" | sed '$d')"
-      downstream_id="$(printf '%s' "$trigger_response" | jq -r '.id // empty' 2>/dev/null || true)"
-      if [ -z "$downstream_id" ]; then
-        echo "ERROR: could not start the protected promotion pipeline (HTTP ${trigger_http:-000}):" >&2
-        printf '%s\n' "$trigger_response" >&2
-        exit 1
-      fi
-      echo "Promotion pipeline: ${CI_PROJECT_URL}/-/pipelines/${downstream_id}"
+  trigger:
+    include:
+      - local: .gitlab/ci/promote-test-envs-child.yml
+    forward:
+      yaml_variables: true
+      pipeline_variables: false
 
 promote-to-test:
   extends: .promote-request-button
   variables:
-    GIT_STRATEGY: empty
     NVCM_PROMOTE_ENV: test
+    NVCM_PROMOTE_SOURCE_ENVIRONMENT: test
   environment:
     name: test
     action: prepare
@@ -161,8 +130,8 @@ promote-to-test:
 promote-to-test01:
   extends: .promote-request-button
   variables:
-    GIT_STRATEGY: empty
     NVCM_PROMOTE_ENV: test01
+    NVCM_PROMOTE_SOURCE_ENVIRONMENT: test01
   environment:
     name: test01
     action: prepare
@@ -176,7 +145,7 @@ test-promote-build:
   needs: []
   image: $NVCM_CI_IMAGE_ALPINE
   rules: *test-promote-rules
-  timeout: 2h
+  timeout: 2h 15m
   before_script:
     - apk add --no-cache bash curl git jq coreutils
   script:

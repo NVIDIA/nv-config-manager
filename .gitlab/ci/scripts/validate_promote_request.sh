@@ -15,15 +15,18 @@ set -euo pipefail
 : "${NVCM_PROMOTE_BUILD_PIPELINE_ID:?NVCM_PROMOTE_BUILD_PIPELINE_ID is required}"
 : "${NVCM_PROMOTE_ENV:?NVCM_PROMOTE_ENV is required}"
 
+fail() {
+    echo "ERROR: invalid test-environment promotion request: $*" >&2
+    exit 1
+}
+
+[[ "$CI_API_V4_URL" == https://* ]] \
+    || fail "CI_API_V4_URL must use HTTPS"
+
 api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
 
 api_get() {
     curl -fsS --max-time 30 -H "PRIVATE-TOKEN: ${NVCM_MIRROR_API_TOKEN}" "$@"
-}
-
-fail() {
-    echo "ERROR: invalid test-environment promotion request: $*" >&2
-    exit 1
 }
 
 # /job is authenticated by this job's short-lived token, so its pipeline
@@ -31,6 +34,7 @@ fail() {
 current_job_json="$(curl -fsS --max-time 30 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" "${CI_API_V4_URL}/job")"
 request_source="$(printf '%s' "$current_job_json" | jq -r '.source // empty')"
 current_ref="$(printf '%s' "$current_job_json" | jq -r '.pipeline.ref // .ref // empty')"
+current_pipeline_id="$(printf '%s' "$current_job_json" | jq -r '.pipeline.id // empty')"
 current_user_id="$(printf '%s' "$current_job_json" | jq -r '.user.id // empty')"
 
 project_json="$(api_get "$api")"
@@ -39,18 +43,16 @@ default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty'
 [[ "$current_ref" == "$default_branch" ]] \
     || fail "protected promotion runs on '${current_ref:-unknown}', expected '${default_branch}'"
 
-[[ "$request_source" == "pipeline" ]] \
-    || fail "pipeline source '${request_source:-unknown}' is not a PR promotion button"
+[[ "$request_source" == "parent_pipeline" ]] \
+    || fail "pipeline source '${request_source:-unknown}' is not a PR promotion child pipeline"
+[[ "$current_pipeline_id" =~ ^[0-9]+$ ]] || fail "current child pipeline id is missing"
 
-for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_JOB_ID \
-    NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA \
+for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA \
     NVCM_PROMOTE_SOURCE_ENVIRONMENT NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION; do
     [[ -n "${!key:-}" ]] || fail "${key} is required for a button-triggered promotion"
 done
 [[ "$NVCM_PROMOTE_SOURCE_PIPELINE_ID" =~ ^[0-9]+$ ]] \
     || fail "source pipeline id is not numeric"
-[[ "$NVCM_PROMOTE_SOURCE_JOB_ID" =~ ^[0-9]+$ ]] \
-    || fail "source job id is not numeric"
 [[ "$NVCM_PROMOTE_PR" =~ ^[0-9]+$ ]] || fail "PR number is not numeric"
 [[ "$NVCM_PROMOTE_BUILD_PIPELINE_ID" =~ ^[0-9]+$ ]] \
     || fail "build pipeline id is not numeric"
@@ -63,9 +65,9 @@ case "$NVCM_PROMOTE_ENV" in
     test|test01) ;;
     *) fail "unsupported target environment '${NVCM_PROMOTE_ENV}'" ;;
 esac
-# GitLab's Jobs REST response does not expose environment metadata. The exact
-# trusted-main job name checked below binds the target, while these values come
-# from that job's CI_ENVIRONMENT_* predefined variables.
+# GitLab's trigger-job response does not expose environment metadata. The exact
+# trusted-main job name checked below binds the target, while these fixed values
+# come from that protected environment trigger's trusted YAML configuration.
 [[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT" == "$NVCM_PROMOTE_ENV" ]] \
     || fail "source environment '${NVCM_PROMOTE_SOURCE_ENVIRONMENT}' does not match '${NVCM_PROMOTE_ENV}'"
 [[ "$NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION" == "prepare" ]] \
@@ -103,7 +105,8 @@ validation_job_status="$(printf '%s' "$source_jobs_json" \
 # file artifact. Read that file rather than pipeline variables, whose values
 # can have been supplied by the trigger caller at the highest precedence.
 verified_request="$(curl -fsSL --max-time 30 \
-    "${api}/jobs/${validation_job_id}/artifacts/promote-request.env?job_token=${CI_JOB_TOKEN}")"
+    -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+    "${api}/jobs/${validation_job_id}/artifacts/promote-request.env")"
 verified_value() {
     local key="$1"
     printf '%s\n' "$verified_request" | grep -m1 "^${key}=" | cut -d= -f2-
@@ -115,7 +118,12 @@ verified_value() {
 [[ "$(verified_value VERIFIED_PROMOTE_BUILD_PIPELINE_ID)" == "$NVCM_PROMOTE_BUILD_PIPELINE_ID" ]] \
     || fail "verified request build pipeline does not match the promotion"
 
-source_job_json="$(api_get "${api}/jobs/${NVCM_PROMOTE_SOURCE_JOB_ID}")"
+source_bridges_json="$(api_get "${api}/pipelines/${NVCM_PROMOTE_SOURCE_PIPELINE_ID}/bridges?per_page=100")"
+source_job_json="$(printf '%s' "$source_bridges_json" \
+    | jq -c --arg name "promote-to-${NVCM_PROMOTE_ENV}" --arg child_id "$current_pipeline_id" \
+        '[.[] | select(.name == $name and (.downstream_pipeline.id | tostring) == $child_id)] | sort_by(.id) | last // empty')"
+[[ -n "$source_job_json" && "$source_job_json" != "null" ]] \
+    || fail "source trigger job for child pipeline ${current_pipeline_id} is missing"
 source_job_name="$(printf '%s' "$source_job_json" | jq -r '.name // empty')"
 source_job_pipeline_id="$(printf '%s' "$source_job_json" | jq -r '.pipeline.id // empty')"
 source_job_ref="$(printf '%s' "$source_job_json" | jq -r '.pipeline.ref // empty')"
@@ -132,7 +140,7 @@ source_job_user_id="$(printf '%s' "$source_job_json" | jq -r '.user.id // empty'
 [[ "$source_job_sha" == "$NVCM_PROMOTE_SOURCE_SHA" ]] \
     || fail "source job SHA does not match the button request"
 case "$source_job_status" in
-    running|success) ;;
+    pending|running|success) ;;
     *) fail "source job status is '${source_job_status}'" ;;
 esac
 [[ -n "$source_job_user_id" && -n "$current_user_id" ]] \

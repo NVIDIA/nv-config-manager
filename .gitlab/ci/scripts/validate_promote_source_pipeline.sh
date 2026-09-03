@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate a pull-request branch push webhook, wait for its secret-free build,
+# Validate a pull-request branch push webhook, resolve its secret-free build,
 # and expose the GitLab-verified PR/build identity to trusted manual buttons.
 #
 # Output: promote-request.env, read as a file by the trusted environment-button
@@ -12,18 +12,20 @@ set -euo pipefail
 : "${NVCM_MIRROR_API_TOKEN:?NVCM_MIRROR_API_TOKEN (read_api) is required}"
 : "${TRIGGER_PAYLOAD:?TRIGGER_PAYLOAD webhook file is required}"
 
-api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
-poll_interval=15
-create_timeout=120
-build_timeout=7200
-
-api_get() {
-    curl -fsS --max-time 30 -H "PRIVATE-TOKEN: ${NVCM_MIRROR_API_TOKEN}" "$@"
-}
-
 fail() {
     echo "ERROR: invalid automatic promotion request: $*" >&2
     exit 1
+}
+
+[[ "$CI_API_V4_URL" == https://* ]] \
+    || fail "CI_API_V4_URL must use HTTPS"
+
+api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
+poll_interval=5
+create_timeout=120
+
+api_get() {
+    curl -fsS --max-time 30 -H "PRIVATE-TOKEN: ${NVCM_MIRROR_API_TOKEN}" "$@"
 }
 
 [[ -f "$TRIGGER_PAYLOAD" ]] || fail "TRIGGER_PAYLOAD is not a file"
@@ -70,9 +72,18 @@ if ! curl -fsS --max-time 30 --request PUT -H "JOB-TOKEN: ${CI_JOB_TOKEN}" \
 fi
 
 encoded_ref="$(printf '%s' "$pr_ref" | jq -sRr @uri)"
+assert_current_branch_head() {
+    local branch_json branch_sha
+    branch_json="$(api_get "${api}/repository/branches/${encoded_ref}")"
+    branch_sha="$(printf '%s' "$branch_json" | jq -r '.commit.id // empty')"
+    [[ "$branch_sha" == "$payload_sha" ]] \
+        || fail "${pr_ref} moved to '${branch_sha:-unknown}' before its promotion request was ready"
+}
+
 create_deadline=$((SECONDS + create_timeout))
 build_pipeline_id=""
 while [[ -z "$build_pipeline_id" ]]; do
+    assert_current_branch_head
     pipelines_json="$(api_get "${api}/pipelines?ref=${encoded_ref}&sha=${payload_sha}&source=push&order_by=id&sort=desc&per_page=20")"
     build_pipeline_id="$(printf '%s' "$pipelines_json" \
         | jq -r --arg ref "$pr_ref" --arg sha "$payload_sha" \
@@ -83,34 +94,17 @@ while [[ -z "$build_pipeline_id" ]]; do
 done
 [[ "$build_pipeline_id" =~ ^[0-9]+$ ]] || fail "build pipeline id is invalid"
 
-build_deadline=$((SECONDS + build_timeout))
-while :; do
-    build_pipeline_json="$(api_get "${api}/pipelines/${build_pipeline_id}")"
-    build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref // empty')"
-    build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha // empty')"
-    build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source // empty')"
-    build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status // empty')"
-    build_user_id="$(printf '%s' "$build_pipeline_json" | jq -r '.user.id // empty')"
-    [[ "$build_ref" == "$pr_ref" && "$build_sha" == "$payload_sha" && "$build_source" == "push" ]] \
-        || fail "build pipeline provenance changed while waiting"
-    [[ "$build_user_id" == "$payload_user_id" ]] \
-        || fail "build pipeline user does not match the mirror-push webhook user"
-    case "$build_status" in
-        success) break ;;
-        created|waiting_for_resource|preparing|pending|running)
-            (( SECONDS < build_deadline )) || fail "build pipeline ${build_pipeline_id} timed out"
-            sleep "$poll_interval"
-            ;;
-        *) fail "build pipeline ${build_pipeline_id} ended with status '${build_status}'" ;;
-    esac
-done
-
-# Reject stale request pipelines if a newer vetted snapshot arrived while this
-# build was running.
-branch_json="$(api_get "${api}/repository/branches/${encoded_ref}")"
-branch_sha="$(printf '%s' "$branch_json" | jq -r '.commit.id // empty')"
-[[ "$branch_sha" == "$payload_sha" ]] \
-    || fail "${pr_ref} moved to '${branch_sha:-unknown}' while pipeline ${build_pipeline_id} ran"
+build_pipeline_json="$(api_get "${api}/pipelines/${build_pipeline_id}")"
+build_ref="$(printf '%s' "$build_pipeline_json" | jq -r '.ref // empty')"
+build_sha="$(printf '%s' "$build_pipeline_json" | jq -r '.sha // empty')"
+build_source="$(printf '%s' "$build_pipeline_json" | jq -r '.source // empty')"
+build_status="$(printf '%s' "$build_pipeline_json" | jq -r '.status // empty')"
+build_user_id="$(printf '%s' "$build_pipeline_json" | jq -r '.user.id // empty')"
+[[ "$build_ref" == "$pr_ref" && "$build_sha" == "$payload_sha" && "$build_source" == "push" ]] \
+    || fail "build pipeline provenance does not match the webhook"
+[[ "$build_user_id" == "$payload_user_id" ]] \
+    || fail "build pipeline user does not match the mirror-push webhook user"
+assert_current_branch_head
 
 {
     echo "VERIFIED_PROMOTE_PR=${pr_num}"
@@ -118,4 +112,4 @@ branch_sha="$(printf '%s' "$branch_json" | jq -r '.commit.id // empty')"
     echo "VERIFIED_PROMOTE_BUILD_PIPELINE_ID=${build_pipeline_id}"
 } > promote-request.env
 
-echo "Promotion request verified for PR #${pr_num}: pipeline ${build_pipeline_id} at ${payload_sha}."
+echo "Promotion request verified for PR #${pr_num}: pipeline ${build_pipeline_id} at ${payload_sha} (${build_status})."

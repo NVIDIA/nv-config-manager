@@ -15,10 +15,14 @@ main_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 # metadata so the authorization boundary can be tested without network access.
 curl() {
     local url="${!#}"
+    if [[ "${CI_API_V4_URL:-}" != https://* ]]; then
+        echo "curl must not be called for a non-HTTPS CI_API_V4_URL" >&2
+        return 99
+    fi
     case "$url" in
         */api/v4/job)
-            printf '{"source":"%s","pipeline":{"id":300,"ref":"main"},"user":{"id":%s}}\n' \
-                "${MOCK_CURRENT_SOURCE}" "${MOCK_CURRENT_USER_ID}"
+            printf '{"source":"%s","pipeline":{"id":%s,"ref":"main"},"user":{"id":%s}}\n' \
+                "${MOCK_CURRENT_SOURCE}" "${MOCK_CURRENT_PIPELINE_ID}" "${MOCK_CURRENT_USER_ID}"
             ;;
         */projects/7/pipelines\?ref=*)
             printf '[{"id":100,"ref":"pull-request/123","sha":"%s","source":"push"}]\n' \
@@ -26,10 +30,14 @@ curl() {
             ;;
         */projects/7/pipelines/100)
             printf '{"ref":"pull-request/123","sha":"%s","status":"success","source":"push","user":{"id":7}}\n' \
-                "$pr_sha"
+                "$pr_sha" \
+                | jq --arg status "${MOCK_BUILD_STATUS:-running}" \
+                    --argjson user_id "${MOCK_BUILD_USER_ID:-7}" \
+                    '.status = $status | .user.id = $user_id'
             ;;
         */projects/7/repository/branches/pull-request%2F123)
-            printf '{"commit":{"id":"%s"}}\n' "$pr_sha"
+            printf '{"commit":{"id":"%s"}}\n' "$pr_sha" \
+                | jq --arg sha "${MOCK_BRANCH_SHA:-$pr_sha}" '.commit.id = $sha'
             ;;
         */projects/7/pipelines/200/jobs\?per_page=100)
             printf '[{"id":202,"name":"test-promote-request-validate","status":"success"}]\n'
@@ -41,12 +49,12 @@ curl() {
         */projects/7/pipelines/300/metadata)
             printf '{}\n'
             ;;
-        */projects/7/jobs/202/artifacts/promote-request.env\?job_token=*)
+        */projects/7/jobs/202/artifacts/promote-request.env)
             printf 'VERIFIED_PROMOTE_PR=%s\nVERIFIED_PROMOTE_PR_SHA=%s\nVERIFIED_PROMOTE_BUILD_PIPELINE_ID=100\n' \
                 "${MOCK_VERIFIED_PR:-123}" "$pr_sha"
             ;;
-        */projects/7/jobs/201)
-            printf '{"name":"promote-to-test","status":"running","pipeline":{"id":200,"ref":"main","sha":"%s"},"user":{"id":42}}\n' \
+        */projects/7/pipelines/200/bridges\?per_page=100)
+            printf '[{"id":201,"name":"promote-to-test","status":"success","pipeline":{"id":200,"ref":"main","sha":"%s"},"user":{"id":42},"downstream_pipeline":{"id":400}}]\n' \
                 "$main_sha"
             ;;
         */projects/7)
@@ -63,22 +71,41 @@ export pr_sha main_sha
 
 run_source_validator() (
     cd "$test_dir"
-    export MOCK_CURRENT_SOURCE=trigger MOCK_CURRENT_USER_ID=7
-    export CI_JOB_TOKEN=job-token CI_API_V4_URL=https://gitlab.example/api/v4 CI_PROJECT_ID=7
-    export NVCM_MIRROR_API_TOKEN=read-token TRIGGER_PAYLOAD="$webhook_fixture"
-    bash "$source_validator"
+    local payload_file="$test_dir/push-webhook-under-test.json"
+    rm -f promote-request.env
+    jq \
+        --arg object_kind "${TEST_OBJECT_KIND:-push}" \
+        --argjson project_id "${TEST_PROJECT_ID:-7}" \
+        --arg ref "${TEST_REF:-refs/heads/pull-request/123}" \
+        --arg after "${TEST_AFTER:-$pr_sha}" \
+        --arg checkout_sha "${TEST_CHECKOUT_SHA:-$pr_sha}" \
+        --argjson user_id "${TEST_USER_ID:-7}" \
+        '.object_kind = $object_kind
+         | .project_id = $project_id
+         | .project.id = $project_id
+         | .ref = $ref
+         | .after = $after
+         | .checkout_sha = $checkout_sha
+         | .user_id = $user_id' \
+        "$webhook_fixture" > "$payload_file"
+    export MOCK_CURRENT_SOURCE=trigger MOCK_CURRENT_PIPELINE_ID=300 MOCK_CURRENT_USER_ID=7
+    export MOCK_BUILD_USER_ID="${TEST_BUILD_USER_ID:-7}"
+    export MOCK_BRANCH_SHA="${TEST_BRANCH_SHA:-$pr_sha}"
+    export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
+    export NVCM_MIRROR_API_TOKEN=read-token TRIGGER_PAYLOAD="$payload_file"
+    bash "$source_validator" || exit $?
     grep -qx 'VERIFIED_PROMOTE_PR=123' promote-request.env
     grep -qx "VERIFIED_PROMOTE_PR_SHA=${pr_sha}" promote-request.env
     grep -qx 'VERIFIED_PROMOTE_BUILD_PIPELINE_ID=100' promote-request.env
 )
 
 run_final_validator() (
-    export MOCK_CURRENT_SOURCE=pipeline MOCK_CURRENT_USER_ID=42
-    export CI_JOB_TOKEN=job-token CI_API_V4_URL=https://gitlab.example/api/v4 CI_PROJECT_ID=7
+    export MOCK_CURRENT_SOURCE=parent_pipeline MOCK_CURRENT_PIPELINE_ID=400 MOCK_CURRENT_USER_ID=42
+    export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
     export NVCM_MIRROR_API_TOKEN=read-token
     export NVCM_PROMOTE_PR=123 NVCM_PROMOTE_PR_SHA="$pr_sha"
     export NVCM_PROMOTE_BUILD_PIPELINE_ID=100 NVCM_PROMOTE_ENV=test
-    export NVCM_PROMOTE_SOURCE_PIPELINE_ID=200 NVCM_PROMOTE_SOURCE_JOB_ID=201
+    export NVCM_PROMOTE_SOURCE_PIPELINE_ID=200
     export NVCM_PROMOTE_SOURCE_REF=main NVCM_PROMOTE_SOURCE_SHA="$main_sha"
     export NVCM_PROMOTE_SOURCE_ENVIRONMENT="${TEST_SOURCE_ENVIRONMENT:-test}"
     export NVCM_PROMOTE_SOURCE_ENVIRONMENT_ACTION="${TEST_SOURCE_ACTION:-prepare}"
@@ -95,8 +122,25 @@ assert_final_rejected() {
     grep -Fq "$expected" <<<"$output"
 }
 
+assert_source_rejected() {
+    local expected="$1" output
+    if output="$(run_source_validator 2>&1)"; then
+        echo "expected source validator to reject request" >&2
+        exit 1
+    fi
+    grep -Fq "$expected" <<<"$output"
+}
+
 run_source_validator
 run_final_validator
+TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_source_rejected "CI_API_V4_URL must use HTTPS"
+TEST_OBJECT_KIND=pipeline assert_source_rejected "webhook event is not a push"
+TEST_PROJECT_ID=8 assert_source_rejected "webhook project does not match"
+TEST_REF=refs/heads/main assert_source_rejected "is not refs/heads/pull-request/<number>"
+TEST_AFTER=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "after/checkout SHA mismatch"
+TEST_BUILD_USER_ID=8 assert_source_rejected "build pipeline user does not match"
+TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "moved to"
+TEST_CI_API_V4_URL=http://gitlab.example/api/v4 assert_final_rejected "CI_API_V4_URL must use HTTPS"
 TEST_VERIFIED_PR=999 assert_final_rejected "verified request PR does not match"
 TEST_SOURCE_ENVIRONMENT=test01 assert_final_rejected "does not match 'test'"
 TEST_SOURCE_ACTION=start assert_final_rejected "action is not 'prepare'"
