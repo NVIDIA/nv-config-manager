@@ -27,6 +27,7 @@
 #
 # Required protected CI/CD variables (see .gitlab/ci/README.md):
 #   NVCM_MIRROR_API_TOKEN, NVCM_TEST_ENV_TARGETS, NVCM_CHART_REPO,
+#   NVCM_ARGOCD_SERVER, NVCM_ARGOCD_AUTH_TOKEN,
 #   NV_CONFIG_MANAGER_VALUES_PUSH_TOKEN, NVCM_VALUES_REPO_PATH,
 #   plus the existing image/chart target variables.
 # =============================================================================
@@ -436,12 +437,16 @@ test-promote-chart:
     expire_in: 1 week
 
 # -----------------------------------------------------------------------------
-# 4) Commit the deployment-state to the env branch. ArgoCD does the rest.
+# 4) Commit deployment-state, then hold the environment lock until ArgoCD has
+#    synced and health-checked the exact chart + values-repository revisions.
 # -----------------------------------------------------------------------------
 test-promote-deploy-state:
   stage: deploy
   <<: *test-promote-runner
   image: $NVCM_CI_IMAGE_ALPINE
+  # The convergence gate defaults to 30 minutes; leave time for setup and
+  # timeout diagnostics while making its hold on the environment lock explicit.
+  timeout: 35m
   rules: *test-promote-rules
   needs:
     - job: test-promote-build
@@ -456,7 +461,7 @@ test-promote-deploy-state:
   # concurrent runs can't race on the same nvcm-<env> branch.
   resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
-    - apk add --no-cache bash git yq curl coreutils
+    - apk add --no-cache bash git yq curl jq coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
     - git config --global user.name "NVIDIA Config Manager CI"
   script:
@@ -473,6 +478,7 @@ test-promote-deploy-state:
       env_config="$(bash .gitlab/ci/scripts/test_env_config.sh "$NVCM_PROMOTE_ENV")" || exit $?
       eval "$env_config"
     - bash .gitlab/ci/scripts/write_deploy_state.sh
+    - bash "${CI_PROJECT_DIR}/.gitlab/ci/scripts/wait_for_argocd.sh"
 
 # -----------------------------------------------------------------------------
 # Rollback: restore a prior known-good deploy-state from env-branch history.

@@ -494,6 +494,24 @@ jobs:
           [ "$fail" -eq 0 ] || exit 1
           echo "All 9 built-service images render exact repository:tag or repository@digest references"
 
+  argocd-health-gate:
+    name: ArgoCD Health Gate State Machine
+    runs-on: linux-amd64-cpu4
+    permissions:
+      contents: read
+    steps:
+      - uses: *actions_checkout
+        with:
+          persist-credentials: false
+      - name: Setup proxy cache
+        uses: *setup_proxy_cache
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq
+      - name: Exercise exact-revision convergence and bounded recovery
+        run: bash .gitlab/ci/scripts/test_wait_for_argocd.sh
+
   openapi:
     name: OpenAPI And Go Bindings Check
     runs-on: linux-amd64-cpu4

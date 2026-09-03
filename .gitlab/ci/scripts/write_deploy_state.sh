@@ -84,6 +84,16 @@ fi
 
 state_file="${NVCM_ENV_STATE_DIR}/deploy-state.yaml"
 occupant="${GITLAB_USER_LOGIN:-${GITLAB_USER_NAME:-ci}}"
+deploy_attest="${CI_PROJECT_DIR}/deploy.env"
+
+write_deploy_attestation() {
+    local git_revision="$1"
+    {
+        printf 'ARGOCD_APPLICATION=nv-config-manager-%s\n' "$NVCM_ENV"
+        printf 'ARGOCD_EXPECTED_CHART_REVISION=%s\n' "$PROMOTE_VERSION"
+        printf 'ARGOCD_EXPECTED_GIT_REVISION=%s\n' "$git_revision"
+    } > "$deploy_attest"
+}
 
 echo "Committing deploy-state for env '${NVCM_ENV}' to ${values_repo_display}@${NVCM_ENV_BRANCH}:${state_file}"
 
@@ -204,6 +214,7 @@ git show "${baseline_rev}:${baseline_file}" > "$baseline_file"
 
 if git diff --quiet "$state_file" "$baseline_file"; then
     echo "No deploy-state or baseline changes; ${NVCM_ENV} is already at ${PROMOTE_VERSION}."
+    write_deploy_attestation "$(git rev-parse HEAD)"
     exit 0
 fi
 
@@ -222,9 +233,10 @@ Baseline: ${baseline_rev}
 Triggered by: ${occupant}
 Pipeline: ${CI_PIPELINE_URL}"
 git push origin "HEAD:refs/heads/${NVCM_ENV_BRANCH}"
+write_deploy_attestation "$(git rev-parse HEAD)"
 
 echo ""
-echo "Deploy-state committed. ArgoCD will sync ${NVCM_ENV} to chart ${PROMOTE_VERSION} with digest-pinned images."
+echo "Deploy-state committed. Waiting for ArgoCD to sync ${NVCM_ENV} to chart ${PROMOTE_VERSION} with digest-pinned images."
 # Only build the web view URL from a known project path - a full-URL override
 # has no clean path and could otherwise produce a malformed/credential URL.
 if [[ -n "$values_repo_path" ]]; then
