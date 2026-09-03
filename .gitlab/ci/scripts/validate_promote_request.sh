@@ -32,10 +32,18 @@ api_get() {
 # /job is authenticated by this job's short-lived token, so its pipeline
 # metadata cannot be redirected by overriding a predefined CI variable.
 current_job_json="$(curl -fsS --max-time 30 -H "JOB-TOKEN: ${CI_JOB_TOKEN}" "${CI_API_V4_URL}/job")"
-request_source="$(printf '%s' "$current_job_json" | jq -r '.source // empty')"
 current_ref="$(printf '%s' "$current_job_json" | jq -r '.pipeline.ref // .ref // empty')"
 current_pipeline_id="$(printf '%s' "$current_job_json" | jq -r '.pipeline.id // empty')"
 current_user_id="$(printf '%s' "$current_job_json" | jq -r '.user.id // empty')"
+[[ "$current_pipeline_id" =~ ^[0-9]+$ ]] || fail "current child pipeline id is missing"
+
+# Some GitLab versions omit source from GET /job. Resolve it from the current
+# pipeline id reported by that authenticated endpoint instead.
+current_pipeline_json="$(api_get "${api}/pipelines/${current_pipeline_id}")"
+request_source="$(printf '%s' "$current_pipeline_json" | jq -r '.source // empty')"
+pipeline_ref="$(printf '%s' "$current_pipeline_json" | jq -r '.ref // empty')"
+[[ "$pipeline_ref" == "$current_ref" ]] \
+    || fail "current job and pipeline refs do not match"
 
 project_json="$(api_get "$api")"
 default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty')"
@@ -45,7 +53,6 @@ default_branch="$(printf '%s' "$project_json" | jq -r '.default_branch // empty'
 
 [[ "$request_source" == "parent_pipeline" ]] \
     || fail "pipeline source '${request_source:-unknown}' is not a PR promotion child pipeline"
-[[ "$current_pipeline_id" =~ ^[0-9]+$ ]] || fail "current child pipeline id is missing"
 
 for key in NVCM_PROMOTE_SOURCE_PIPELINE_ID NVCM_PROMOTE_SOURCE_REF NVCM_PROMOTE_SOURCE_SHA; do
     [[ -n "${!key:-}" ]] || fail "${key} is required for a button-triggered promotion"
