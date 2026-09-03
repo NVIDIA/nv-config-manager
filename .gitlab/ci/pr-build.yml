@@ -11,20 +11,27 @@
 #     withholds all Protected variables (registry tokens, push tokens, ...)
 #   - it never logs in to a registry and never pushes; images are written to
 #     local tarballs via DOCKER_BUILD_OUTPUT and uploaded as job artifacts
-#   - it is created only by a deliberate trigger (the promote pipeline's API
-#     call, or a manual run) - mirror pushes never start it (see the
-#     workflow rules in common.yml)
+#   - a vetted pull-request/<n> mirror sync starts it automatically; diagnostic
+#     rebuilds can also be created manually or through the API
 # The protected promote pipeline (promote-test-envs.yml) downloads the
 # artifacts, retags, pushes, and captures digests with credentials that this
 # pipeline never sees.
 #
-# amd64 only: the shared test envs deploy amd64, matching the existing
-# deploy-to-test flow's ${CI_COMMIT_SHORT_SHA}-amd64 convention.
+# amd64 only: the shared test environments deploy on amd64.
 # =============================================================================
 
 .pr-build-rules: &pr-build-rules
-  - if: $CI_COMMIT_BRANCH =~ /^pull-request\// && ($CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
+  - if: $CI_COMMIT_BRANCH =~ /^pull-request\/[0-9]+$/ && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
     when: always
+  - when: never
+
+.pr-promote-button-rules: &pr-promote-button-rules
+  # Buttons belong only to the automatic mirror-sync pipeline. This lets the
+  # protected side distinguish a human-played job from an automatic PR job by
+  # comparing the job user with the mirror pipeline user.
+  - if: $CI_COMMIT_BRANCH =~ /^pull-request\/[0-9]+$/ && $CI_PIPELINE_SOURCE == "push"
+    when: manual
+    allow_failure: true
   - when: never
 
 # One job per image: bounds each artifact's size, parallelizes the builds and
@@ -166,3 +173,81 @@ pr-build-chart:
     paths:
       - chart/
     expire_in: 3 days
+
+# Once the secret-free build succeeds, expose one fixed-target action for each
+# shared test environment. The PR number comes from the vetted mirror ref, so
+# the operator does not have to start a second pipeline or enter variables.
+#
+# This job has no protected variables. CI_JOB_TOKEN is short-lived and carries
+# the permissions of the person who presses the button; GitLab uses it to make
+# the protected-main pipeline a downstream pipeline of this PR build.
+.promote-pr-button:
+  stage: deploy
+  tags:
+    - dgxc-corp-restricted
+    - docker
+    - linux/amd64
+  image: $NVCM_PR_IMAGE_ALPINE
+  variables:
+    GIT_STRATEGY: empty
+  rules: *pr-promote-button-rules
+  needs:
+    - job: pr-build-image
+      artifacts: false
+    - job: pr-build-chart
+      artifacts: false
+  before_script:
+    - apk add -q curl jq
+  script:
+    - |
+      set -eu
+      case "${CI_COMMIT_REF_NAME}" in
+        pull-request/[0-9]*) pr_num="${CI_COMMIT_REF_NAME#pull-request/}" ;;
+        *) echo "ERROR: expected pull-request/<number>, got '${CI_COMMIT_REF_NAME}'" >&2; exit 1 ;;
+      esac
+      case "$pr_num" in
+        ''|*[!0-9]*) echo "ERROR: invalid PR number '${pr_num}'" >&2; exit 1 ;;
+      esac
+      case "${NVCM_PROMOTE_ENV}" in
+        test|test01) ;;
+        *) echo "ERROR: unsupported promote target '${NVCM_PROMOTE_ENV}'" >&2; exit 1 ;;
+      esac
+
+      echo "Starting protected promotion of PR #${pr_num} (${CI_COMMIT_SHA}) to ${NVCM_PROMOTE_ENV}..."
+      trigger_raw="$(curl -sS --max-time 30 -X POST -w '\n%{http_code}' \
+        -F "token=${CI_JOB_TOKEN}" \
+        -F "ref=${CI_DEFAULT_BRANCH}" \
+        -F "variables[NVCM_PROMOTE_PR]=${pr_num}" \
+        -F "variables[NVCM_PROMOTE_ENV]=${NVCM_PROMOTE_ENV}" \
+        -F "variables[NVCM_PROMOTE_SOURCE_PIPELINE_ID]=${CI_PIPELINE_ID}" \
+        -F "variables[NVCM_PROMOTE_SOURCE_JOB_ID]=${CI_JOB_ID}" \
+        -F "variables[NVCM_PROMOTE_SOURCE_REF]=${CI_COMMIT_REF_NAME}" \
+        -F "variables[NVCM_PROMOTE_SOURCE_SHA]=${CI_COMMIT_SHA}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/trigger/pipeline" || true)"
+      trigger_http="$(printf '%s' "$trigger_raw" | tail -n 1)"
+      trigger_response="$(printf '%s' "$trigger_raw" | sed '$d')"
+      downstream_id="$(printf '%s' "$trigger_response" | jq -r '.id // empty' 2>/dev/null || true)"
+      if [ -z "$downstream_id" ]; then
+        echo "ERROR: could not start the protected promotion pipeline (HTTP ${trigger_http:-000}):" >&2
+        printf '%s\n' "$trigger_response" >&2
+        exit 1
+      fi
+      echo "Promotion pipeline: ${CI_PROJECT_URL}/-/pipelines/${downstream_id}"
+
+promote-to-test:
+  extends: .promote-pr-button
+  variables:
+    GIT_STRATEGY: empty
+    NVCM_PROMOTE_ENV: test
+  environment:
+    name: test
+    action: prepare
+
+promote-to-test01:
+  extends: .promote-pr-button
+  variables:
+    GIT_STRATEGY: empty
+    NVCM_PROMOTE_ENV: test01
+  environment:
+    name: test01
+    action: prepare

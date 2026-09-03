@@ -12,19 +12,18 @@ stages:
   - test-airgapped
   - publish-airgapped
 
-# Run automatic pipelines for merge requests, the default branch, and tags.
-# Mirrored feature branches can be deleted upstream while jobs are queued, so
-# do not create push pipelines for them. Non-push branch pipelines (for example,
-# manual, scheduled, or API-triggered runs) remain available.
+# Run automatic pipelines for merge requests, the default branch, tags, and
+# vetted copy-pr-bot refs. Mirrored feature branches can be deleted upstream
+# while jobs are queued, so do not create push pipelines for ordinary feature
+# branches. A pull-request/<n> sync is different: it is the vetted snapshot and
+# its secret-free build produces the per-environment promotion buttons.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    # Vetted copy-pr-bot refs may run ONLY deliberately triggered pipelines
-    # (the test-env promote flow builds untrusted PR code here without
-    # secrets). Allow the whitelisted sources, then reject every other source
-    # on these refs (schedule, parent_pipeline, push, ...) so the generic
-    # branch fallback below cannot admit them.
-    - if: $CI_COMMIT_BRANCH =~ /^pull-request\// && ($CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
+    # Vetted copy-pr-bot refs may run only from a mirror sync or a deliberate
+    # trigger. These pipelines execute untrusted code, but only on the isolated
+    # runner pool and without protected variables (see pr-build.yml).
+    - if: $CI_COMMIT_BRANCH =~ /^pull-request\/[0-9]+$/ && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "pipeline" || $CI_PIPELINE_SOURCE == "trigger" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "web")
     - if: $CI_COMMIT_BRANCH =~ /^pull-request\//
       when: never
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH

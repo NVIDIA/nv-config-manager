@@ -80,9 +80,9 @@ sonar-scanner:
   # The internal mirror is post-merge reporting, not an upstream merge gate.
   allow_failure: true
   rules:
-    # Skip during test-env promote pipelines (web pipelines on the default
-    # branch with $NVCM_PROMOTE_ENV set).
-    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    # Skip during test-env promotion/operations pipelines on the default
+    # branch.
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths
@@ -119,7 +119,7 @@ sonarqube-vulnerability-report:
   allow_failure: true
   rules:
     # Skip during test-env promote pipelines (see sonar-scanner).
-    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *sonar-change-paths

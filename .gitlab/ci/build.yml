@@ -216,7 +216,7 @@ docker-build-main-amd64:
   rules:
     # Test-env promote pipelines run on the default branch with rules:changes
     # evaluating true (non-push pipeline); don't rebuild main as a side effect.
-    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: always
@@ -243,7 +243,7 @@ docker-build-main-arm64:
     - docker
   rules:
     # See docker-build-main-amd64: skip during test-env promote pipelines.
-    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: always
@@ -278,7 +278,7 @@ docker-manifest-main:
       command: ["--tls=false"]
   rules:
     # See docker-build-main-amd64: skip during test-env promote pipelines.
-    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
+    - if: ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/
       when: never
     - if: $CI_COMMIT_TAG
       when: on_success

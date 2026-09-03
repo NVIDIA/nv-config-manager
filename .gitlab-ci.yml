@@ -9,7 +9,7 @@ include:
   # airgapped jobs (including their tracking/manual placeholders) in them.
   - local: .gitlab/ci/pulse.yml
     rules: &exclude-special-pipeline-fragments
-      - if: $CI_COMMIT_BRANCH =~ /^pull-request\// || (($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/)
+      - if: $CI_COMMIT_BRANCH =~ /^pull-request\// || (($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || ($CI_PIPELINE_SOURCE == "pipeline" && $NVCM_PROMOTE_SOURCE_JOB_ID)) && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $NVCM_PROMOTE_ENV =~ /^(test|test01)$/)
         when: never
       - when: always
   - local: .gitlab/ci/sonar.yml
