@@ -591,11 +591,6 @@ class CumulusConnection(NetworkConnection):
                 neighbor_data = lldp_data.get(interface)
                 if neighbor_data:
                     neighbors[interface] = neighbor_data
-            # Disabling due to performance issues
-            # else:
-            #     info = self.get_ts_info(interface)
-            #     if info.get("link") and info["link"].get("troubleshooting-info"):
-            #         ts_info[interface] = info["link"]["troubleshooting-info"]
 
         return DeviceNeighborData(
             neighbors=neighbors,
