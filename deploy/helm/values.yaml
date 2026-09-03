@@ -1664,6 +1664,10 @@ temporal:
   # connecting them to a user-managed Temporal service.
   server:
     enabled: true
+  # Number of Temporal history shards. Leave null to preserve the legacy
+  # behavior of deriving the shard count from services.history.replicas.
+  # Changing this value for an initialized cluster requires a shard migration.
+  numHistoryShards: null
   # Gateway routing - subdomain based
   gateway:
     api:
