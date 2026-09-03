@@ -80,7 +80,12 @@ while [[ -z "$build_pipeline_id" ]]; do
     # GitLab 17.4 replaces the webhook ref in TRIGGER_PAYLOAD with the trigger
     # URL's target ref. Recover the PR ref from the push pipeline bound to the
     # webhook SHA, and reject ambiguous matches instead of guessing.
-    pipelines_json="$(api_get "${api}/pipelines?sha=${payload_sha}&source=push&order_by=id&sort=desc&per_page=100")"
+    pipelines_query="${api}/pipelines?sha=${payload_sha}&source=push&order_by=id&sort=desc&per_page=100"
+    pipelines_json="$(api_get "${pipelines_query}&page=1")"
+    next_page_json="$(api_get "${pipelines_query}&page=2")"
+    next_page_count="$(printf '%s' "$next_page_json" | jq -r 'length')"
+    (( next_page_count == 0 )) \
+        || fail "webhook SHA pipeline lookup spans more than one page"
     matching_pipelines="$(printf '%s' "$pipelines_json" \
         | jq -c --arg expected_ref "$expected_pr_ref" --arg sha "$payload_sha" \
             '[.[] | select(.sha == $sha and .source == "push"

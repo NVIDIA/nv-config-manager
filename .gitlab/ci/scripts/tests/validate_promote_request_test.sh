@@ -42,13 +42,21 @@ curl() {
             printf '{"pipeline":{"id":%s,"ref":"%s"},"user":{"id":%s}}\n' \
                 "${MOCK_CURRENT_PIPELINE_ID}" "${MOCK_CURRENT_JOB_REF}" "${MOCK_CURRENT_USER_ID}"
             ;;
-        */projects/7/pipelines\?sha=*)
+        */projects/7/pipelines\?sha=*\&page=1)
             if [[ "${MOCK_AMBIGUOUS_BUILD_REFS}" == true ]]; then
                 printf '[{"id":100,"ref":"pull-request/123","sha":"%s","source":"push"},{"id":101,"ref":"pull-request/456","sha":"%s","source":"push"}]\n' \
                     "$pr_sha" "$pr_sha"
             else
                 printf '[{"id":100,"ref":"%s","sha":"%s","source":"push"}]\n' \
                     "${MOCK_BUILD_REF}" "$pr_sha"
+            fi
+            ;;
+        */projects/7/pipelines\?sha=*\&page=2)
+            if [[ "${MOCK_SECOND_PIPELINE_PAGE}" == true ]]; then
+                printf '[{"id":200,"ref":"pull-request/456","sha":"%s","source":"push"}]\n' \
+                    "$pr_sha"
+            else
+                printf '[]\n'
             fi
             ;;
         */projects/7/pipelines/100)
@@ -142,6 +150,7 @@ run_source_validator() (
     export MOCK_BUILD_USER_ID="${TEST_BUILD_USER_ID:-7}"
     export MOCK_BUILD_REF="${TEST_BUILD_REF:-pull-request/123}"
     export MOCK_AMBIGUOUS_BUILD_REFS="${TEST_AMBIGUOUS_BUILD_REFS:-false}"
+    export MOCK_SECOND_PIPELINE_PAGE="${TEST_SECOND_PIPELINE_PAGE:-false}"
     export MOCK_BRANCH_SHA="${TEST_BRANCH_SHA:-$pr_sha}"
     export CI_JOB_TOKEN=job-token CI_API_V4_URL="${TEST_CI_API_V4_URL:-https://gitlab.example/api/v4}" CI_PROJECT_ID=7
     export NVCM_MIRROR_API_TOKEN=read-token TRIGGER_PAYLOAD="$payload_file"
@@ -198,6 +207,7 @@ TEST_OBJECT_KIND=pipeline assert_source_rejected "webhook event is not a push"
 TEST_PROJECT_ID=8 assert_source_rejected "webhook project does not match"
 TEST_REF=refs/heads/main assert_source_rejected "is not a PR ref or GitLab-rewritten default branch"
 TEST_REF=main TEST_AMBIGUOUS_BUILD_REFS=true assert_source_rejected "matches multiple pull-request refs"
+TEST_REF=main TEST_SECOND_PIPELINE_PAGE=true assert_source_rejected "lookup spans more than one page"
 TEST_AFTER=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "after/checkout SHA mismatch"
 TEST_BUILD_USER_ID=8 assert_source_rejected "build pipeline user does not match"
 TEST_BRANCH_SHA=cccccccccccccccccccccccccccccccccccccccc assert_source_rejected "moved to"
