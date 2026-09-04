@@ -11,6 +11,8 @@ Temporal is deployed as part of the Config Manager Helm release. Use the [standa
 The installer controls Temporal deployment through `nv-config-manager-install.yaml` and generated Helm values:
 
 - `services.temporal`: enables the Temporal API, workers, and related deployment resources.
+- `temporal.history_replicas`: optionally overrides the managed History service pod count.
+- `temporal.num_history_shards`: optionally overrides the persisted History shard count.
 - `cluster.hostname`: drives public workflow API and Temporal Web hostnames.
 - `secrets`: provides database, auth, and integration secrets.
 - `rbac`: configures workflow read and execute roles.
@@ -18,15 +20,28 @@ The installer controls Temporal deployment through `nv-config-manager-install.ya
 
 ## History Shards and Replicas
 
-`temporal.services.history.replicas` controls the number of History service
-pods. These replicas provide horizontally scalable compute and can be adjusted
-as load changes.
+In `nv-config-manager-install.yaml`, leave the Temporal sizing values unset or
+set them to `0` to use the deployment size profile and chart defaults. Set
+positive values to configure a new managed Temporal cluster explicitly:
 
-`temporal.numHistoryShards` controls the number of persisted History shards.
-When it is unset, the chart derives the shard count from
+```yaml
+services:
+  temporal: true
+temporal:
+  history_replicas: 16
+  num_history_shards: 128
+```
+
+The installer maps `temporal.history_replicas` to the Helm value
+`temporal.services.history.replicas`. This controls the number of History
+service pods. These replicas provide horizontally scalable compute and can be
+adjusted as load changes.
+
+The installer maps `temporal.num_history_shards` to
+`temporal.numHistoryShards`, which controls the number of persisted History
+shards. When it is unset, the chart derives the shard count from
 `temporal.services.history.replicas` for compatibility with existing
-deployments. Set both values when a new cluster needs a shard count that differs
-from its History replica count:
+deployments. The equivalent direct Helm override is:
 
 ```yaml
 temporal:
@@ -35,6 +50,11 @@ temporal:
     history:
       replicas: 16
 ```
+
+If an initialized deployment still derives shards from replicas, set
+`temporal.num_history_shards` to the current shard count before changing
+`temporal.history_replicas`. Otherwise, changing only the replica override also
+changes the rendered shard count.
 
 <Warning>
 Do not change `temporal.numHistoryShards` for an initialized Temporal cluster.

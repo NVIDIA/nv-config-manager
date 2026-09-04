@@ -537,11 +537,22 @@ also be uploaded later via the ZTP `/v1/files` API.
 
 ![Workflows](../docs/assets/images/installer/09-workflows.svg)
 
-Temporal workflow RBAC configuration.
+Managed Temporal server sizing and workflow RBAC configuration.
 
 Per-workflow overrides are selected from a dropdown of known workflows:
 
 ![Workflows Dropdown](../docs/assets/images/installer/18-workflows-dropdown.svg)
+
+**Managed Temporal Server**
+
+| Field | Description |
+|-------|-------------|
+| History Replicas | Optional History service pod count; blank uses the deployment size profile and chart default |
+| History Shards | Optional persisted shard count; blank derives it from the History replica count |
+
+> **Warning:** Blank History Shards follows History Replicas. After Temporal
+> initializes its database, pin the current shard count before changing replicas.
+> Changing the immutable shard count requires migration to a separate Temporal cluster.
 
 **RBAC**
 
@@ -760,6 +771,25 @@ sites:
 services:
   nautobot: true
 ```
+
+### Managed Temporal Sizing
+
+Both fields are optional. Omit them or set them to `0` to use the deployment
+size profile and Helm chart behavior:
+
+```yaml
+services:
+  temporal: true
+temporal:
+  history_replicas: 16
+  num_history_shards: 128
+```
+
+`history_replicas` controls History service pods and can be adjusted with
+capacity. `num_history_shards` is persisted as immutable cluster metadata; do
+not change it after initialization without a separate-cluster migration. If an
+initialized deployment still derives shards from replicas, pin its current
+shard count before changing `history_replicas`.
 
 ### File Storage Example (on-prem with OS images)
 
