@@ -40,10 +40,10 @@ jobs:
       - name: Sorted list check (keep-sorted)
         run: make sort-check
       - run: uv sync --frozen
-      - run: uv run ruff format --check src/ packages plugins/dcim/nautobot-2x .github/scripts/check-cnpg-podmonitors.py
-      - run: uv run ruff check src/ packages plugins/dcim/nautobot-2x .github/scripts/check-cnpg-podmonitors.py
-      - run: uv run ty check src/nv_config_manager/ packages/dcim/src packages/workflows .github/scripts/check-cnpg-podmonitors.py
-      - run: uv run mypy src/nv_config_manager packages/dcim/src packages/workflows .github/scripts/check-cnpg-podmonitors.py --no-incremental
+      - run: uv run ruff format --check src/ packages plugins/dcim/nautobot-2x .github/scripts/check-cnpg-podmonitors.py .gitlab/ci/scripts/wait_for_argocd.py .gitlab/ci/scripts/test_wait_for_argocd.py
+      - run: uv run ruff check src/ packages plugins/dcim/nautobot-2x .github/scripts/check-cnpg-podmonitors.py .gitlab/ci/scripts/wait_for_argocd.py .gitlab/ci/scripts/test_wait_for_argocd.py
+      - run: uv run ty check src/nv_config_manager/ packages/dcim/src packages/workflows .github/scripts/check-cnpg-podmonitors.py .gitlab/ci/scripts/wait_for_argocd.py .gitlab/ci/scripts/test_wait_for_argocd.py
+      - run: uv run mypy src/nv_config_manager packages/dcim/src packages/workflows .github/scripts/check-cnpg-podmonitors.py .gitlab/ci/scripts/wait_for_argocd.py .gitlab/ci/scripts/test_wait_for_argocd.py --no-incremental
       - name: Installer lint
         working-directory: installer
         run: |
@@ -505,12 +505,13 @@ jobs:
           persist-credentials: false
       - name: Setup proxy cache
         uses: *setup_proxy_cache
-      - name: Install jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends jq
+      - uses: *actions_setup_python
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: *setup_uv
+      - run: uv sync --frozen --only-group promotion-gate --no-install-project --no-install-workspace
       - name: Exercise exact-revision convergence and bounded recovery
-        run: bash .gitlab/ci/scripts/test_wait_for_argocd.sh
+        run: uv run --frozen --only-group promotion-gate --no-sync python .gitlab/ci/scripts/test_wait_for_argocd.py
 
   openapi:
     name: OpenAPI And Go Bindings Check
