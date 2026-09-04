@@ -33,7 +33,7 @@ BASE_CONFIG = Config(
     server="https://argocd.example.test",
     application="test-application",
     application_namespace="argocd",
-    project="kiwi",
+    project="test-project",
     expected_chart_revision=EXPECTED_CHART,
     expected_git_revision=EXPECTED_GIT,
     poll_interval=1,
@@ -77,19 +77,28 @@ def application_payload(
         sync_status, health_status, phase = "OutOfSync", "Progressing", "Failed"
         operation_revisions = stale_revisions
         source_count = 3
+    elif state == 6:
+        sync_status, health_status, phase = "Synced", "Healthy", "Succeeded"
+        operation_revisions = [EXPECTED_GIT]
+        source_count = 0
     else:
         raise ValueError(f"unknown fake Application state {state}")
 
+    sync_state: dict[str, Any] = {"status": sync_status}
+    if state == 6:
+        sync_state["revision"] = EXPECTED_GIT
+    else:
+        sync_state["revisions"] = [EXPECTED_CHART, EXPECTED_GIT]
+    spec: dict[str, Any] = {"syncPolicy": {"automated": {"prune": automated_prune}}}
+    if state == 6:
+        spec["source"] = {}
+    else:
+        spec["sources"] = [{} for _ in range(source_count)]
+
     return {
-        "spec": {
-            "sources": [{} for _ in range(source_count)],
-            "syncPolicy": {"automated": {"prune": automated_prune}},
-        },
+        "spec": spec,
         "status": {
-            "sync": {
-                "status": sync_status,
-                "revisions": [EXPECTED_CHART, EXPECTED_GIT],
-            },
+            "sync": sync_state,
             "health": {"status": health_status},
             "operationState": {
                 "phase": phase,
@@ -234,23 +243,27 @@ class ArgoGateTests(unittest.TestCase):
                 "CI_PROJECT_DIR": temporary_directory,
                 "NVCM_ARGOCD_SERVER": "https://argocd.example.test",
                 "NVCM_ARGOCD_AUTH_TOKEN": TEST_TOKEN,
+                "NVCM_ARGOCD_PROJECT": "test-project",
             }
             config, token = load_config(environment)
             self.assertEqual(config.application, "test-application")
             self.assertEqual(token, TEST_TOKEN)
             self.assertNotIn("NVCM_ARGOCD_AUTH_TOKEN", environment)
 
-            invalid_settings = {
-                "NVCM_ARGOCD_SERVER": "http://argocd.example.test",
-                "NVCM_ARGOCD_POLL_INTERVAL": "0",
-                "NVCM_ARGOCD_SYNC_TIMEOUT": "1801",
-            }
-            for name, value in invalid_settings.items():
-                with self.subTest(name=name):
+            invalid_settings = (
+                ("NVCM_ARGOCD_PROJECT", ""),
+                ("NVCM_ARGOCD_SERVER", "http://argocd.example.test"),
+                ("NVCM_ARGOCD_POLL_INTERVAL", "0"),
+                ("NVCM_ARGOCD_POLL_INTERVAL", "١٠"),
+                ("NVCM_ARGOCD_SYNC_TIMEOUT", "1801"),
+            )
+            for name, value in invalid_settings:
+                with self.subTest(name=name, value=value):
                     invalid_environment = {
                         "CI_PROJECT_DIR": temporary_directory,
                         "NVCM_ARGOCD_SERVER": "https://argocd.example.test",
                         "NVCM_ARGOCD_AUTH_TOKEN": TEST_TOKEN,
+                        "NVCM_ARGOCD_PROJECT": "test-project",
                         name: value,
                     }
                     with self.assertRaises(GateFailure):
@@ -258,6 +271,7 @@ class ArgoGateTests(unittest.TestCase):
 
     def test_http_statuses_are_classified(self) -> None:
         cases = {
+            302: TransientApiError,
             401: FatalApiError,
             403: FatalApiError,
             404: FatalApiError,
@@ -270,11 +284,14 @@ class ArgoGateTests(unittest.TestCase):
                         "https://argocd.example.test/api/v1/applications/test-application",
                         match=[
                             responses.matchers.query_param_matcher(
-                                {"appNamespace": "argocd", "project": "kiwi"}
+                                {"appNamespace": "argocd", "project": "test-project"}
                             )
                         ],
                         status=status,
                         json={},
+                        headers={"Location": "https://redirect.example.test/application"}
+                        if status == 302
+                        else {},
                     )
                     client = HttpArgoApi(BASE_CONFIG, TEST_TOKEN)
                     with self.assertRaises(expected_error):
@@ -286,7 +303,7 @@ class ArgoGateTests(unittest.TestCase):
         with responses.RequestsMock() as mock:
             application_url = "https://argocd.example.test/api/v1/applications/test-application"
             query_matcher = responses.matchers.query_param_matcher(
-                {"appNamespace": "argocd", "project": "kiwi"}
+                {"appNamespace": "argocd", "project": "test-project"}
             )
             for _ in range(3):
                 mock.get(
@@ -304,7 +321,7 @@ class ArgoGateTests(unittest.TestCase):
                 "https://argocd.example.test/api/v1/applications/test-application/sync",
                 match=[
                     responses.matchers.query_param_matcher(
-                        {"appNamespace": "argocd", "project": "kiwi"}
+                        {"appNamespace": "argocd", "project": "test-project"}
                     )
                 ],
                 body=requests.ConnectionError("network"),
@@ -320,7 +337,7 @@ class ArgoGateTests(unittest.TestCase):
                 "https://argocd.example.test/api/v1/applications/test-application/sync",
                 match=[
                     responses.matchers.query_param_matcher(
-                        {"appNamespace": "argocd", "project": "kiwi"}
+                        {"appNamespace": "argocd", "project": "test-project"}
                     )
                 ],
                 status=200,
@@ -394,6 +411,14 @@ class ArgoGateTests(unittest.TestCase):
         self.assertIn("reports 2 resolved revisions for 3 configured sources", errors)
         self.assertEqual(client.post_attempts, 0)
 
+    def test_single_source_application_fails_immediately(self) -> None:
+        client = FakeArgoApi(6)
+        result, _, errors = run_gate(client)
+        self.assertEqual(result, 1)
+        self.assertIn("requires a multi-source Application", errors)
+        self.assertEqual(client.get_attempts, 1)
+        self.assertEqual(client.post_attempts, 0)
+
     def test_transient_delete_does_not_consume_termination_budget(self) -> None:
         client = FakeArgoApi(0)
         client.fail_first_delete = True
@@ -414,7 +439,7 @@ class ArgoGateTests(unittest.TestCase):
             {
                 "name": "test-application",
                 "appNamespace": "argocd",
-                "project": "kiwi",
+                "project": "test-project",
                 "prune": False,
                 "revisions": [EXPECTED_CHART, EXPECTED_GIT],
                 "sourcePositions": [1, 2],

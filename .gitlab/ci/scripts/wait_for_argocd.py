@@ -113,6 +113,7 @@ class HttpArgoApi:
                     url,
                     json=json_body,
                     timeout=self._timeout,
+                    allow_redirects=False,
                 )
             except requests.RequestException as exc:
                 if attempt < attempts:
@@ -170,7 +171,7 @@ def _required(environment: Mapping[str, str], name: str, message: str) -> str:
 
 def _positive_integer(environment: Mapping[str, str], name: str, default: int) -> int:
     raw_value = environment.get(name, str(default))
-    if not raw_value.isdigit() or int(raw_value) <= 0:
+    if not raw_value.isascii() or not raw_value.isdigit() or int(raw_value) <= 0:
         raise GateFailure(f"{name} must be a positive integer")
     return int(raw_value)
 
@@ -214,10 +215,18 @@ def load_config(environment: MutableMapping[str, str]) -> tuple[Config, str]:
     ).rstrip("/")
     attestation = _read_attestation(project_directory)
     application = attestation["ARGOCD_APPLICATION"]
+    # The chart revision is an opaque attested identifier. Its format is owned
+    # by the promotion version producer; this gate only JSON-encodes and
+    # compares it exactly, so duplicating the producer's format here would make
+    # valid future version changes fail at deployment time.
     expected_chart_revision = attestation["ARGOCD_EXPECTED_CHART_REVISION"]
     expected_git_revision = attestation["ARGOCD_EXPECTED_GIT_REVISION"]
     application_namespace = environment.get("NVCM_ARGOCD_APPLICATION_NAMESPACE", "argocd")
-    project = environment.get("NVCM_ARGOCD_PROJECT", "kiwi")
+    project = _required(
+        environment,
+        "NVCM_ARGOCD_PROJECT",
+        "Set NVCM_ARGOCD_PROJECT to the Argo CD project containing the Application",
+    )
 
     parsed_server = urlsplit(server)
     try:
@@ -395,6 +404,13 @@ def wait_for_convergence(
             sleeper(config.poll_interval)
             continue
         last_payload = payload
+
+        if _source_count(payload) == 0:
+            raise GateFailure(
+                f"Argo CD application {config.application} declares no spec.sources; "
+                "the exact-revision gate requires a multi-source Application",
+                last_payload,
+            )
 
         sync_status = _status(payload, "status", "sync", "status", default="Unknown")
         health_status = _status(payload, "status", "health", "status", default="Unknown")
