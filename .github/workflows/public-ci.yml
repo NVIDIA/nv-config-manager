@@ -495,7 +495,7 @@ jobs:
           echo "All 9 built-service images render exact repository:tag or repository@digest references"
 
   argocd-health-gate:
-    name: ArgoCD Health Gate State Machine
+    name: ArgoCD Rollout Observer
     runs-on: linux-amd64-cpu4
     permissions:
       contents: read
@@ -510,7 +510,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - uses: *setup_uv
       - run: uv sync --frozen --only-group promotion-gate --no-install-project --no-install-workspace
-      - name: Exercise exact-revision convergence and bounded recovery
+      - name: Exercise exact-revision rollout observation
         run: uv run --frozen --only-group promotion-gate --no-sync python .gitlab/ci/scripts/test_wait_for_argocd.py
 
   openapi:
