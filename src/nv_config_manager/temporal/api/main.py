@@ -34,11 +34,15 @@ from nv_config_manager.common.telemetry import (
 from nv_config_manager.temporal.api import codec_server, parameter_v1, workflow_v1
 from nv_config_manager.temporal.api.audit import install_workflow_audit_logging
 from nv_config_manager.temporal.common.rbac_config import RBACConfig
+from nv_config_manager.temporal.runtime import configure_workflow_runtime
 from nv_config_manager.temporal.telemetry import setup_telemetry
 
 configure_logging(service="temporal-api")
 setup_telemetry("nv-config-manager-temporal-api")
 logger = get_logger(__name__, category=LogCategory.TEMPORAL_API)
+
+config = load_config()
+configure_workflow_runtime(config, lock_redis=None)
 
 rbac_config = RBACConfig()
 logger.info(
@@ -51,7 +55,6 @@ instrument_fastapi_app(app)
 
 # Configure CORS for cross-origin requests from the UI
 # CORS origins are configured in nv-config-manager.ini [temporal.api] section
-config = load_config()
 if config.has_section("temporal.api"):
     cors_origins_str = config.get("temporal.api", "cors_origins", fallback="")
     cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]

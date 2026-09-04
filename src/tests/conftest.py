@@ -23,7 +23,8 @@ import pytest
 from aiohttp import ClientResponse
 
 from nv_config_manager.common import auth as auth_mod
-from nv_config_manager.common.config import clear_config_cache
+from nv_config_manager.common.config import clear_config_cache, load_config
+from nv_config_manager.temporal.runtime import configure_workflow_runtime
 
 _CLIENT_RESPONSE_INIT = ClientResponse.__init__
 
@@ -199,6 +200,8 @@ def mock_ini_config(mocker):
 
     mocker.patch("configparser.ConfigParser.read", new=mock_func)
 
+    configure_workflow_runtime(load_config(), lock_redis=None)
+
     yield
 
     # Clear cache after test to prevent leaking to next test
@@ -227,5 +230,6 @@ def custom_ini():
         _current_ini["content"] = ini_content
         # Clear the cached config so it will be reloaded with new settings
         clear_config_cache()
+        configure_workflow_runtime(load_config(), lock_redis=None)
 
     return _set_ini

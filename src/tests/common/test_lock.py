@@ -15,34 +15,30 @@
 """Tests for the service-side distributed lock module.
 
 The token-based helpers now live in :mod:`nv_config_manager_workflows.lock` and
-are covered there; this file covers what stays in the service -- ``create_lock``
-for the render consumers, and the startup wiring that hands the workflow package
-its Redis connection.
+are covered there; this file covers ``create_lock`` for the render consumers.
 """
-
-from types import SimpleNamespace
 
 import pytest
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from nv_config_manager.common import lock as lock_module
-from nv_config_manager.common.lock import (
-    _FakeLock,
-    configure_workflow_lock_backend,
-    create_lock,
-)
-from nv_config_manager_workflows import lock as workflow_lock_module
+from nv_config_manager.common.lock import _FakeLock, create_lock
 
 
 @pytest.fixture(autouse=True)
 def _reset_lock_client(monkeypatch):
     """Clear the module-level Redis client cached between calls."""
     monkeypatch.setattr(lock_module, "_lock_redis_client", None)
-    monkeypatch.setattr(workflow_lock_module, "_lock_redis", workflow_lock_module._UNSET)
 
 
 def test_token_helpers_are_not_exported_from_the_service_module() -> None:
-    for name in ("acquire_lock", "configure_lock_backend", "release_lock", "renew_lock"):
+    for name in (
+        "acquire_lock",
+        "configure_lock_backend",
+        "configure_workflow_lock_backend",
+        "release_lock",
+        "renew_lock",
+    ):
         assert not hasattr(lock_module, name)
 
 
@@ -91,36 +87,3 @@ class TestCreateLock:
         assert isinstance(first, AsyncRedisLock)
         assert isinstance(second, AsyncRedisLock)
         assert first.redis is second.redis
-
-
-class TestConfigureWorkflowLockBackend:
-    """Startup wiring: one decision feeds both create_lock and the workflow lock."""
-
-    def test_local_environment_configures_no_op_locks(self, monkeypatch):
-        monkeypatch.setattr(lock_module, "is_local_environment", lambda: True)
-
-        configure_workflow_lock_backend()
-
-        assert workflow_lock_module._lock_redis is None
-
-    def test_shared_environment_passes_the_redis_connection(self, monkeypatch):
-        connection = object()
-        monkeypatch.setattr(lock_module, "is_local_environment", lambda: False)
-        monkeypatch.setattr(
-            lock_module, "redis_client", lambda db_key: SimpleNamespace(redis=connection)
-        )
-
-        configure_workflow_lock_backend()
-
-        assert workflow_lock_module._lock_redis is connection
-
-    @pytest.mark.asyncio
-    async def test_create_lock_and_workflow_lock_agree_on_the_backend(self, monkeypatch):
-        """Both paths derive from the same client, so they cannot disagree."""
-        monkeypatch.setattr(lock_module, "is_local_environment", lambda: False)
-
-        configure_workflow_lock_backend()
-        lock = await create_lock("resource-e")
-
-        assert isinstance(lock, AsyncRedisLock)
-        assert lock.redis is workflow_lock_module._lock_redis
