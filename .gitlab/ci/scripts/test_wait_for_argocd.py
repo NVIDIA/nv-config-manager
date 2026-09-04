@@ -259,7 +259,7 @@ class ArgoGateTests(unittest.TestCase):
             self.assertNotIn("NVCM_ARGOCD_AUTH_TOKEN", environment)
 
             invalid_settings = (
-                ("NVCM_ARGOCD_PROJECT", ""),
+                ("NVCM_ARGOCD_PROJECT", None),
                 ("NVCM_ARGOCD_SERVER", "http://argocd.example.test"),
                 ("NVCM_ARGOCD_POLL_INTERVAL", "0"),
                 ("NVCM_ARGOCD_POLL_INTERVAL", "١٠"),
@@ -272,8 +272,11 @@ class ArgoGateTests(unittest.TestCase):
                         "NVCM_ARGOCD_SERVER": "https://argocd.example.test",
                         "NVCM_ARGOCD_AUTH_TOKEN": TEST_TOKEN,
                         "NVCM_ARGOCD_PROJECT": "test-project",
-                        name: value,
                     }
+                    if value is None:
+                        invalid_environment.pop(name, None)
+                    else:
+                        invalid_environment[name] = value
                     with self.assertRaises(GateFailure):
                         load_config(invalid_environment)
 
@@ -362,6 +365,38 @@ class ArgoGateTests(unittest.TestCase):
             self.assertTrue(all(isinstance(timeout, Timeout) for timeout in timeouts))
             self.assertEqual([timeout.total for timeout in timeouts], [3, 1])
             self.assertEqual(clock.now, 3)
+
+    def test_completed_response_is_classified_at_the_deadline(self) -> None:
+        for status, expected_error in ((200, None), (403, FatalApiError)):
+            with self.subTest(status=status):
+                clock = FakeClock()
+                session = requests.Session()
+                response = requests.Response()
+                response.status_code = status
+                response._content = b"{}"
+
+                def respond(
+                    *_: Any,
+                    response_at_deadline: requests.Response = response,
+                    test_clock: FakeClock = clock,
+                    **__: Any,
+                ) -> requests.Response:
+                    test_clock.now = 3
+                    return response_at_deadline
+
+                with patch.object(session, "request", side_effect=respond):
+                    client = HttpArgoApi(
+                        BASE_CONFIG,
+                        TEST_TOKEN,
+                        session=session,
+                        sleeper=clock.sleep,
+                        monotonic=clock.monotonic,
+                    )
+                    if expected_error is None:
+                        self.assertEqual(client.get_application(3), {})
+                    else:
+                        with self.assertRaises(expected_error):
+                            client.get_application(3)
 
     def test_sync_request_keeps_the_token_out_of_the_url_and_body(self) -> None:
         with responses.RequestsMock() as mock:

@@ -142,9 +142,6 @@ class HttpArgoApi:
                     f"{type(exc).__name__}."
                 ) from exc
 
-            if self._monotonic() >= deadline:
-                raise TransientApiError("Argo CD API deadline expired.")
-
             status = response.status_code
             if 200 <= status < 300:
                 return response.content
@@ -167,6 +164,8 @@ class HttpArgoApi:
                     "Argo CD API returned HTTP 404; verify the application name, namespace, "
                     "project, and get permission."
                 )
+            if self._monotonic() >= deadline:
+                raise TransientApiError("Argo CD API deadline expired.")
             raise TransientApiError(f"Argo CD API returned transient HTTP {status}.")
 
         raise AssertionError("unreachable API retry state")

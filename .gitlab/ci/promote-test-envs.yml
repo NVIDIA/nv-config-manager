@@ -461,7 +461,7 @@ test-promote-deploy-state:
   # concurrent runs can't race on the same nvcm-<env> branch.
   resource_group: nvcm-env-$NVCM_PROMOTE_ENV
   before_script:
-    - apk add --no-cache bash git yq python3 py3-requests coreutils
+    - apk add --no-cache bash git yq python3 py3-requests py3-urllib3 coreutils
     - git config --global user.email "${CI_PUSH_EMAIL:-ci@nv-config-manager}"
     - git config --global user.name "NVIDIA Config Manager CI"
   script:
