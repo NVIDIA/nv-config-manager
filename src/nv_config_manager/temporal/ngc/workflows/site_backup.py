@@ -46,7 +46,7 @@ with workflow.unsafe.imports_passed_through():
     from nv_config_manager.temporal.common.mixins.archive import ArchiveMixin
     from nv_config_manager.temporal.common.mixins.device import NetworkDeviceData, Platform
     from nv_config_manager.temporal.ngc.activities.config import get_ui_base_url
-    from nv_config_manager.temporal.ngc.activities.nautobot import (
+    from nv_config_manager.temporal.ngc.activities.dcim import (
         GetNetworkDevicesInput,
         GetNetworkDevicesOutput,
         get_network_devices,
@@ -132,6 +132,7 @@ class SiteBackupWorkflow(WorkflowMetadataMixin, StageMixin, ArchiveMixin):
         "Back up running configurations for in-scope devices at a site to the Config Store"
     )
     workflow_input_class = SiteBackupInput
+    workflow_api_enabled = True
     workflow_api_endpoint = "/ngc/site_backup"
     workflow_namespace = "ngc"
     workflow_mcp_enabled = True
