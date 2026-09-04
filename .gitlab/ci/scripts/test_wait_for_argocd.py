@@ -49,6 +49,7 @@ def application_payload(
     """Build an Application response with independently controllable terminal state."""
 
     return {
+        "spec": {"sources": [{}, {}]},
         "status": {
             "sync": {
                 "status": sync,
@@ -61,7 +62,7 @@ def application_payload(
                     "sync": {"revisions": operation_revisions or [EXPECTED_CHART, EXPECTED_GIT]}
                 },
             },
-        }
+        },
     }
 
 
@@ -169,6 +170,7 @@ class RolloutObserverTests(unittest.TestCase):
             for name, value in (
                 ("NVCM_ARGOCD_PROJECT", None),
                 ("NVCM_ARGOCD_SERVER", "http://argocd.example.test"),
+                ("NVCM_ARGOCD_SERVER", "https://argocd.example.test:not-a-port"),
                 ("NVCM_ARGOCD_POLL_INTERVAL", "١٠"),
                 ("NVCM_ARGOCD_SYNC_TIMEOUT", "1801"),
             ):
@@ -191,6 +193,16 @@ class RolloutObserverTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(clock.now, 0)
         self.assertIn("Rollout completed successfully", output)
+
+    def test_single_source_application_fails_immediately(self) -> None:
+        payload = application_payload()
+        payload["spec"] = {"source": {}}
+        client = FakeArgoApi(payload)
+        result, clock, _, errors = run_gate(client)
+        self.assertEqual(result, 1)
+        self.assertEqual(client.attempts, 1)
+        self.assertEqual(clock.now, 0)
+        self.assertIn("requires a multi-source Argo CD Application", errors)
 
     def test_every_exact_terminal_condition_is_required(self) -> None:
         incomplete = {

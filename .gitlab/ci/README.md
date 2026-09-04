@@ -171,7 +171,8 @@ the deployment's project and Application names.
 
 The observer cannot start or terminate an ArgoCD operation. Keep its token
 available only to the protected promotion pipeline; never expose it to a PR
-build job.
+build job. The target Application must use multiple sources and automated sync;
+the observer only reports convergence and never starts the rollout itself.
 
 Runbooks:
 

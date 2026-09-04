@@ -166,7 +166,11 @@ def load_config(environment: MutableMapping[str, str]) -> tuple[Config, str]:
     )
     attestation = _read_attestation(project_directory)
 
-    parsed_server = urlsplit(server)
+    try:
+        parsed_server = urlsplit(server)
+        _ = parsed_server.port
+    except ValueError as exc:
+        raise GateFailure("NVCM_ARGOCD_SERVER must be a valid HTTPS base URL") from exc
     if (
         parsed_server.scheme != "https"
         or not parsed_server.hostname
@@ -234,6 +238,10 @@ def _summary(payload: Mapping[str, Any]) -> str:
 
 
 def _rollout_succeeded(payload: Mapping[str, Any], config: Config) -> bool:
+    spec = _nested(payload, "spec")
+    if isinstance(spec, Mapping) and "source" in spec and "sources" not in spec:
+        raise GateFailure("the rollout observer requires a multi-source Argo CD Application")
+
     desired_revisions = _revisions(payload, "status", "sync", "revisions")
     operation_revisions = _revisions(
         payload,
