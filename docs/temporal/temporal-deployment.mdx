@@ -16,6 +16,35 @@ The installer controls Temporal deployment through `nv-config-manager-install.ya
 - `rbac`: configures workflow read and execute roles.
 - `infrastructure`: configures TLS, gateway, storage, and optional observability.
 
+## History Shards and Replicas
+
+`temporal.services.history.replicas` controls the number of History service
+pods. These replicas provide horizontally scalable compute and can be adjusted
+as load changes.
+
+`temporal.numHistoryShards` controls the number of persisted History shards.
+When it is unset, the chart derives the shard count from
+`temporal.services.history.replicas` for compatibility with existing
+deployments. Set both values when a new cluster needs a shard count that differs
+from its History replica count:
+
+```yaml
+temporal:
+  numHistoryShards: 128
+  services:
+    history:
+      replicas: 16
+```
+
+<Warning>
+Do not change `temporal.numHistoryShards` for an initialized Temporal cluster.
+The shard count is persisted as immutable cluster metadata, and Temporal does
+not provide an in-place re-sharding command. Changing only the Helm value,
+editing cluster metadata, or restoring the existing database into a server
+configured with a different shard count can prevent Temporal from starting or
+make existing Workflow state unreachable.
+</Warning>
+
 ## Temporal Images
 
 The managed Temporal deployment uses three independently scoped distroless
