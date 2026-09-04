@@ -170,11 +170,7 @@ class NautobotWorkflowClient(BaseNautobotClient):
         self, query: str, variables: dict[str, Any] | None = None, timeout: int | None = 10
     ) -> dict[str, Any]:
         """Execute a graphql query with Temporal-specific error handling."""
-        logger.info(
-            "%s: Sending graphql query with variables %s",
-            self.graphql_endpoint,
-            variables,
-        )
+        logger.info("Sending GraphQL query to Nautobot")
         try:
             return await super().graphql_query(query, variables, timeout)
         except NautobotException as e:
@@ -714,9 +710,10 @@ class NautobotWorkflowClient(BaseNautobotClient):
 
     async def load_config_manager_plugin_backup_config(self, device_id: str) -> dict[str, Any]:
         """Load the most recent NVIDIA Config Manager backup data."""
+        request_url = self._rest_url(f"{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/{device_id}/")
         session = await self._ensure_session()
         async with session.get(
-            f"{self.rest_endpoint}{CONFIG_MANAGER_BACKUP_CONFIG_PATH}/{device_id}/",
+            request_url,
             headers=self._resolve_headers(),
         ) as rsp:
             if rsp.status == 404:
