@@ -2361,6 +2361,7 @@ ipython = [
 promotion-gate = [
     { name = "requests" },
     { name = "responses" },
+    { name = "urllib3" },
 ]
 
 [package.metadata]
@@ -2475,6 +2476,7 @@ ipython = [{ name = "ipython", specifier = ">=8.28.0" }]
 promotion-gate = [
     { name = "requests", specifier = ">=2.33.0" },
     { name = "responses", specifier = ">=0.25.3" },
+    { name = "urllib3", specifier = ">=2.7.0" },
 ]
 
 [[package]]

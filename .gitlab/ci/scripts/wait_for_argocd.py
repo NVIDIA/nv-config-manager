@@ -9,10 +9,11 @@ import time
 from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, TextIO
+from typing import Any, Protocol, TextIO, cast
 from urllib.parse import quote, urlencode, urlsplit
 
 import requests
+from urllib3.util import Timeout
 
 ACTIVE_OPERATION_PHASES = {"Running", "Pending", "Progressing", "Waiting", "Terminating"}
 DNS_NAME = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
@@ -57,11 +58,11 @@ class TransientApiError(Exception):
 class ArgoApi(Protocol):
     """Operations used by the convergence state machine."""
 
-    def get_application(self) -> dict[str, Any]: ...
+    def get_application(self, deadline: float) -> dict[str, Any]: ...
 
-    def terminate_operation(self) -> None: ...
+    def terminate_operation(self, deadline: float) -> None: ...
 
-    def start_sync(self, request: Mapping[str, Any]) -> None: ...
+    def start_sync(self, request: Mapping[str, Any], deadline: float) -> None: ...
 
 
 class HttpArgoApi:
@@ -74,6 +75,7 @@ class HttpArgoApi:
         *,
         session: requests.Session | None = None,
         sleeper: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         query = urlencode(
             {
@@ -92,8 +94,10 @@ class HttpArgoApi:
                 "User-Agent": "nvcm-promotion-gate",
             }
         )
-        self._timeout = (config.connect_timeout, config.request_timeout)
+        self._connect_timeout = config.connect_timeout
+        self._request_timeout = config.request_timeout
         self._sleeper = sleeper
+        self._monotonic = monotonic
         self._application = config.application
         self._project = config.project
 
@@ -104,29 +108,51 @@ class HttpArgoApi:
         *,
         json_body: Mapping[str, Any] | None = None,
         retry_transport: bool = False,
+        deadline: float,
     ) -> bytes:
         attempts = 4 if retry_transport else 1
         for attempt in range(1, attempts + 1):
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise TransientApiError("Argo CD API deadline expired.")
+            timeout = Timeout(
+                total=remaining,
+                connect=min(self._connect_timeout, remaining),
+                read=min(self._request_timeout, remaining),
+            )
             try:
                 response = self._session.request(
                     method,
                     url,
                     json=json_body,
-                    timeout=self._timeout,
+                    # Requests accepts urllib3 Timeout objects at runtime, but
+                    # types-requests currently narrows this argument to scalars/tuples.
+                    timeout=cast(Any, timeout),
                     allow_redirects=False,
                 )
             except requests.RequestException as exc:
                 if attempt < attempts:
-                    self._sleeper(2)
+                    remaining = deadline - self._monotonic()
+                    if remaining <= 0:
+                        raise TransientApiError("Argo CD API deadline expired.") from exc
+                    self._sleeper(min(2, remaining))
                     continue
                 raise TransientApiError(
                     f"Argo CD API transport failure after {attempt} attempt(s): "
                     f"{type(exc).__name__}."
                 ) from exc
 
+            if self._monotonic() >= deadline:
+                raise TransientApiError("Argo CD API deadline expired.")
+
             status = response.status_code
             if 200 <= status < 300:
                 return response.content
+            if 300 <= status < 400:
+                raise FatalApiError(
+                    f"Argo CD API returned unexpected HTTP {status}; verify "
+                    "NVCM_ARGOCD_SERVER is the canonical HTTPS API base URL."
+                )
             if status == 401:
                 raise FatalApiError(
                     "Argo CD API returned HTTP 401; the promotion token is invalid or expired."
@@ -145,8 +171,10 @@ class HttpArgoApi:
 
         raise AssertionError("unreachable API retry state")
 
-    def get_application(self) -> dict[str, Any]:
-        response = self._request("GET", self._application_url, retry_transport=True)
+    def get_application(self, deadline: float) -> dict[str, Any]:
+        response = self._request(
+            "GET", self._application_url, retry_transport=True, deadline=deadline
+        )
         try:
             payload = json.loads(response)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -155,11 +183,11 @@ class HttpArgoApi:
             raise TransientApiError("Argo CD API returned malformed JSON.")
         return payload
 
-    def terminate_operation(self) -> None:
-        self._request("DELETE", self._operation_url)
+    def terminate_operation(self, deadline: float) -> None:
+        self._request("DELETE", self._operation_url, deadline=deadline)
 
-    def start_sync(self, request: Mapping[str, Any]) -> None:
-        self._request("POST", self._sync_url, json_body=request)
+    def start_sync(self, request: Mapping[str, Any], deadline: float) -> None:
+        self._request("POST", self._sync_url, json_body=request, deadline=deadline)
 
 
 def _required(environment: Mapping[str, str], name: str, message: str) -> str:
@@ -368,6 +396,21 @@ def _diagnostics(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sleep_before_deadline(
+    duration: float,
+    deadline: float,
+    monotonic: Callable[[], float],
+    sleeper: Callable[[float], None],
+) -> bool:
+    """Sleep for no longer than the remaining budget and report time remaining."""
+
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        return False
+    sleeper(min(duration, remaining))
+    return monotonic() < deadline
+
+
 def wait_for_convergence(
     config: Config,
     client: ArgoApi,
@@ -392,16 +435,17 @@ def wait_for_convergence(
     print(f"  chart: {config.expected_chart_revision}", file=output)
     print(f"  values revision: {config.expected_git_revision}", file=output)
 
-    while monotonic() <= deadline:
+    while monotonic() < deadline:
         try:
-            payload = client.get_application()
+            payload = client.get_application(deadline)
         except TransientApiError as exc:
             print(str(exc), file=output)
             print(
                 f"Argo CD API query failed; retrying in {config.poll_interval}s...",
                 file=output,
             )
-            sleeper(config.poll_interval)
+            if not _sleep_before_deadline(config.poll_interval, deadline, monotonic, sleeper):
+                break
             continue
         last_payload = payload
 
@@ -453,7 +497,7 @@ def wait_for_convergence(
                 file=output,
             )
             try:
-                client.terminate_operation()
+                client.terminate_operation(deadline)
             except TransientApiError as exc:
                 print(str(exc), file=output)
                 print(
@@ -467,7 +511,8 @@ def wait_for_convergence(
                     f"({stale_terminations}/{config.max_stale_terminations}).",
                     file=output,
                 )
-            sleeper(config.poll_interval)
+            if not _sleep_before_deadline(config.poll_interval, deadline, monotonic, sleeper):
+                break
             continue
 
         if (
@@ -509,7 +554,7 @@ def wait_for_convergence(
                     file=output,
                 )
                 try:
-                    client.start_sync(request)
+                    client.start_sync(request, deadline)
                 except TransientApiError as exc:
                     print(str(exc), file=output)
                     print(
@@ -518,7 +563,8 @@ def wait_for_convergence(
                         file=output,
                     )
 
-        sleeper(config.poll_interval)
+        if not _sleep_before_deadline(config.poll_interval, deadline, monotonic, sleeper):
+            break
 
     raise GateFailure(
         f"timed out waiting for exact-revision Argo CD convergence for {config.application}",

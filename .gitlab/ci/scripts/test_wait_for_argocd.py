@@ -6,14 +6,17 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import requests
 import responses
+from urllib3.util import Timeout
 from wait_for_argocd import (
     Config,
     FatalApiError,
@@ -139,7 +142,8 @@ class FakeArgoApi:
         self.sync_failure: Exception | None = None
         self.synced_while_terminating = False
 
-    def get_application(self) -> dict[str, Any]:
+    def get_application(self, deadline: float) -> dict[str, Any]:
+        del deadline
         self.get_attempts += 1
         if self.get_failure is not None:
             raise self.get_failure
@@ -150,7 +154,8 @@ class FakeArgoApi:
             self.state = 2
         return payload
 
-    def terminate_operation(self) -> None:
+    def terminate_operation(self, deadline: float) -> None:
+        del deadline
         self.delete_attempts += 1
         if self.fail_first_delete and self.delete_attempts == 1:
             raise TransientApiError("Argo CD API returned transient HTTP 409.")
@@ -158,7 +163,8 @@ class FakeArgoApi:
             raise AssertionError(f"unexpected termination from state {self.state}")
         self.state = 1
 
-    def start_sync(self, request: Mapping[str, Any]) -> None:
+    def start_sync(self, request: Mapping[str, Any], deadline: float) -> None:
+        del deadline
         if self.state == 1:
             self.synced_while_terminating = True
             raise TransientApiError("Argo CD API returned transient HTTP 409.")
@@ -176,10 +182,12 @@ class FakeArgoApi:
 def run_gate(
     client: FakeArgoApi,
     config: Config = BASE_CONFIG,
+    *,
+    clock: FakeClock | None = None,
 ) -> tuple[int, str, str]:
     """Execute the gate with deterministic time and captured output."""
 
-    clock = FakeClock()
+    clock = clock or FakeClock()
     output = io.StringIO()
     errors = io.StringIO()
     status = execute_gate(
@@ -271,7 +279,7 @@ class ArgoGateTests(unittest.TestCase):
 
     def test_http_statuses_are_classified(self) -> None:
         cases = {
-            302: TransientApiError,
+            302: FatalApiError,
             401: FatalApiError,
             403: FatalApiError,
             404: FatalApiError,
@@ -295,7 +303,7 @@ class ArgoGateTests(unittest.TestCase):
                     )
                     client = HttpArgoApi(BASE_CONFIG, TEST_TOKEN)
                     with self.assertRaises(expected_error):
-                        client.get_application()
+                        client.get_application(time.monotonic() + 60)
                     self.assertEqual(len(mock.calls), 1)
 
     def test_get_retries_transport_but_mutation_does_not(self) -> None:
@@ -313,7 +321,10 @@ class ArgoGateTests(unittest.TestCase):
                 )
             mock.get(application_url, match=[query_matcher], body=payload, status=200)
             client = HttpArgoApi(BASE_CONFIG, TEST_TOKEN, sleeper=lambda _: None)
-            self.assertEqual(client.get_application()["status"]["sync"]["status"], "Synced")
+            self.assertEqual(
+                client.get_application(time.monotonic() + 60)["status"]["sync"]["status"],
+                "Synced",
+            )
             self.assertEqual(len(mock.calls), 4)
 
         with responses.RequestsMock() as mock:
@@ -328,8 +339,29 @@ class ArgoGateTests(unittest.TestCase):
             )
             client = HttpArgoApi(BASE_CONFIG, TEST_TOKEN)
             with self.assertRaises(TransientApiError):
-                client.start_sync({"revisions": [EXPECTED_CHART, EXPECTED_GIT]})
+                client.start_sync(
+                    {"revisions": [EXPECTED_CHART, EXPECTED_GIT]}, time.monotonic() + 60
+                )
             self.assertEqual(len(mock.calls), 1)
+
+    def test_transport_retries_stop_at_the_deadline(self) -> None:
+        clock = FakeClock()
+        session = requests.Session()
+        with patch.object(session, "request", side_effect=requests.Timeout("timed out")) as request:
+            client = HttpArgoApi(
+                BASE_CONFIG,
+                TEST_TOKEN,
+                session=session,
+                sleeper=clock.sleep,
+                monotonic=clock.monotonic,
+            )
+            with self.assertRaisesRegex(TransientApiError, "deadline expired"):
+                client.get_application(3)
+            self.assertEqual(request.call_count, 2)
+            timeouts = [call.kwargs["timeout"] for call in request.call_args_list]
+            self.assertTrue(all(isinstance(timeout, Timeout) for timeout in timeouts))
+            self.assertEqual([timeout.total for timeout in timeouts], [3, 1])
+            self.assertEqual(clock.now, 3)
 
     def test_sync_request_keeps_the_token_out_of_the_url_and_body(self) -> None:
         with responses.RequestsMock() as mock:
@@ -348,7 +380,7 @@ class ArgoGateTests(unittest.TestCase):
                 "revisions": [EXPECTED_CHART, EXPECTED_GIT],
                 "sourcePositions": [1, 2],
             }
-            client.start_sync(request)
+            client.start_sync(request, time.monotonic() + 60)
             prepared = mock.calls[0].request
             if prepared.url is None:
                 self.fail("prepared sync request has no URL")
@@ -394,6 +426,23 @@ class ArgoGateTests(unittest.TestCase):
         self.assertIn("continuing observation without further mutations", output)
         self.assertIn("timed out waiting for exact-revision Argo CD convergence", errors)
         self.assertEqual(client.post_attempts, 2)
+
+    def test_poll_sleep_does_not_exceed_the_deadline(self) -> None:
+        client = FakeArgoApi(2)
+        client.always_reject_sync = True
+        clock = FakeClock()
+        config = replace(
+            BASE_CONFIG,
+            poll_interval=30,
+            sync_timeout=3,
+            max_sync_attempts=1,
+        )
+        result, _, errors = run_gate(client, config, clock=clock)
+        self.assertEqual(result, 1)
+        self.assertIn("timed out waiting for exact-revision Argo CD convergence", errors)
+        self.assertEqual(client.get_attempts, 1)
+        self.assertEqual(client.post_attempts, 1)
+        self.assertEqual(clock.now, 3)
 
     def test_successful_status_for_stale_operation_is_not_accepted(self) -> None:
         client = FakeArgoApi(4)

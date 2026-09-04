@@ -192,6 +192,7 @@ dev = [
 promotion-gate = [
     "requests>=2.33.0",
     "responses>=0.25.3",
+    "urllib3>=2.7.0",
 ]
 ipython = [
     "ipython>=8.28.0",
