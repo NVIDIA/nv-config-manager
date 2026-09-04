@@ -2358,6 +2358,10 @@ integration-test = [
 ipython = [
     { name = "ipython" },
 ]
+promotion-gate = [
+    { name = "requests" },
+    { name = "responses" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2468,6 +2472,10 @@ docs = [
 ]
 integration-test = [{ name = "pytest", specifier = ">=8.3.3" }]
 ipython = [{ name = "ipython", specifier = ">=8.28.0" }]
+promotion-gate = [
+    { name = "requests", specifier = ">=2.33.0" },
+    { name = "responses", specifier = ">=0.25.3" },
+]
 
 [[package]]
 name = "nv-config-manager-dcim"
