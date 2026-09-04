@@ -552,7 +552,8 @@ Per-workflow overrides are selected from a dropdown of known workflows:
 
 > **Warning:** Blank History Shards follows History Replicas. After Temporal
 > initializes its database, pin the current shard count before changing replicas.
-> Changing the immutable shard count requires migration to a separate Temporal cluster.
+> Temporal ignores shard-count changes after the first run; changing the persisted
+> count requires migration to a separate Temporal cluster.
 
 **RBAC**
 
@@ -786,10 +787,11 @@ temporal:
 ```
 
 `history_replicas` controls History service pods and can be adjusted with
-capacity. `num_history_shards` is persisted as immutable cluster metadata; do
-not change it after initialization without a separate-cluster migration. If an
-initialized deployment still derives shards from replicas, pin its current
-shard count before changing `history_replicas`.
+capacity. `num_history_shards` initializes immutable cluster metadata and is
+ignored after Temporal's first run. If an initialized deployment still derives
+shards from replicas, confirm and pin its persisted shard count before changing
+`history_replicas`. Changing the persisted count requires a separate-cluster
+migration.
 
 ### File Storage Example (on-prem with OS images)
 
